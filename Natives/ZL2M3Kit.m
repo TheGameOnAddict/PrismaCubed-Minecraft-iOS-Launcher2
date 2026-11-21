@@ -121,6 +121,10 @@ static UIViewController *ZL2M3TopmostViewController(void) {
 
 @implementation ZL2M3SearchBar
 
+- (BOOL)becomeFirstResponder {
+    return [self.field becomeFirstResponder];
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {

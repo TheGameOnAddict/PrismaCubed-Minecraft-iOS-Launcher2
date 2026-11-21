@@ -189,6 +189,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
                                                  name:@"ZL2VersionDetailProfileRenamed"
                                                object:nil];
 
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(cubicProfileEdited:) name:@"ZL2VersionDetailProfileEdited" object:nil];
     [self ameV13_buildHeaderCard];
     [self ameV13_buildBody];
     [self ameV13_refreshHeader];
@@ -412,7 +413,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
         self.tagLabel.text = @" ";
     }
 
-    self.iconView.image = CubicProfileArtwork(profile);
+    self.iconView.image = CubicProfileArtwork(profile, self.ameV13_profileName);
     self.iconView.contentMode = UIViewContentModeScaleAspectFill;
     self.iconBg.clipsToBounds = YES;
 }
@@ -584,6 +585,10 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 }
 
 #pragma mark - 完成
+
+- (void)cubicProfileEdited:(NSNotification *)note {
+    [self ameV13_refreshHeader];
+}
 
 - (void)cubicPlay {
     if (self.playProfile) self.playProfile(self.ameV13_profileName);

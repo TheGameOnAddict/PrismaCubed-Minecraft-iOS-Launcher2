@@ -344,6 +344,32 @@ static UIImage *ZL2V13ThumbnailAtPath(NSString *path, CGFloat maxPixel) {
 }
 
 /// 写实例键（nil 值 = 删键；写后 save；Task256 profile 层单写口径）
+- (void)ameV13_actionEditSummary {
+    NSMutableDictionary *profile = [self ameV13_profileDict];
+    if (!profile) return;
+    NSString *current = [profile[@"versionSummary"] isKindOfClass:[NSString class]] ? (NSString *)profile[@"versionSummary"] : @"";
+
+    NSString *alertTitle = localize(@"prisma.ui.edit.summary", nil);
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:alertTitle
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.text = current;
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    NSString *cancelText = localize(@"resman.common.cancel", nil);
+    NSString *okText = localize(@"i18n_str_44", nil);
+    [alert addAction:[UIAlertAction actionWithTitle:cancelText style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:okText style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *summary = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        [self ameV13_writeProfileKey:@"versionSummary" value:(summary.length > 0 ? summary : nil)];
+        [self ameV13_reloadContent];
+        // 容器头卡描述行同步（versionSummary 是容器头描述的优先来源）
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2VersionDetailProfileEdited" object:nil];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)ameV13_writeProfileKey:(NSString *)key value:(nullable id)value {
     NSMutableDictionary *profile = [self ameV13_profileDict];
     if (!profile) return;
@@ -891,31 +917,7 @@ static UIImage *ZL2V13ThumbnailAtPath(NSString *path, CGFloat maxPixel) {
 
 #pragma mark 概览：编辑摘要（profile[@"versionSummary"]）
 
-- (void)ameV13_actionEditSummary {
-    NSMutableDictionary *profile = [self ameV13_profileDict];
-    if (!profile) return;
-    NSString *current = [profile[@"versionSummary"] isKindOfClass:[NSString class]] ? (NSString *)profile[@"versionSummary"] : @"";
 
-    NSString *alertTitle = localize(@"prisma.ui.edit.summary", nil);
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:alertTitle
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.text = current;
-        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
-    }];
-    NSString *cancelText = localize(@"resman.common.cancel", nil);
-    NSString *okText = localize(@"i18n_str_44", nil);
-    [alert addAction:[UIAlertAction actionWithTitle:cancelText style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:okText style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *summary = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        [self ameV13_writeProfileKey:@"versionSummary" value:(summary.length > 0 ? summary : nil)];
-        [self ameV13_refreshInfoCard];
-        // 容器头卡描述行同步（versionSummary 是容器头描述的优先来源）
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2VersionDetailProfileEdited" object:nil];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
 
 #pragma mark 概览：打开游戏目录（目录 Open 模式呈现，iOS14 能力上限）
 
@@ -1070,6 +1072,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 @property (nonatomic, strong) UILabel *ameV13_countLabel;
 @property (nonatomic, strong) UILabel *ameV13_busyLabel;          // 更新忙态阶段横幅
 @property (nonatomic, strong) ZL2M3SearchBar *ameV13_searchBar;
+@property (nonatomic, strong) UIView *cubicModsHeading;
 @property (nonatomic, strong) NSMutableArray<ZL2M3FilterChip *> *ameV13_filterChips;   // 0 全部/1 启用/2 禁用
 @property (nonatomic, strong) ZL2M3FilterChip *ameV13_sortNameChip;   // 排序双 chip（100/101）
 @property (nonatomic, strong) ZL2M3FilterChip *ameV13_sortTimeChip;
@@ -1130,9 +1133,21 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
                                                      accessibility:localize(@"resman.mods.import", nil)
                                                              action:^{ [wself ameV13_showImportPicker]; }];
 
-    NSString *pageTitle = localize(@"i18n_str_1283", nil);
-    UIStackView *header = [self ameV13_pageHeaderRowWithTitle:pageTitle
-                                                     trailing:@[countLabel, updateButton, selectButton, importButton]];
+    UIButton *add = [UIButton buttonWithType:UIButtonTypeSystem];
+    [add setTitle:NSLocalizedString(@"+ Add Mods", nil) forState:UIControlStateNormal];
+    add.backgroundColor = [ZL2Theme primary];
+    add.tintColor = [ZL2Theme onPrimary];
+    add.layer.cornerRadius = 7;
+    add.contentEdgeInsets = UIEdgeInsetsMake(6, 8, 6, 8);
+    [add addTarget:self action:@selector(ameV13_openDownloadCenter) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *find = [UIButton buttonWithType:UIButtonTypeSystem];
+    find.accessibilityLabel = NSLocalizedString(@"Search installed mods", nil);
+    [find setImage:[UIImage systemImageNamed:@"magnifyingglass"] forState:UIControlStateNormal];
+    [find addTarget:self action:@selector(cubicToggleSearch:) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *header = [self ameV13_pageHeaderRowWithTitle:NSLocalizedString(@"Installed Mods", nil) trailing:@[find, add]];
+    self.cubicModsHeading = header.arrangedSubviews.firstObject;
+    UIStackView *tools = [[UIStackView alloc] initWithArrangedSubviews:@[countLabel, updateButton, selectButton, importButton, [self ameV13_spacer]]];
+    tools.spacing = 8;
     _ameV13_contentStack = [self ameV13_installContentSkeleton];
     [_ameV13_contentStack addArrangedSubview:header];
 
@@ -1153,7 +1168,9 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     search.onTextChanged = ^(NSString *text) { [wself ameV13_applyFilter]; };
     search.onReturn = ^(NSString *text) { [wsearch resignFirstResponder]; };
     _ameV13_searchBar = search;
-    [_ameV13_contentStack addArrangedSubview:search];
+    [header insertArrangedSubview:search atIndex:0];
+    search.hidden = YES;
+    [_ameV13_contentStack addArrangedSubview:tools];
 
     // 筛选 chips 行（全部/已启用/已禁用 + 排序切换）
     UIStackView *chips = [[UIStackView alloc] init];
@@ -1388,7 +1405,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     NSString *name = [self ameV13_displayNameFor:mod];
     NSString *sizeText = ZL2V13ByteCount([[[NSFileManager defaultManager]
         attributesOfItemAtPath:mod.filePath error:nil] fileSize]);
-    NSMutableArray<NSString *> *detailParts = [NSMutableArray arrayWithObject:sizeText];
+    NSMutableArray<NSString *> *detailParts = [NSMutableArray arrayWithObjects:mod.fileName ?: @"–", sizeText, nil];
     if (mod.disabled) [detailParts addObject:localize(@"resman.common.disabled_tag", nil)];
     ModUpdateResult *upd = _ameV13_updateResults[mod.filePath];
     if (upd) {
@@ -1972,6 +1989,20 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 #pragma mark 去下载（Task265/324：ZL2 下载中心模组轨直达）
 
+- (void)cubicToggleSearch:(UIButton *)sender {
+    BOOL opening = self.ameV13_searchBar.hidden;
+    self.cubicModsHeading.hidden = opening;
+    self.ameV13_searchBar.hidden = !opening;
+    if (opening) {
+        [self.ameV13_searchBar becomeFirstResponder];
+    } else {
+        [self.view endEditing:YES];
+        self.ameV13_searchBar.text = @"";
+        [self ameV13_applyFilter];
+    }
+    [sender setImage:[UIImage systemImageNamed:(opening ? @"xmark" : @"magnifyingglass")] forState:UIControlStateNormal];
+}
+
 - (void)ameV13_openDownloadCenter {
     ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
         initWithType:ZL2AssetSearchTypeMod title:NSLocalizedString(@"Add Mods", nil)];
@@ -2398,6 +2429,14 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 - (NSString *)ameV13_emptyFallback { return @"circle"; }
 - (void)ameV13_configureImportPicker:(UIDocumentPickerViewController *)picker { }
 
+- (void)cubicBrowsePacks {
+    BOOL shaders = [self isKindOfClass:ZL2VersionShadersPage.class];
+    ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
+        initWithType:(shaders ? ZL2AssetSearchTypeShader : ZL2AssetSearchTypeResourcePack) title:[self ameV13_pageTitle]];
+    browser.targetProfileName = self.ameV13_profileName;
+    [self.navigationController pushViewController:browser animated:YES];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
@@ -2414,7 +2453,14 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
                                                              size:32
                                                      accessibility:[self ameV13_importA11y]
                                                             action:^{ [self ameV13_showImportPicker]; }];
-    UIStackView *header = [self ameV13_pageHeaderRowWithTitle:[self ameV13_pageTitle] trailing:@[countLabel, importButton]];
+    UIButton *browse = [UIButton buttonWithType:UIButtonTypeSystem];
+    [browse setTitle:NSLocalizedString(@"+ Add", nil) forState:UIControlStateNormal];
+    browse.backgroundColor = [ZL2Theme primary];
+    browse.tintColor = [ZL2Theme onPrimary];
+    browse.layer.cornerRadius = 7;
+    browse.contentEdgeInsets = UIEdgeInsetsMake(6, 10, 6, 10);
+    [browse addTarget:self action:@selector(cubicBrowsePacks) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *header = [self ameV13_pageHeaderRowWithTitle:[self ameV13_pageTitle] trailing:@[countLabel, importButton, browse]];
     _ameV13_contentStack = [self ameV13_installContentSkeleton];
     [_ameV13_contentStack addArrangedSubview:header];
 
@@ -2979,7 +3025,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 #pragma mark - ⑧ 配置
 
-@interface ZL2VersionConfigPage () <UITextFieldDelegate>
+@interface ZL2VersionConfigPage () <UITextFieldDelegate, UIDocumentPickerDelegate>
 @property (nonatomic, strong) UIStackView *ameV13_contentStack;
 @property (nonatomic, strong) UILabel *ameV13_memoryValueLabel;
 @property (nonatomic, strong) UISlider *ameV13_memorySlider;
@@ -2997,6 +3043,17 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
     _ameV13_contentStack = [self ameV13_installContentSkeleton];
+
+    UIButton *picture = [UIButton buttonWithType:UIButtonTypeSystem];
+    [picture setTitle:NSLocalizedString(@"Change Picture", nil) forState:UIControlStateNormal];
+    [picture addTarget:self action:@selector(cubicChoosePicture) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *description = [UIButton buttonWithType:UIButtonTypeSystem];
+    [description setTitle:NSLocalizedString(@"Edit Description", nil) forState:UIControlStateNormal];
+    [description addTarget:self action:@selector(ameV13_actionEditSummary) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *appearance = [[UIStackView alloc] initWithArrangedSubviews:@[picture, description]];
+    appearance.distribution = UIStackViewDistributionFillEqually;
+    appearance.tintColor = [ZL2Theme primary];
+    [_ameV13_contentStack addArrangedSubview:appearance];
 
     // —— 内存滑条卡 ——
     UIView *memoryCard = [self ameV13_buildMemoryCard];
@@ -3444,6 +3501,25 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 }
 
 #pragma mark 配置：完整实例设置（旧 ProfileSettingsViewController 长尾兜底）
+
+- (void)cubicChoosePicture {
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeImage] asCopy:YES];
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)picker didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (!urls.firstObject) return;
+    UIImage *image = ZL2V13ThumbnailAtPath(urls.firstObject.path, 256);
+    NSData *data = image ? UIImagePNGRepresentation(image) : nil;
+    if (!data.length) {
+        [self ameV13_showAlertMessage:NSLocalizedString(@"This picture could not be opened.", nil)];
+        return;
+    }
+    [self ameV13_writeProfileKey:@"icon" value:[data base64EncodedStringWithOptions:0]];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"ZL2VersionDetailProfileEdited" object:nil];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"ReloadProfileList" object:nil];
+}
 
 - (void)ameV13_openFullSettings {
     // 旧 VC editProfile: 同款目标与 init（[[alloc] init] + profileName 属性）

@@ -354,6 +354,16 @@ static NSString *MRAMirrorResolvedURL(NSString *urlString) {
             modData[@"imageUrl"] = item[@"icon_url"] ?: @"";
             modData[@"categories"] = item[@"categories"] ?: @[];
             modData[@"lastUpdated"] = item[@"date_modified"] ?: @"";
+            modData[@"downloadsUnavailable"] = @(![item[@"downloads"] isKindOfClass:NSNumber.class]);
+            NSArray *versions = [item[@"versions"] isKindOfClass:NSArray.class] ? item[@"versions"] : nil;
+            if ([versions.lastObject isKindOfClass:NSString.class]) modData[@"browseVersion"] = versions.lastObject;
+            NSArray *categories = [item[@"categories"] isKindOfClass:NSArray.class] ? item[@"categories"] : nil;
+            for (NSString *category in categories) {
+                if ([category isKindOfClass:NSString.class] && [@[@"forge", @"fabric", @"quilt", @"neoforge"] containsObject:category]) {
+                    modData[@"browseLoader"] = category;
+                    break;
+                }
+            }
             [results addObject:modData];
         }
         // 7.0-UI-16：总页数透传（ZL2 资产搜索页码控制器 "N / M" 源；

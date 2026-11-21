@@ -61,6 +61,7 @@
 #import "ZL2HomeViewController.h"
 #import "ZL2Theme.h"
 #import "ZL2AssetSearchViewController.h"
+#import "ZL2GameDownloadViewController.h"
 #import "ModpackImportViewController.h"
 #import "ControlRepoViewController.h"   // ★Task343：控件自动检查更新挂载（旧 Root 壳退役后移防主页）
 #import "ZL2M3Kit.h"                 // ZL2M3BottomSheet（长按卡菜单）
@@ -333,7 +334,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     }
 
     NSDictionary *profile = PLProfiles.current.profiles[profileName];
-    self.iconView.image = CubicProfileArtwork(profile);
+    self.iconView.image = CubicProfileArtwork(profile, profileName);
     NSString *summary = profile[@"versionSummary"];
     if (valid && [summary isKindOfClass:NSString.class] && summary.length) self.infoLabel.text = summary;
     self.cardBody.layer.borderWidth = 1;
@@ -950,8 +951,16 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 }
 
 - (void)cubicCreateProfile {
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate"
-                                                        object:nil userInfo:@{@"index": @1}];
+    ZL2GameDownloadViewController *versions = [ZL2GameDownloadViewController new];
+    versions.title = NSLocalizedString(@"New Profile", nil);
+    versions.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(cubicDismissCreation)];
+    UINavigationController *wizard = [[UINavigationController alloc] initWithRootViewController:versions];
+    wizard.modalPresentationStyle = UIModalPresentationPageSheet;
+    [self presentViewController:wizard animated:YES completion:nil];
+}
+
+- (void)cubicDismissCreation {
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 - (void)ame_buildEmptyState {

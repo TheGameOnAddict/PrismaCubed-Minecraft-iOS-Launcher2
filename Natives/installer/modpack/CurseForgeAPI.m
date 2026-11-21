@@ -637,6 +637,20 @@ static NSString *CFA169NormalizeGameVersion(NSString *v) {
             break;
         }
     }
+    NSArray *files = [project[@"latestFiles"] isKindOfClass:NSArray.class] ? project[@"latestFiles"] : nil;
+    NSDictionary *latest = [files.firstObject isKindOfClass:NSDictionary.class] ? files.firstObject : nil;
+    NSMutableArray *categories = [NSMutableArray array];
+    NSArray *rawCategories = [project[@"categories"] isKindOfClass:NSArray.class] ? project[@"categories"] : nil;
+    for (NSDictionary *category in rawCategories) {
+        if ([category isKindOfClass:NSDictionary.class] && [category[@"name"] isKindOfClass:NSString.class]) [categories addObject:category[@"name"]];
+    }
+    NSString *loader = nil, *version = nil;
+    NSArray *versions = [latest[@"gameVersions"] isKindOfClass:NSArray.class] ? latest[@"gameVersions"] : nil;
+    for (NSString *value in versions) {
+        if (![value isKindOfClass:NSString.class] || !value.length) continue;
+        if (!version && [NSCharacterSet.decimalDigitCharacterSet characterIsMember:[value characterAtIndex:0]]) version = value;
+        if (!loader && [@[@"forge", @"fabric", @"quilt", @"neoforge"] containsObject:value.lowercaseString]) loader = value;
+    }
     return @{
         @"apiSource": @(2),
         @"isModpack": @([projectType isEqualToString:@"modpack"]),
@@ -649,6 +663,11 @@ static NSString *CFA169NormalizeGameVersion(NSString *v) {
         // ååé®ï¼formatDownloadCount:ï¼ââæ§è½¬æ¢æè¯¥å­æ®µæ´ä¸ªä¸¢äºï¼ææ CF
         // æ¡ç®ææ¾ "0 æ¬¡ä¸è½½"ãéåå®æµï¼mod.mcimirror.top è£æºæ¥å¿ + æ¬å°
         // curl åè¯ï¼downloadCount ä¸ç´å¨ååºéï¼çº¯å±å­æ®µåæ­å±ã
+        @"browseVersion": version ?: @"–",
+        @"browseLoader": loader ?: @"–",
+        @"fileSize": [latest[@"fileLength"] isKindOfClass:NSNumber.class] ? latest[@"fileLength"] : NSNull.null,
+        @"downloadsUnavailable": @(![project[@"downloadCount"] isKindOfClass:NSNumber.class]),
+        @"categories": categories,
         @"author": ame316_author,
         @"downloads": [project[@"downloadCount"] isKindOfClass:NSNumber.class]
             ? project[@"downloadCount"] : @0,
