@@ -1441,7 +1441,10 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         UIStackView *wrap = [self ameV13_rowCardWithViews:@[iconBox, textStack, spacer, check]
                                                 alignment:UIStackViewAlignmentCenter];
         UITapGestureRecognizer *rowTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameV13_cardTapped:)];
-        [wrap addGestureRecognizer:rowTap];
+        UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(cubicModHeld:)];
+    [wrap addGestureRecognizer:hold];
+    [rowTap requireGestureRecognizerToFail:hold];
+    [wrap addGestureRecognizer:rowTap];
         objc_setAssociatedObject(wrap, @selector(ameV13_cardTapped:), mod.filePath, OBJC_ASSOCIATION_COPY_NONATOMIC);
         return wrap;
     }
@@ -1470,6 +1473,57 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 }
 
 #pragma mark 卡片动作
+
+- (void)cubicModHeld:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan || _ameV13_selectMode || _ameV13_updateBusy) return;
+    NSString *path = objc_getAssociatedObject(gesture.view, @selector(ameV13_cardTapped:));
+    for (ModItem *mod in _ameV13_mods) {
+        if (![mod.filePath isEqual:path]) continue;
+        UIAlertController *menu = [UIAlertController alertControllerWithTitle:[self ameV13_displayNameFor:mod] message:mod.fileName preferredStyle:UIAlertControllerStyleActionSheet];
+        [menu addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Change Version", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [self cubicPickVersionForMod:mod];
+        }]];
+        [menu addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Delete", nil) style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+            [self ameV13_confirmDeleteMod:mod];
+        }]];
+        [menu addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:UIAlertActionStyleCancel handler:nil]];
+        menu.popoverPresentationController.sourceView = gesture.view;
+        menu.popoverPresentationController.sourceRect = gesture.view.bounds;
+        [self presentViewController:menu animated:YES completion:nil];
+        break;
+    }
+}
+
+- (void)cubicPickVersionForMod:(ModItem *)mod {
+    NSString *versionID = [self ameV13_profileDict][@"lastVersionId"];
+    if (!versionID.length) { [self ameV13_showAlertMessage:NSLocalizedString(@"This profile needs a Minecraft version.", nil)]; return; }
+    NSDictionary *parsed = [ModpackExportService parseVersionId:versionID];
+    [self ameV13_setBusy:YES text:NSLocalizedString(@"Finding versions…", nil)];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        if (!mod.fileSHA1.length) mod.fileSHA1 = ZL2V13ModSHA1ForFile(mod.filePath);
+        [[ModUpdateService sharedService] checkUpdateForMod:mod gameVersion:parsed[@"minecraft"] ?: versionID loader:parsed[@"loader"] projectType:@"mod" completion:^(ModUpdateResult *result) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self ameV13_setBusy:NO text:nil];
+                if (!self.view.window) return;
+                if (!result.allVersions.count) { [self ameV13_showAlertMessage:NSLocalizedString(@"No versions were found for this mod.", nil)]; return; }
+                UIAlertController *menu = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Change Version", nil) message:mod.fileName preferredStyle:UIAlertControllerStyleActionSheet];
+                for (ModVersion *version in result.allVersions) {
+                    if (![version.gameVersions containsObject:parsed[@"minecraft"] ?: versionID]) continue;
+                    if ([parsed[@"loader"] length] && version.loaders.count && ![version.loaders containsObject:parsed[@"loader"]]) continue;
+                    [menu addAction:[UIAlertAction actionWithTitle:version.versionNumber ?: version.name style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                        result.candidateVersions = @[version];
+                        [self ameV13_performUpdatesWithResults:@[result] skipped:0];
+                    }]];
+                }
+                if (!menu.actions.count) { [self ameV13_showAlertMessage:NSLocalizedString(@"No compatible versions were found.", nil)]; return; }
+                [menu addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:UIAlertActionStyleCancel handler:nil]];
+                menu.popoverPresentationController.sourceView = self.view;
+                menu.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
+                [self presentViewController:menu animated:YES completion:nil];
+            });
+        }];
+    });
+}
 
 - (void)ameV13_cardTapped:(UITapGestureRecognizer *)sender {
     NSString *path = objc_getAssociatedObject(sender.view, @selector(ameV13_cardTapped:));
@@ -1949,7 +2003,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
                 NSString *downloadName = [primaryFile isKindOfClass:[NSDictionary class]]
                     ? ([primaryFile[@"filename"] isKindOfClass:[NSString class]] ? primaryFile[@"filename"] : nil)
                     : nil;
-                if (downloadName.length > 0) fileName = downloadName;
+                if (downloadName.length > 0) fileName = downloadName.lastPathComponent;
                 NSString *oldPath = task.result.localFilePath;
                 NSString *oldDir = [oldPath stringByDeletingLastPathComponent];
                 // 旧文件处于禁用状态（.disabled 后缀）时，新文件同样禁用，保留用户意图
@@ -1959,10 +2013,15 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
                     newPath = [newPath stringByAppendingString:@".disabled"];
                 }
                 @try {
-                    if ([fm fileExistsAtPath:oldPath]) [fm removeItemAtPath:oldPath error:nil];
-                    if (![newPath isEqualToString:oldPath] && [fm fileExistsAtPath:newPath]) [fm removeItemAtPath:newPath error:nil];
                     NSError *moveError = nil;
-                    if ([fm moveItemAtPath:task.tempPath toPath:newPath error:&moveError]) {
+                    BOOL replaced = NO;
+                    if ([newPath isEqualToString:oldPath]) {
+                        replaced = [fm replaceItemAtURL:[NSURL fileURLWithPath:oldPath] withItemAtURL:[NSURL fileURLWithPath:task.tempPath] backupItemName:nil options:0 resultingItemURL:nil error:&moveError];
+                    } else if ([fm fileExistsAtPath:oldPath] && [fm moveItemAtPath:task.tempPath toPath:newPath error:&moveError]) {
+                        replaced = [fm removeItemAtPath:oldPath error:&moveError];
+                        if (!replaced) [fm removeItemAtPath:newPath error:nil];
+                    }
+                    if (replaced) {
                         successCount++;
                         task.tempPath = nil;
                     } else {

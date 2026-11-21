@@ -2318,29 +2318,89 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         NSString *game = [self ame_profileMinecraftVersion] ?: @"";
         NSString *family = [[self ame_profileLoader] lowercaseString] ?: @"vanilla";
         NSString *message = [NSString stringWithFormat:@"Choose a loader for %@ (%@ · %@). The data pack will download after its loader is installed.", profile, family, game];
-        UIAlertController *chooser = [UIAlertController alertControllerWithTitle:@"Data pack loader required" message:message preferredStyle:UIAlertControllerStyleAlert];
+        UIStackView *sheet = [UIStackView new];
+        sheet.axis = UILayoutConstraintAxisVertical;
+        sheet.spacing = 5;
+        sheet.translatesAutoresizingMaskIntoConstraints = NO;
+        UILabel *title = [UILabel new];
+        title.text = NSLocalizedString(@"Data pack loader required", nil);
+        title.font = [ZL2Theme fontTitleMedium];
+        title.textColor = [ZL2Theme onSurface];
+        [sheet addArrangedSubview:title];
+        UILabel *summary = [UILabel new];
+        summary.text = message;
+        summary.numberOfLines = 0;
+        summary.font = [ZL2Theme fontLabelMedium];
+        summary.textColor = [ZL2Theme onSurfaceVariant];
+        [sheet addArrangedSubview:summary];
+        UIButton *confirm = [UIButton buttonWithType:UIButtonTypeSystem];
+        [confirm setTitle:NSLocalizedString(@"Install", nil) forState:UIControlStateNormal];
+        confirm.backgroundColor = [ZL2Theme primary];
+        confirm.tintColor = [ZL2Theme onPrimary];
+        confirm.layer.cornerRadius = 6;
+        confirm.enabled = NO;
+        confirm.alpha = 0.45;
+        __block ModVersion *selection = nil;
+        __block NSDictionary *selectedLoader = nil;
+        __weak UIStackView *weakSheet = sheet;
         for (NSDictionary *loader in [DataPackService supportedLoaders]) {
-            __block ModVersion *release = nil;
-            NSString *title = [NSString stringWithFormat:@"%@ · %@", loader[@"name"], loader[@"author"]];
-            UIAlertAction *install = [UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-                if (release) [self cubicInstallLoader:loader version:release thenPack:pack];
-            }];
-            install.enabled = NO;
-            [chooser addAction:install];
+            UIButton *row = [UIButton buttonWithType:UIButtonTypeSystem];
+            row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+            row.titleLabel.font = [ZL2Theme fontLabelLarge];
+            row.contentEdgeInsets = UIEdgeInsetsMake(6, 8, 6, 8);
+            row.backgroundColor = [ZL2Theme surfaceContainer];
+            row.layer.cornerRadius = 6;
+            row.tintColor = [ZL2Theme onSurface];
+            row.enabled = NO;
+            NSString *label = [NSString stringWithFormat:@"%@ · %@", loader[@"name"], loader[@"author"]];
+            [row setTitle:[label stringByAppendingString:@" · …"] forState:UIControlStateNormal];
+            [sheet addArrangedSubview:row];
             [[ModrinthAPI sharedInstance] getVersionsForModWithID:loader[@"project"] completion:^(NSArray<ModVersion *> *versions, NSError *error) {
                 dispatch_async(dispatch_get_main_queue(), ^{
+                    if (!weakSheet) return;
+                    ModVersion *release = nil;
                     for (ModVersion *candidate in versions) {
-                        if (![candidate.gameVersions containsObject:game] || ![candidate.loaders containsObject:family] || ![candidate.primaryFile[@"url"] isKindOfClass:NSString.class]) continue;
-                        release = candidate;
-                        install.enabled = YES;
-                        break;
+                        if ([candidate.gameVersions containsObject:game] && [candidate.loaders containsObject:family] &&
+                            [candidate.primaryFile[@"url"] isKindOfClass:NSString.class]) { release = candidate; break; }
                     }
+                    row.accessibilityLabel = label;
+                    NSString *status = error ? @"Lookup failed" : @"Unavailable";
+                    [row setTitle:release ? label : [label stringByAppendingFormat:@" · %@", status] forState:UIControlStateNormal];
+                    if (!release) return;
+                    row.enabled = YES;
+                    [row setImage:[UIImage systemImageNamed:@"circle"] forState:UIControlStateNormal];
+                    [row setImage:[UIImage systemImageNamed:@"checkmark.circle.fill"] forState:UIControlStateSelected];
+                    [row addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+                        for (UIView *option in weakSheet.arrangedSubviews) {
+                            if ([option isKindOfClass:UIButton.class]) ((UIButton *)option).selected = NO;
+                        }
+                        UIButton *sender = (UIButton *)action.sender;
+                        sender.selected = YES;
+                        selectedLoader = loader;
+                        selection = release;
+                        confirm.enabled = YES;
+                        confirm.alpha = 1;
+                    }] forControlEvents:UIControlEventTouchUpInside];
                 });
             }];
         }
-        chooser.message = [message stringByAppendingString:@" Disabled choices have no confirmed compatible release."];
-        [chooser addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-        [self presentViewController:chooser animated:YES completion:nil];
+        UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+        [cancel setTitle:NSLocalizedString(@"Cancel", nil) forState:UIControlStateNormal];
+        cancel.tintColor = [ZL2Theme onSurfaceVariant];
+        __block BOOL confirmed = NO;
+        [cancel addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            [ZL2M3BottomSheet dismissWithContentView:weakSheet];
+        }] forControlEvents:UIControlEventTouchUpInside];
+        [confirm addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            confirmed = YES;
+            [ZL2M3BottomSheet dismissWithContentView:weakSheet];
+        }] forControlEvents:UIControlEventTouchUpInside];
+        UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[cancel, confirm]];
+        buttons.distribution = UIStackViewDistributionFillEqually;
+        [sheet addArrangedSubview:buttons];
+        [ZL2M3BottomSheet presentWithContentView:sheet onDismiss:^{
+            if (confirmed && selection && selectedLoader) [self cubicInstallLoader:selectedLoader version:selection thenPack:pack];
+        }];
     }];
 }
 
