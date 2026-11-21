@@ -4056,7 +4056,25 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     // 32MB 取值对齐 MobileGlues 自身转换线程（设备日志原文 "dedicated 32MB-stack
     // thread"——同一批着色器、同一库家族在该预算下验证安全）。属虚拟内存预留，
     // 物理内存按实际触页计。
-    PUSH_MARGV_LITERAL("-Xss32M");
+    BOOL isForgeLaunch = NO;
+    if (!launchJar && [launchTarget isKindOfClass:NSDictionary.class]) {
+        NSString *ame153_mainClass = launchTarget[@"mainClass"];
+        // 1.17+ Forge 与 1.20.1 NeoForge 的 mainClass 均为 BootstrapLauncher
+        isForgeLaunch = ame153_mainClass.length > 0 &&
+                        [ame153_mainClass containsString:@"cpw.mods.bootstraplauncher"];
+    }
+
+    // Older Forge launches can exhaust native thread resources with 32 MB
+    // stacks. Keep the large stack for the newer renderer path.
+    NSString *baseGameVersion = isForgeLaunch ? launchTarget[@"inheritsFrom"] : nil;
+    if (![baseGameVersion isKindOfClass:NSString.class] || baseGameVersion.length == 0) {
+        baseGameVersion = isForgeLaunch ? launchTarget[@"id"] : nil;
+    }
+    if (isForgeLaunch && minVersion < 25 && ame98_mcMajorFromVersionId(baseGameVersion) == 1) {
+        PUSH_MARGV_LITERAL("-Xss2M");
+    } else {
+        PUSH_MARGV_LITERAL("-Xss32M");
+    }
 
     // ============================================================================
     // JVM fatal error log 定向 —— hs_err_pid*.log 落到可取位置（Task 27）
@@ -4284,13 +4302,6 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     // 影子类经 ModuleClassLoader 的父委托链照常可达（与 Task153 同语义，
     // 但加载器正确）。注意：JSON 自带 -DignoreList 时必须【并入】而非
     // 覆盖（否则把 Forge 自己忽略的 jar 重新模块化）——下方原地改写。
-    BOOL isForgeLaunch = NO;
-    if (!launchJar && [launchTarget isKindOfClass:NSDictionary.class]) {
-        NSString *ame153_mainClass = launchTarget[@"mainClass"];
-        // 1.17+ Forge 与 1.20.1 NeoForge 的 mainClass 均为 BootstrapLauncher
-        isForgeLaunch = ame153_mainClass.length > 0 &&
-                        [ame153_mainClass containsString:@"cpw.mods.bootstraplauncher"];
-    }
 
     // Task 154：注入 ignoreList（-D 同名后者生效——jvm_processed 在上方已
     // 推送，我们的条目排在其后必然胜出；JSON 自带时【并入】其值而非覆盖，
