@@ -52,7 +52,7 @@
 
 ## About PrismaCubed
 
-PrismaCubed focuses on improving the launcher experience and expanding English translations across the interface and documentation. Development work includes English UI coverage, Forge installer reliability, and optional JIT shortcut controls. See the [feature branch](https://github.com/TheGameOnAddict/PrismaCubed-Minecraft-iOS-Launcher2/tree/feature/prisma-beta-english-forge) for the current changes and [PrismaCubed Actions](https://github.com/TheGameOnAddict/PrismaCubed-Minecraft-iOS-Launcher2/actions) for build status.
+PrismaCubed focuses on improving the launcher experience and expanding English translations across the interface and documentation. Development work includes English UI coverage, Forge reliability, CurseForge share-code imports, and setup guidance for enabling JIT without Wi-Fi. See the [feature branch](https://github.com/TheGameOnAddict/PrismaCubed-Minecraft-iOS-Launcher2/tree/feature/prisma-beta-english-forge) for the current changes and [PrismaCubed Actions](https://github.com/TheGameOnAddict/PrismaCubed-Minecraft-iOS-Launcher2/actions) for build status.
 
 ---
 
