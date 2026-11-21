@@ -271,6 +271,8 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     [_headerCard addSubview:textStack];
 
     // 「完成」（dismiss 语义：pop 优先，无 nav 时 dismiss 兜底）
+    UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    doneButton.tintColor = [ZL2Theme primary];
     doneButton.translatesAutoresizingMaskIntoConstraints = NO;
     doneButton.accessibilityLabel = NSLocalizedString(@"Profile menu", nil);
     [doneButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
