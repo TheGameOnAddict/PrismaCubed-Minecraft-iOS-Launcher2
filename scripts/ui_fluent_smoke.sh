@@ -161,6 +161,7 @@ preview_mode() {
   local app="$OUT/AmeFluentPreview.app"
   mkdir -p "$app"
   cp "$OUT/AmeFluentPreview" "$app/AmeFluentPreview"
+  cp "$NATIVES/Preview/CubicPreviewAvatar.png" "$app/"
   mkdir -p "$app/en.lproj"
   cp "$NATIVES/resources/en.lproj/Localizable.strings" "$app/en.lproj/"
   for cover in "$NATIVES"/Assets.xcassets/CubicProfileCover*.imageset; do
@@ -227,7 +228,7 @@ PLIST
         if [[ ! -s "$docs/$png" ]]; then
           cat "$OUT/$route-$orientation.log"
           FAIL=1
-          return
+          continue
         fi
         cp "$docs/$png" "$OUT/"
       done

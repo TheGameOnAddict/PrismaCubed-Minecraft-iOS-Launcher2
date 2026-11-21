@@ -737,9 +737,13 @@ static void PreviewScreens(UIWindow *window) {
         ZL2VersionDetailViewController *detail = (id)nav.topViewController;
         NSCAssert([detail isKindOfClass:ZL2VersionDetailViewController.class], @"Profile route unavailable");
         if ([route isEqual:@"mods"]) {
-            ZL2VersionModsPage *mods = (id)detail.childViewControllers.firstObject;
-            NSCAssert([mods isKindOfClass:ZL2VersionModsPage.class], @"Missing Mods page");
-            [mods ameV13_openDownloadCenter];
+            // Wait for the profile push to finish before following its Add Mods action.
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
+                [detail loadViewIfNeeded];
+                ZL2VersionModsPage *mods = (id)detail.childViewControllers.firstObject;
+                NSCAssert([mods isKindOfClass:ZL2VersionModsPage.class], @"Missing Mods page");
+                [mods ameV13_openDownloadCenter];
+            });
         }
     }
     if ([route isEqual:@"menu"]) [shell cubicOpenAccountMenu];

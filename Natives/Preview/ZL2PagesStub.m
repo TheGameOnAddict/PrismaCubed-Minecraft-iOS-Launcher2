@@ -216,7 +216,7 @@
                            completion:(void (^)(UIImage *image))completion {
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        completion(nil);
+        completion([UIImage imageNamed:@"CubicPreviewAvatar"]);
     });
 }
 
@@ -818,6 +818,9 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
         item.basename = item.displayName = name;
         item.fileName = [NSString stringWithFormat:@"%@-forge-1.20.1.jar",name.lowercaseString];
         item.filePath = [NSTemporaryDirectory() stringByAppendingPathComponent:item.fileName];
+        if (![NSFileManager.defaultManager fileExistsAtPath:item.filePath]) {
+            [[NSMutableData dataWithLength:131072] writeToFile:item.filePath atomically:YES];
+        }
         item.isForge = YES;
         [mods addObject:item];
     }
