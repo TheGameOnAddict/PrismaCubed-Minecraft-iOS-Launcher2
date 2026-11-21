@@ -65,6 +65,7 @@
 #import "ZL2M3Kit.h"
 #import "ZL2VersionNBT.h"
 #import "ModLoaderIconHelper.h"      // 7.0-UI-13-r1：加载器识别（详情头图标口径）
+#import "DataPackService.h"
 #import "ModpackExportService.h"     // 7.0-UI-13-r1：版本 id 反解（MC 版本口径）
 #import "ModService.h"                 // ★ Task343：模组页数据层（scan/toggle/delete/metadata/隔离口径）
 #import "ModUpdateService.h"          // ★ Task343：检查更新全流程（双源限流）
@@ -2631,6 +2632,57 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 // ZL2VersionResourcePacksPage / ZL2VersionShadersPage 主体已在 ZL2VersionPages.h
 //（7.0-UI-13-r2：.m 内重复 @interface 根除——空体重声明即 duplicate interface 错误）
+
+@interface CubicDataPacksPage ()
+@property (nonatomic, strong) UIStackView *packList;
+@property (nonatomic) NSUInteger refreshGeneration;
+@end
+
+@implementation CubicDataPacksPage
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.packList = [self ameV13_installContentSkeleton];
+    UIButton *add = [UIButton buttonWithType:UIButtonTypeSystem];
+    [add setTitle:NSLocalizedString(@"+ Add", nil) forState:UIControlStateNormal];
+    add.backgroundColor = [ZL2Theme primary];
+    add.tintColor = [ZL2Theme onPrimary];
+    add.contentEdgeInsets = UIEdgeInsetsMake(6, 10, 6, 10);
+    add.layer.cornerRadius = 7;
+    [add addTarget:self action:@selector(browsePacks) forControlEvents:UIControlEventTouchUpInside];
+    [self.packList addArrangedSubview:[self ameV13_pageHeaderRowWithTitle:NSLocalizedString(@"Data Packs", nil) trailing:@[add]]];
+}
+- (void)browsePacks {
+    ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc] initWithType:ZL2AssetSearchTypeDataPack title:NSLocalizedString(@"Add Data Packs", nil)];
+    browser.targetProfileName = self.ameV13_profileName;
+    [self.navigationController pushViewController:browser animated:YES];
+}
+- (void)ameV13_reloadContent {
+    NSUInteger generation = ++self.refreshGeneration;
+    [[DataPackService sharedService] loaderFolderForProfile:self.ameV13_profileName completion:^(NSString *folder) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            NSMutableArray *names = [NSMutableArray array];
+            for (NSString *name in folder ? [NSFileManager.defaultManager contentsOfDirectoryAtPath:folder error:nil] : @[]) {
+                NSString *path = [folder stringByAppendingPathComponent:name];
+                if ([name hasPrefix:@"."]) continue;
+                if ([name.pathExtension.lowercaseString isEqual:@"zip"] || [NSFileManager.defaultManager fileExistsAtPath:[path stringByAppendingPathComponent:@"pack.mcmeta"]]) [names addObject:name];
+            }
+            [names sortUsingSelector:@selector(localizedStandardCompare:)];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (generation != self.refreshGeneration) return;
+                while (self.packList.arrangedSubviews.count > 1) [self.packList.arrangedSubviews.lastObject removeFromSuperview];
+                if (!names.count) {
+                    NSString *message = folder ? @"No data packs installed" : @"Add a data pack to choose a compatible loader.";
+                    [self.packList addArrangedSubview:[self ameV13_emptyStateWithSymbol:@"archivebox" fallback:@"doc" text:NSLocalizedString(message, nil)]];
+                }
+                for (NSString *name in names) {
+                    UIStackView *text = [self ameV13_textStackWithTitle:name.stringByDeletingPathExtension detail:name];
+                    [self.packList addArrangedSubview:[self ameV13_rowCardWithViews:@[text] alignment:UIStackViewAlignmentCenter]];
+                }
+            });
+        });
+    }];
+}
+@end
 
 @implementation ZL2VersionResourcePacksPage
 - (NSString *)ameV13_pageTitle { return localize(@"i18n_str_116", nil); }

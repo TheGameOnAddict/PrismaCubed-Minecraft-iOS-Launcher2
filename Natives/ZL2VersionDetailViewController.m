@@ -518,13 +518,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
         case 5: vc = [[ZL2VersionScreenshotsPage alloc]    initWithProfileName:profileName gameDir:gameDir]; break;
         case 6: vc = [[ZL2VersionServersPage alloc]        initWithProfileName:profileName gameDir:gameDir]; break;
         case 7: vc = [[ZL2VersionConfigPage alloc]         initWithProfileName:profileName gameDir:gameDir]; break;
-        case 8: {
-            ZL2AssetSearchViewController *packs = [[ZL2AssetSearchViewController alloc]
-                initWithType:ZL2AssetSearchTypeDataPack title:NSLocalizedString(@"Data Packs", nil)];
-            packs.targetProfileName = profileName;
-            vc = packs;
-            break;
-        }
+        case 8: vc = [[CubicDataPacksPage alloc] initWithProfileName:profileName gameDir:gameDir]; break;
         default: break;
     }
     if (!vc) return nil;

@@ -17,6 +17,7 @@
 #import "PLProfiles.h"
 #import "ModService.h"   // Task274-h S11: Task225 isolation sniff (ame225_sniffedIsolationGameDirForProfile)
 #import "DataPackItem.h"
+#import "ModpackExportService.h"
 #import "UZKArchive.h"
 #import "DownloadTaskManager.h"
 #import "DownloadTaskItem.h"
@@ -357,6 +358,57 @@
     [self downloadDataPack:item toProfile:profileName worldName:worldName expectedSHA1:nil progress:progress completion:completion];
 }
 
++ (NSArray<NSDictionary<NSString *, NSString *> *> *)supportedLoaders {
+    return @[
+        @{@"name": @"Open Loader", @"author": @"DarkhaxDev", @"id": @"openloader", @"project": @"KwWsINvD"},
+        @{@"name": @"Global Data Packs", @"author": @"Declipsonator", @"id": @"global-datapack", @"project": @"bRa9yz7E"},
+        @{@"name": @"Global Packs", @"author": @"JTK222", @"id": @"globalpacks", @"project": @"NRLPy2mk"},
+        @{@"name": @"Paxi", @"author": @"YUNGNICKYOUNG", @"id": @"paxi", @"project": @"CU0PAyzb"},
+    ];
+}
+
+- (void)loaderFolderForProfile:(NSString *)profileName completion:(void (^)(NSString *folder))completion {
+    NSDictionary *profile = PLProfiles.current.profiles[profileName];
+    NSString *versionID = profile[@"lastVersionId"];
+    NSDictionary *version = versionID.length ? [ModpackExportService parseVersionId:versionID] : nil;
+    NSString *game = version[@"minecraft"];
+    NSString *family = [version[@"loader"] lowercaseString];
+    NSString *root = [self gameDirForProfile:profileName];
+    if (!root.length || !family.length || !profile) { completion(nil); return; }
+    [[ModService sharedService] scanModsForProfile:profileName completion:^(NSArray<ModItem *> *items) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            NSString *folder = nil;
+            for (NSDictionary *loader in [DataPackService supportedLoaders]) {
+                for (ModItem *mod in items) {
+                    if (mod.disabled || ![mod.filePath.pathExtension.lowercaseString isEqual:@"jar"] || ![mod.onlineID isEqual:loader[@"id"]]) continue;
+                    UZKArchive *jar = [[UZKArchive alloc] initWithPath:mod.filePath error:nil];
+                    NSArray *entries = [jar listFilenames:nil];
+                    BOOL fabric = [family isEqual:@"fabric"] || [family isEqual:@"quilt"];
+                    BOOL compatible = fabric && [entries containsObject:@"fabric.mod.json"];
+                    if ([family isEqual:@"forge"]) compatible = [entries containsObject:@"META-INF/mods.toml"];
+                    if ([family isEqual:@"neoforge"]) compatible = [entries containsObject:@"META-INF/neoforge.mods.toml"] ||
+                        ([game compare:@"1.20.5" options:NSNumericSearch] == NSOrderedAscending && [entries containsObject:@"META-INF/mods.toml"]);
+                    if (!compatible) continue;
+                    NSString *relative = @"datapacks";
+                    if ([mod.onlineID isEqual:@"paxi"]) relative = @"config/paxi/datapacks";
+                    if ([mod.onlineID isEqual:@"openloader"]) {
+                        if ([entries containsObject:@"net/darkhax/openloader/common/impl/packs/OpenLoaderRepositorySource.class"]) relative = @"config/openloader/packs";
+                        else relative = [game compare:@"1.17" options:NSNumericSearch] == NSOrderedAscending ? @"openloader/data" : @"config/openloader/data";
+                    }
+                    if ([mod.onlineID isEqual:@"globalpacks"] && [game compare:@"1.16" options:NSNumericSearch] == NSOrderedAscending) {
+                        relative = @"global_data_packs";
+                        if ([NSFileManager.defaultManager fileExistsAtPath:[root stringByAppendingPathComponent:@"global_data_pack"]]) relative = @"global_data_pack";
+                    }
+                    folder = [root stringByAppendingPathComponent:relative];
+                    break;
+                }
+                if (folder) break;
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(folder); });
+        });
+    }];
+}
+
 // ---------- 带 SHA1 校验的下载（spec Task 5.1：expectedSHA1 传入即启用校验）----------
 - (void)downloadDataPack:(DataPackItem *)item
                toProfile:(NSString *)profileName
@@ -364,86 +416,25 @@
             expectedSHA1:(nullable NSString *)expectedSHA1
                 progress:(DataPackDownloadProgressHandler _Nullable)progress
               completion:(DataPackDownloadCompletionHandler _Nullable)completion {
-    // ★ Task275 F7（Task269 末梢自愈平移）：目标实例不存在→回落当前选中实例
-    //   （ModService.m:734 同款，杜绝死名 resolve 兑底静默落共享根）。
-    if (profileName.length > 0 && !PLProfiles.current.profiles[profileName]) {
-        NSString *ame275_fallback = PLProfiles.current.selectedProfileName;
-        NSLog(@"[DataPackService] Task275: target profile \"%@\" gone -> fallback to selected \"%@\"",
-              profileName, ame275_fallback ?: @"(nil)");
-        profileName = ame275_fallback;
+    NSString *target = profileName.length ? profileName : PLProfiles.current.selectedProfileName;
+    if (!target.length) {
+        if (completion) completion(NO, [NSError errorWithDomain:@"DataPackService" code:3 userInfo:@{NSLocalizedDescriptionKey: @"Choose a profile first."}]);
+        return;
     }
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *dataPacksFolder = nil;
-
-    // 根据是否指定 worldName 决定下载目录
-    if (worldName.length > 0) {
-        // 下载到 saves/<worldName>/datapacks/
-        NSString *gameDir = [self gameDirForProfile:profileName];
-        if (!gameDir) {
-            if (completion) {
-                NSError *error = [NSError errorWithDomain:@"DataPackServiceError"
-                                                     code:1
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"Cannot find game directory."}];
-                dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, error); });
-            }
+    [self loaderFolderForProfile:target completion:^(NSString *folder) {
+        NSError *error = nil;
+        if (!folder || !PLProfiles.current.profiles[target]) {
+            error = [NSError errorWithDomain:@"DataPackService" code:4 userInfo:@{NSLocalizedDescriptionKey: @"Install and enable a compatible data pack loader in this profile first."}];
+        } else if ([NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:&error]) {
+            [self downloadDataPack:item toProfile:target loaderFolder:folder expectedSHA1:expectedSHA1 progress:progress completion:completion];
             return;
         }
-        NSString *savesDir = [gameDir stringByAppendingPathComponent:@"saves"];
-        NSString *worldDir = [savesDir stringByAppendingPathComponent:worldName];
-        dataPacksFolder = [worldDir stringByAppendingPathComponent:@"datapacks"];
-        // 确保目标目录存在（含 saves/<worldName>/datapacks/）
-        NSError *dirError = nil;
-        BOOL created = [fm createDirectoryAtPath:dataPacksFolder
-                     withIntermediateDirectories:YES
-                                      attributes:nil
-                                           error:&dirError];
-        if (!created || dirError) {
-            if (completion) {
-                NSError *error = [NSError errorWithDomain:@"DataPackServiceError"
-                                                     code:1
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to create world datapacks directory: %@", dirError.localizedDescription ?: @"Unknown error"]}];
-                dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, error); });
-            }
-            return;
-        }
-    } else {
-        // 默认下载到 <gameDir>/datapacks/
-        // ★ Task275 F1：ensure-first（原 existing-first 在隔离叶目录未建时把
-        //   下载落到共享根——同扫描病灶）。
-        dataPacksFolder = [self ensureDataPacksFolderForProfile:profileName error:nil];
-        if (!dataPacksFolder) {
-            dataPacksFolder = [self existingDataPacksFolderForProfile:profileName];
-        }
-        if (!dataPacksFolder) {
-            NSString *gameDir = [self gameDirForProfile:profileName];
-            if (gameDir) {
-                dataPacksFolder = [gameDir stringByAppendingPathComponent:@"datapacks"];
-                NSError *dirError = nil;
-                BOOL created = [fm createDirectoryAtPath:dataPacksFolder
-                             withIntermediateDirectories:YES
-                                              attributes:nil
-                                                   error:&dirError];
-                if (!created || dirError) {
-                    if (completion) {
-                        NSError *error = [NSError errorWithDomain:@"DataPackServiceError"
-                                                             code:1
-                                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to create datapacks directory, please check storage permissions."}];
-                        dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, error); });
-                    }
-                    return;
-                }
-            } else {
-                if (completion) {
-                    NSError *error = [NSError errorWithDomain:@"DataPackServiceError"
-                                                         code:1
-                                                     userInfo:@{NSLocalizedDescriptionKey: localize(@"i18n_str_106", nil)}];
-                    dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, error); });
-                }
-                return;
-            }
-        }
-    }
+        if (completion) completion(NO, error);
+    }];
+}
 
+- (void)downloadDataPack:(DataPackItem *)item toProfile:(NSString *)profileName loaderFolder:(NSString *)dataPacksFolder
+            expectedSHA1:(NSString *)expectedSHA1 progress:(DataPackDownloadProgressHandler)progress completion:(DataPackDownloadCompletionHandler)completion {
     // 校验下载链接
     NSURL *url = [NSURL URLWithString:item.selectedVersionDownloadURL];
     if (!url) {
@@ -457,7 +448,7 @@
     }
 
     // 确保文件名有效
-    NSString *fileName = item.fileName;
+    NSString *fileName = item.fileName.lastPathComponent;
     if (!fileName || fileName.length == 0) {
         fileName = [url lastPathComponent];
     }

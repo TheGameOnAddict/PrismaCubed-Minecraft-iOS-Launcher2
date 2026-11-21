@@ -2124,10 +2124,13 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 - (void)ame227_installDependencies:(NSArray<ModDependencyItem *> *)deps
                          toProfile:(NSString *)profileName
                         completion:(void (^)(void))completion {
-    if (deps.count == 0) {
+    [self ame227_installDependencies:deps toProfile:profileName strict:NO completion:^(BOOL success) {
         if (completion) completion();
-        return;
-    }
+    }];
+}
+
+- (void)ame227_installDependencies:(NSArray<ModDependencyItem *> *)deps toProfile:(NSString *)profileName strict:(BOOL)strict completion:(void (^)(BOOL))completion {
+    if (!deps.count) { completion(YES); return; }
     NSMutableArray<ModDependencyItem *> *remaining = [deps mutableCopy];
     NSMutableArray<NSString *> *failures = [NSMutableArray new];
 
@@ -2143,7 +2146,8 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
             } else {
                 NSLog(@"[ZL2AssetSearch] Task227 all %lu required dependencies installed", (unsigned long)deps.count);
             }
-            if (completion) completion();
+            completion(failures.count == 0);
+            nextStep = nil;
             return;
         }
         ModDependencyItem *dep = remaining.firstObject;
@@ -2156,6 +2160,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
             NSString *ame227_gv = [strongSelfPick ame_profileMinecraftVersion];
             NSString *ame230_loader = [strongSelfPick ame_profileLoader];
             BOOL (^ame230_loaderOK)(ModVersion *) = ^BOOL(ModVersion *v) {
+                if (strict) return [v.loaders containsObject:ame230_loader.lowercaseString ?: @""];
                 if (ame230_loader.length == 0 || v.loaders.count == 0) return YES;
                 NSString *ame230_lower = ame230_loader.lowercaseString;
                 for (NSString *l in v.loaders) {
@@ -2174,8 +2179,8 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                 if (ame230_gvOK && ame230_gvOnly == nil) ame230_gvOnly = v;
             }
             BOOL ame230_loaderMismatch = NO;
-            if (picked == nil) picked = ame230_loaderOnly;   // ② 仅加载器匹配
-            if (picked == nil) { picked = ame230_gvOnly; ame230_loaderMismatch = (picked != nil); }  // ③ 仅版本匹配
+            if (!strict && picked == nil) picked = ame230_loaderOnly;   // ② 仅加载器匹配
+            if (!strict && picked == nil) { picked = ame230_gvOnly; ame230_loaderMismatch = (picked != nil); }  // ③ 仅版本匹配
             if (picked == nil && versions.count > 0) {       // ④ 全失配：跳过，不装错加载器
                 NSLog(@"[ZL2AssetSearch] Task230 dep skipped (no version matches loader=%@ gv=%@): %@",
                       ame230_loader, ame227_gv, dep.projectId);
@@ -2298,12 +2303,68 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         item.selectedVersionDownloadURL = primaryFile[@"url"];
         item.fileName = primaryFile[@"filename"] ?: [NSString stringWithFormat:@"%@.zip", item.displayName];
         item.fileSHA1 = ZL2AssetSha1FromPrimaryFile(primaryFile);
-        [self ame_startDownloadForDataPackItem:item];
+        [self cubicRequireLoaderForPack:item];
     }
 }
 
 // Task323：旧页 startDownloadForDataPackItem:（L6391-6414）等价移植；
 // 进度由 Service 内部注册的下载任务驱动统一进度页，本页只报结果。
+- (void)cubicRequireLoaderForPack:(DataPackItem *)pack {
+    NSString *profile = self.lockedProfileName;
+    if (!profile.length) { [self ame_showError:@"Choose a profile first."]; return; }
+    [[DataPackService sharedService] loaderFolderForProfile:profile completion:^(NSString *folder) {
+        if (folder) { [self ame_startDownloadForDataPackItem:pack]; return; }
+        if (!self.view.window) return;
+        NSString *game = [self ame_profileMinecraftVersion] ?: @"";
+        NSString *family = [[self ame_profileLoader] lowercaseString] ?: @"vanilla";
+        NSString *message = [NSString stringWithFormat:@"Choose a loader for %@ (%@ · %@). The data pack will download after its loader is installed.", profile, family, game];
+        UIAlertController *chooser = [UIAlertController alertControllerWithTitle:@"Data pack loader required" message:message preferredStyle:UIAlertControllerStyleAlert];
+        for (NSDictionary *loader in [DataPackService supportedLoaders]) {
+            __block ModVersion *release = nil;
+            NSString *title = [NSString stringWithFormat:@"%@ · %@", loader[@"name"], loader[@"author"]];
+            UIAlertAction *install = [UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                if (release) [self cubicInstallLoader:loader version:release thenPack:pack];
+            }];
+            install.enabled = NO;
+            [chooser addAction:install];
+            [[ModrinthAPI sharedInstance] getVersionsForModWithID:loader[@"project"] completion:^(NSArray<ModVersion *> *versions, NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    for (ModVersion *candidate in versions) {
+                        if (![candidate.gameVersions containsObject:game] || ![candidate.loaders containsObject:family] || ![candidate.primaryFile[@"url"] isKindOfClass:NSString.class]) continue;
+                        release = candidate;
+                        install.enabled = YES;
+                        break;
+                    }
+                });
+            }];
+        }
+        chooser.message = [message stringByAppendingString:@" Disabled choices have no confirmed compatible release."];
+        [chooser addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:chooser animated:YES completion:nil];
+    }];
+}
+
+- (void)cubicInstallLoader:(NSDictionary *)loader version:(ModVersion *)version thenPack:(DataPackItem *)pack {
+    NSString *profile = self.lockedProfileName;
+    if (!PLProfiles.current.profiles[profile]) return;
+    [[ModDependencyResolver sharedResolver] resolveDependenciesFromVersionDetail:version.rawDictionary apiSource:1 installedProjectIds:nil
+        loader:[self ame_profileLoader] gameVersion:[self ame_profileMinecraftVersion] completion:^(ModDependencyPlan *plan, NSError *error) {
+        if (error || !plan || plan.truncated.count) { [self ame_showError:@"Could not verify the loader dependencies. The data pack was not downloaded."]; return; }
+        [self ame227_installDependencies:(plan.required ?: @[]) toProfile:profile strict:YES completion:^(BOOL ready) {
+            if (!ready || !PLProfiles.current.profiles[profile]) { [self ame_showError:@"A required dependency could not be installed."]; return; }
+            ModItem *item = [[ModItem alloc] initWithOnlineData:@{@"id":loader[@"project"], @"title":loader[@"name"], @"apiSource":@1}];
+            item.fileName = version.primaryFile[@"filename"];
+            item.selectedVersionDownloadURL = version.primaryFile[@"url"];
+            [[ModService sharedService] downloadMod:item toProfile:profile expectedSHA1:ZL2AssetSha1FromPrimaryFile(version.primaryFile) progress:nil completion:^(NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (error) { [self ame_showError:error.localizedDescription]; return; }
+                    [self ame_startDownloadForDataPackItem:pack];
+                });
+            }];
+        }];
+    }];
+}
+
 - (void)ame_startDownloadForDataPackItem:(DataPackItem *)item {
     NSString *profileName = self.lockedProfileName ?: @"default";
     __weak typeof(self) weakSelf = self;

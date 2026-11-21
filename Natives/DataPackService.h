@@ -29,6 +29,10 @@ typedef void(^DataPackDownloadProgressHandler)(NSProgress * _Nullable downloadPr
 
 + (instancetype)sharedService;
 
+/// Ordered by preference. Each record identifies a publisher's Modrinth project and its local mod ID.
++ (NSArray<NSDictionary<NSString *, NSString *> *> *)supportedLoaders;
+- (void)loaderFolderForProfile:(NSString *)profileName completion:(void (^)(NSString * _Nullable folder))completion;
+
 // --- 本地数据包管理 ---
 // 扫描指定 profile 的 datapacks 目录，返回 .zip 和 .zip.disabled 文件列表
 - (void)scanDataPacksForProfile:(NSString *)profileName completion:(DataPackListHandler)completion;

@@ -51,6 +51,9 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ZL2VersionModsPage : ZL2VersionPageBase
 @end
 
+@interface CubicDataPacksPage : ZL2VersionPageBase
+@end
+
 @interface ZL2VersionSavesPage : ZL2VersionPageBase
 @end
 
