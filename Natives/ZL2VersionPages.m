@@ -1074,25 +1074,17 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 @property (nonatomic, strong) UILabel *ameV13_busyLabel;          // 更新忙态阶段横幅
 @property (nonatomic, strong) ZL2M3SearchBar *ameV13_searchBar;
 @property (nonatomic, strong) UIView *cubicModsHeading;
-@property (nonatomic, strong) NSMutableArray<ZL2M3FilterChip *> *ameV13_filterChips;   // 0 全部/1 启用/2 禁用
-@property (nonatomic, strong) ZL2M3FilterChip *ameV13_sortNameChip;   // 排序双 chip（100/101）
-@property (nonatomic, strong) ZL2M3FilterChip *ameV13_sortTimeChip;
-@property (nonatomic, strong) UILabel *ameV13_isoBadge;           // 隔离态徽标（点按出说明）
-@property (nonatomic, strong) UILabel *ameV13_folderCaption;      // 生效 mods 目录提示行
 // 选择模式工具条（懒建，随选择态显隐）
 @property (nonatomic, strong) UIStackView *ameV13_selectBar;
 @property (nonatomic, strong) UILabel *ameV13_selectCountLabel;
 @property (nonatomic, copy) NSArray<ModItem *> *ameV13_mods;      // ModService 全量
 @property (nonatomic, copy) NSArray<ModItem *> *ameV13_viewMods;  // 搜索+筛选+排序后
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *ameV13_mtimeByPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *ameV13_displayNameByPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *ameV13_onlineIdByPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, ModUpdateResult *> *ameV13_updateResults;
 @property (nonatomic, strong) NSMutableSet<NSString *> *ameV13_selectedPaths;
 @property (nonatomic, assign) BOOL ameV13_selectMode;
 @property (nonatomic, assign) BOOL ameV13_updateBusy;
-@property (nonatomic, assign) NSInteger ameV13_filterMode;   // 0 全部 1 启用 2 禁用
-@property (nonatomic, assign) NSInteger ameV13_sortMode;     // 0 名称 1 修改时间
 @end
 
 @implementation ZL2VersionModsPage
@@ -1100,12 +1092,10 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
-    _ameV13_mtimeByPath = [NSMutableDictionary dictionary];
     _ameV13_displayNameByPath = [NSMutableDictionary dictionary];
     _ameV13_onlineIdByPath = [NSMutableDictionary dictionary];
     _ameV13_updateResults = [NSMutableDictionary dictionary];
     _ameV13_selectedPaths = [NSMutableSet set];
-    _ameV13_filterChips = [NSMutableArray array];
 
     UILabel *countLabel = [[UILabel alloc] init];
     countLabel.font = [ZL2Theme fontLabelMedium];
@@ -1121,12 +1111,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
                                                              size:32
                                                      accessibility:localize(@"resman.mods.check_update", nil)
                                                              action:^{ [wself ameV13_checkForUpdates]; }];
-    // 批量选择
-    UIControl *selectButton = [self ameV13_iconButtonWithImageName:@"checkmark.circle"
-                                                          fallback:@"circle"
-                                                             size:32
-                                                     accessibility:localize(@"resman.common.select", nil)
-                                                             action:^{ [wself ameV13_toggleSelectMode]; }];
     // 导入（多选 zip/jar 复制进 mods/）
     UIControl *importButton = [self ameV13_iconButtonWithImageName:@"square.and.arrow.down"
                                                           fallback:@"tray.and.arrow.down"
@@ -1147,7 +1131,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     [find addTarget:self action:@selector(cubicToggleSearch:) forControlEvents:UIControlEventTouchUpInside];
     UIStackView *header = [self ameV13_pageHeaderRowWithTitle:NSLocalizedString(@"Installed Mods", nil) trailing:@[find, add]];
     self.cubicModsHeading = header.arrangedSubviews.firstObject;
-    UIStackView *tools = [[UIStackView alloc] initWithArrangedSubviews:@[countLabel, updateButton, selectButton, importButton, [self ameV13_spacer]]];
+    UIStackView *tools = [[UIStackView alloc] initWithArrangedSubviews:@[countLabel, [self ameV13_spacer], updateButton, importButton]];
     tools.spacing = 8;
     _ameV13_contentStack = [self ameV13_installContentSkeleton];
     [_ameV13_contentStack addArrangedSubview:header];
@@ -1173,60 +1157,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     search.hidden = YES;
     [_ameV13_contentStack addArrangedSubview:tools];
 
-    // 筛选 chips 行（全部/已启用/已禁用 + 排序切换）
-    UIStackView *chips = [[UIStackView alloc] init];
-    chips.axis = UILayoutConstraintAxisHorizontal;
-    chips.spacing = 8;
-    chips.translatesAutoresizingMaskIntoConstraints = NO;
-    NSArray<NSString *> *chipTitles = @[
-        localize(@"resman.mods.filter.all", nil),
-        localize(@"resman.mods.filter.enabled", nil),
-        localize(@"resman.mods.filter.disabled", nil),
-    ];
-    for (NSUInteger i = 0; i < chipTitles.count; i++) {
-        ZL2M3FilterChip *chip = [[ZL2M3FilterChip alloc] initWithText:chipTitles[i]];
-        chip.tag = (NSInteger)i;
-        [chip addTarget:self action:@selector(ameV13_filterChipTapped:)
-               forControlEvents:UIControlEventTouchUpInside];
-        chip.selected = (i == 0);
-        [_ameV13_filterChips addObject:chip];
-        [chips addArrangedSubview:chip];
-    }
-    ZL2M3FilterChip *sortNameChip = [[ZL2M3FilterChip alloc] initWithText:localize(@"resman.mods.sort.name", nil)];
-    sortNameChip.tag = 100;   // 排序双 chip：100=名称 / 101=修改时间（选中态随 sortMode）
-    [sortNameChip addTarget:self action:@selector(ameV13_sortChipTapped:)
-           forControlEvents:UIControlEventTouchUpInside];
-    ZL2M3FilterChip *sortTimeChip = [[ZL2M3FilterChip alloc] initWithText:localize(@"resman.mods.sort.modified", nil)];
-    sortTimeChip.tag = 101;
-    [sortTimeChip addTarget:self action:@selector(ameV13_sortChipTapped:)
-           forControlEvents:UIControlEventTouchUpInside];
-    _ameV13_sortNameChip = sortNameChip;
-    _ameV13_sortTimeChip = sortTimeChip;
-    [chips addArrangedSubview:[self ameV13_spacer]];
-    [chips addArrangedSubview:sortNameChip];
-    [chips addArrangedSubview:sortTimeChip];
-    [_ameV13_contentStack addArrangedSubview:chips];
-    [self ameV13_refreshSortChips];
-
-    // 隔离态徽标 + 生效目录提示行（ame219 三态 + Task264 目录）
-    UILabel *iso = [[UILabel alloc] init];
-    iso.font = [ZL2Theme fontLabelMedium];
-    iso.numberOfLines = 1;
-    iso.translatesAutoresizingMaskIntoConstraints = NO;
-    iso.userInteractionEnabled = YES;
-    [iso addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameV13_isoBadgeTapped)]];
-    _ameV13_isoBadge = iso;
-    UILabel *folder = [[UILabel alloc] init];
-    folder.font = [ZL2Theme fontLabelMedium];
-    folder.textColor = [ZL2Theme onSurfaceVariant];
-    folder.numberOfLines = 1;
-    folder.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    folder.translatesAutoresizingMaskIntoConstraints = NO;
-    _ameV13_folderCaption = folder;
-    [_ameV13_contentStack addArrangedSubview:iso];
-    [_ameV13_contentStack addArrangedSubview:folder];
-    [self ameV13_refreshIsoBadge];
-
     // 选择模式工具条（懒建；计数字 + 全选/启用/禁用/删除/完成）
     [self ameV13_buildSelectBar];
     [_ameV13_contentStack addArrangedSubview:_ameV13_selectBar];
@@ -1240,31 +1170,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     [_ameV13_contentStack addArrangedSubview:_ameV13_cardsStack];
 }
 
-#pragma mark 隔离徽标与目录行
-
-- (void)ameV13_refreshIsoBadge {
-    NSInteger state = [ModService ame219_isolationStateForProfile:self.ameV13_profileName];
-    NSString *note = (state == 1) ? localize(@"ame225.mods.isolated_note", nil)
-                    : (state == 2) ? localize(@"ame225.mods.sniffed_note", nil)
-                                   : localize(@"ame225.mods.shared_note", nil);
-    _ameV13_isoBadge.text = [NSString stringWithFormat:@"%@ %@", note, @"›"];
-    UIColor *badgeColor = (state == 0) ? [ZL2Theme onSurfaceVariant] : [ZL2Theme tertiary];
-    _ameV13_isoBadge.textColor = badgeColor;
-    NSString *dir = [ModService.sharedService ame264_effectiveModsFolderForProfile:self.ameV13_profileName];
-    _ameV13_folderCaption.text = dir.length > 0
-        ? [NSString stringWithFormat:@"%@ %@", localize(@"resman.mods.folder.caption", nil), dir]
-        : @"";
-}
-
-- (void)ameV13_isoBadgeTapped {
-    // 隔离语义说明（Task219 三态口径；版本详情内嵌页无设置跳转诉求）
-    NSInteger state = [ModService ame219_isolationStateForProfile:self.ameV13_profileName];
-    NSString *note = (state == 1) ? localize(@"ame225.mods.isolated_note", nil)
-                    : (state == 2) ? localize(@"ame225.mods.sniffed_note", nil)
-                                   : localize(@"ame225.mods.shared_note", nil);
-    [self ameV13_showAlertMessage:note];
-}
-
 #pragma mark 数据装载（ModService 全量接线）
 
 - (void)ameV13_reloadContent {
@@ -1276,7 +1181,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         if (!strongSelf) return;
         strongSelf.ameV13_mods = mods ?: @[];
         // 目录提示行随扫描刷新（Task264 生效目录实况）
-        [strongSelf ameV13_refreshIsoBadge];
+
         // 修改时间缓存（排序档）+ 元数据补齐（显示名/onlineID，逐个异步）
         [strongSelf ameV13_collectAuxForMods:strongSelf.ameV13_mods];
         [strongSelf ameV13_applyFilter];
@@ -1285,21 +1190,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 - (void)ameV13_collectAuxForMods:(NSArray<ModItem *> *)mods {
     __weak typeof(self) wself = self;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSMutableDictionary<NSString *, NSNumber *> *mtimes = [NSMutableDictionary dictionary];
-        for (ModItem *mod in mods) {
-            NSDictionary *attr = [NSFileManager.defaultManager attributesOfItemAtPath:mod.filePath error:nil];
-            if (attr) {
-                mtimes[mod.filePath] = @([attr fileModificationDate].timeIntervalSince1970);
-            }
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(wself) strongSelf = wself;
-            if (!strongSelf) return;
-            [strongSelf.ameV13_mtimeByPath addEntriesFromDictionary:mtimes];
-            [strongSelf ameV13_applyFilter];   // mtime 到位后重排一次
-        });
-    });
     for (ModItem *mod in mods) {
         [[ModService sharedService] fetchMetadataForMod:mod completion:^(ModItem *item, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1324,8 +1214,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     needle = [needle stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     NSMutableArray<ModItem *> *view = [NSMutableArray array];
     for (ModItem *mod in _ameV13_mods) {
-        if (_ameV13_filterMode == 1 && mod.disabled) continue;
-        if (_ameV13_filterMode == 2 && !mod.disabled) continue;
         if (needle.length > 0) {
             NSString *display = _ameV13_displayNameByPath[mod.filePath] ?: @"";
             NSString *base = mod.basename ?: @"";
@@ -1337,19 +1225,9 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         }
         [view addObject:mod];
     }
-    if (_ameV13_sortMode == 0) {
-        [view sortUsingComparator:^NSComparisonResult(ModItem *a, ModItem *b) {
-            NSString *an = [self ameV13_displayNameFor:a];
-            NSString *bn = [self ameV13_displayNameFor:b];
-            return [an caseInsensitiveCompare:bn];
-        }];
-    } else {
-        [view sortUsingComparator:^NSComparisonResult(ModItem *a, ModItem *b) {
-            double am = [self.ameV13_mtimeByPath[a.filePath] doubleValue];
-            double bm = [self.ameV13_mtimeByPath[b.filePath] doubleValue];
-            return bm > am ? NSOrderedDescending : (bm < am ? NSOrderedAscending : NSOrderedSame);
-        }];
-    }
+    [view sortUsingComparator:^NSComparisonResult(ModItem *a, ModItem *b) {
+        return [[self ameV13_displayNameFor:a] caseInsensitiveCompare:[self ameV13_displayNameFor:b]];
+    }];
     _ameV13_viewMods = [view copy];
     // 计数徽章 + 清理已不在列表的勾选/徽章态
     _ameV13_countLabel.text = [NSString stringWithFormat:localize(@"prisma.ui.ld.total", nil), (long)_ameV13_viewMods.count];
@@ -1368,8 +1246,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 - (void)ameV13_rebuildCards {
     [self ameV13_clearStack:_ameV13_cardsStack];
     if (_ameV13_viewMods.count == 0) {
-        BOOL isFiltering = (_ameV13_filterMode != 0) ||
-                           ([_ameV13_searchBar.text stringByTrimmingCharactersInSet:
+        BOOL isFiltering = ([_ameV13_searchBar.text stringByTrimmingCharactersInSet:
                              [NSCharacterSet whitespaceCharacterSet]].length > 0);
         if (_ameV13_mods.count == 0) {
             // 全空态：去下载（ZL2 下载中心模组轨 + 目标实例透传，Task265/324）
@@ -2095,27 +1972,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     if (wantsForge) return !mod.isForge;
     if (wantsFabric) return !mod.isFabric;
     return NO;
-}
-
-#pragma mark 筛选/排序 chips
-
-- (void)ameV13_filterChipTapped:(ZL2M3FilterChip *)sender {
-    _ameV13_filterMode = sender.tag;
-    for (ZL2M3FilterChip *chip in _ameV13_filterChips) {
-        chip.selected = (chip.tag == sender.tag);
-    }
-    [self ameV13_applyFilter];
-}
-
-- (void)ameV13_sortChipTapped:(ZL2M3FilterChip *)sender {
-    _ameV13_sortMode = (sender.tag == 101) ? 1 : 0;
-    [self ameV13_refreshSortChips];
-    [self ameV13_applyFilter];
-}
-
-- (void)ameV13_refreshSortChips {
-    _ameV13_sortNameChip.selected = (_ameV13_sortMode == 0);
-    _ameV13_sortTimeChip.selected = (_ameV13_sortMode == 1);
 }
 
 @end

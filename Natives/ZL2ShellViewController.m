@@ -1,5 +1,6 @@
 #import "authenticator/BaseAuthenticator.h"
 #import "AvatarManager.h"
+#import "ZL2AssetSearchViewController.h"
 //
 // ZL2ShellViewController.m — ZL2 真形态顶栏壳实现（7.0-UI-10-b）
 //
@@ -98,7 +99,7 @@ NSString * const ZL2ShellNavigateNotification = @"ZL2ShellNavigate";
 
 #pragma mark - 几何/动画常量（ZL2 TopBar spec 对应）
 
-static const CGFloat ZL2ShellBarContentHeight = 40.0;   // TopBar 40.dp
+static const CGFloat ZL2ShellBarContentHeight = 46.0;   // TopBar 40.dp
 static const CGFloat ZL2ShellBarEdgeInset = 12.0;       // 左右 12dp 边距
 static const CGFloat ZL2ShellClusterButtonSize = 32.0;  // 返回/主页钮 32×32
 static const CGFloat ZL2ShellRailItemHeight = 40.0;     // RailItem 高（顶栏全高）
@@ -593,16 +594,16 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     self.topBar = [[UIView alloc] init];
     self.topBar.translatesAutoresizingMaskIntoConstraints = NO;
     // 顶栏与内容同底色（ZL2 MainScreen 单一 Surface backgroundColor）
-    self.topBar.backgroundColor = [ZL2Theme surface];
+    self.topBar.backgroundColor = [ZL2Theme surfaceContainer];
     [self.view addSubview:self.topBar];
 
     self.barRow = [[UIStackView alloc] init];
     self.barRow.axis = UILayoutConstraintAxisHorizontal;
     self.barRow.alignment = UIStackViewAlignmentCenter;
     self.barRow.distribution = UIStackViewDistributionFill;
-    self.barRow.spacing = 16.0;  // 标题 start = 左簇 end + 16dp
+    self.barRow.spacing = 5.0;  // 标题 start = 左簇 end + 16dp
     // 右簇 end margin 12dp（前导边距由左簇自带，塌缩时标题回到 16pt 位）
-    self.barRow.layoutMargins = UIEdgeInsetsMake(0.0, 0.0, 0.0, ZL2ShellBarEdgeInset);
+    self.barRow.layoutMargins = UIEdgeInsetsMake(0, ZL2ShellBarEdgeInset, 0, ZL2ShellBarEdgeInset);
     self.barRow.layoutMarginsRelativeArrangement = YES;
     self.barRow.translatesAutoresizingMaskIntoConstraints = NO;
     [self.topBar addSubview:self.barRow];
@@ -647,6 +648,13 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
                                        forAxis:UILayoutConstraintAxisHorizontal];
     [self.titleLabel setContentCompressionResistancePriority:(UILayoutPriority)749.0
                                                      forAxis:UILayoutConstraintAxisHorizontal];
+    UIImageView *brand = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"WelcomeAppIcon"]];
+    brand.contentMode = UIViewContentModeScaleAspectFit;
+    brand.layer.cornerRadius = 5;
+    brand.clipsToBounds = YES;
+    [brand.widthAnchor constraintEqualToConstant:26].active = YES;
+    [brand.heightAnchor constraintEqualToConstant:26].active = YES;
+    [self.barRow addArrangedSubview:brand];
     [self.barRow addArrangedSubview:self.titleLabel];
 
     // 右簇：trailing 12dp（barRow margin）+ 间距 8dp
@@ -674,6 +682,10 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     [account addTarget:self action:@selector(cubicOpenAccountMenu) forControlEvents:UIControlEventTouchUpInside];
     [account.widthAnchor constraintEqualToConstant:44].active = YES;
     [account.heightAnchor constraintEqualToConstant:40].active = YES;
+    account.layer.cornerRadius = 11;
+    account.layer.borderWidth = 1;
+    account.layer.borderColor = [ZL2Theme outlineVariant].CGColor;
+    account.backgroundColor = [ZL2Theme surfaceContainerHigh];
     [self.rightCluster addArrangedSubview:account];
     self.cubicAccountButton = account;
     [self cubicRefreshAccountMenu];
@@ -689,8 +701,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         [self.topBar.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor
                                                 constant:ZL2ShellBarContentHeight],
 
-        [self.barRow.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor],
-        [self.barRow.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor],
+        [self.barRow.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],
+        [self.barRow.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor],
         [self.barRow.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
         [self.barRow.heightAnchor constraintEqualToConstant:ZL2ShellBarContentHeight],
     ]];
@@ -785,9 +797,9 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 BaseAuthenticator *activeAccount = BaseAuthenticator.current;
                 if (!image || ![activeAccount.authData isEqualToDictionary:auth]) return;
-                UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(32, 32)];
+                UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(36, 36)];
                 UIImage *avatar = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
-                    CGRect rect = CGRectMake(0, 0, 32, 32);
+                    CGRect rect = CGRectMake(0, 0, 36, 36);
                     [[UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:8] addClip];
                     [image drawInRect:rect];
                 }];
@@ -1312,7 +1324,13 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     BOOL backVisible = (nav.viewControllers.count > 1);  // 可 pop 才有返回钮
 
     NSString *title = [self ame_titleForIndex:index];
-    if (nav.viewControllers.count > 1) {
+    UIViewController *current = nav.topViewController;
+    BOOL profileNavigation = [current isKindOfClass:ZL2VersionDetailViewController.class] ||
+        ([current isKindOfClass:ZL2AssetSearchViewController.class] && ((ZL2AssetSearchViewController *)current).targetProfileName.length);
+    if (profileNavigation) {
+        title = @"PrismaCubic";
+        clusterVisible = NO;
+    } else if (nav.viewControllers.count > 1) {
         // 子页 push 态「页名 - 子页名」（MainScreen.kt L358-362 同构）
         NSString *childTitle = nav.topViewController.title;
         if (childTitle.length > 0) {

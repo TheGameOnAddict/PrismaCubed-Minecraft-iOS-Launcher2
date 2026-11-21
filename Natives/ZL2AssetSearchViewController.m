@@ -249,9 +249,6 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 @property (nonatomic, strong) CubicResultTitle *titleViewport;
 @property (nonatomic, strong) UIButton *installButton;
 @property (nonatomic, copy) void (^onInstall)(void);
-@property (nonatomic, strong) UIControl *favoriteControl;
-@property (nonatomic, strong) UIImageView *favoriteIconView;
-@property (nonatomic, copy) void (^onFavorite)(void);
 
 - (void)ame_configureWithData:(NSDictionary *)data
               placeholderName:(NSString *)symbolName
@@ -300,7 +297,9 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         _authorLabel.textColor = [ZL2Theme onSurfaceVariant];
         _authorLabel.numberOfLines = 1;
         _authorLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [titleStack addArrangedSubview:_authorLabel];
+        [_cardView addSubview:_authorLabel];
+        _authorLabel.textAlignment = NSTextAlignmentRight;
+        _authorLabel.font = [UIFont systemFontOfSize:10];
         [_nameLabel setContentCompressionResistancePriority:749 forAxis:UILayoutConstraintAxisHorizontal];
         [_authorLabel setContentCompressionResistancePriority:750 forAxis:UILayoutConstraintAxisHorizontal];
         [_authorLabel setContentHuggingPriority:251 forAxis:UILayoutConstraintAxisHorizontal];
@@ -317,7 +316,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         _descLabel = [[UILabel alloc] init];
         _descLabel.font = [ZL2Theme fontBodyMedium];
         _descLabel.textColor = [ZL2Theme onSurfaceVariant];
-        _descLabel.numberOfLines = 1;
+        _descLabel.numberOfLines = 2;
         _descLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [_cardView addSubview:_descLabel];
 
@@ -336,22 +335,6 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         _downloadsLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [_cardView addSubview:_downloadsLabel];
 
-        _favoriteControl = [[UIControl alloc] init];
-        _favoriteControl.translatesAutoresizingMaskIntoConstraints = NO;
-        _favoriteControl.isAccessibilityElement = YES;
-        _favoriteControl.accessibilityLabel = localize(@"prisma.ui.favorite", nil);
-        _favoriteControl.accessibilityTraits = UIAccessibilityTraitButton;
-        [_favoriteControl addTarget:self
-                             action:@selector(ame_favoriteTapped)
-                   forControlEvents:UIControlEventTouchUpInside];
-        [_cardView addSubview:_favoriteControl];
-
-        _favoriteIconView = [[UIImageView alloc] init];
-        _favoriteIconView.contentMode = UIViewContentModeScaleAspectFit;
-        _favoriteIconView.translatesAutoresizingMaskIntoConstraints = NO;
-        _favoriteIconView.userInteractionEnabled = NO;
-        [_favoriteControl addSubview:_favoriteIconView];
-
         [NSLayoutConstraint activateConstraints:@[
             [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
             [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
@@ -360,26 +343,21 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 
             [_iconView.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:8],
             [_iconView.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:8],
-            [_iconView.widthAnchor constraintEqualToConstant:50],
-            [_iconView.heightAnchor constraintEqualToConstant:50],
+            [_iconView.widthAnchor constraintEqualToConstant:62],
+            [_iconView.heightAnchor constraintEqualToConstant:62],
             [titleStack.topAnchor constraintEqualToAnchor:_iconView.topAnchor],
             [titleStack.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:8],
-            [titleStack.trailingAnchor constraintEqualToAnchor:_installButton.leadingAnchor constant:-6],
-            [_installButton.topAnchor constraintEqualToAnchor:_iconView.topAnchor],
+            [titleStack.trailingAnchor constraintEqualToAnchor:_authorLabel.leadingAnchor constant:-6],
+            [_authorLabel.topAnchor constraintEqualToAnchor:_iconView.topAnchor],
+            [_authorLabel.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
+            [_authorLabel.widthAnchor constraintEqualToConstant:78],
+            [_installButton.topAnchor constraintEqualToAnchor:_authorLabel.bottomAnchor constant:4],
             [_installButton.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-8],
             [_installButton.widthAnchor constraintEqualToConstant:54],
             [_installButton.heightAnchor constraintEqualToConstant:30],
             [_descLabel.topAnchor constraintEqualToAnchor:titleStack.bottomAnchor constant:1],
             [_descLabel.leadingAnchor constraintEqualToAnchor:titleStack.leadingAnchor],
             [_descLabel.trailingAnchor constraintEqualToAnchor:titleStack.trailingAnchor],
-            [_favoriteControl.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
-            [_favoriteControl.topAnchor constraintEqualToAnchor:_installButton.bottomAnchor],
-            [_favoriteControl.widthAnchor constraintEqualToConstant:42],
-            [_favoriteControl.heightAnchor constraintEqualToConstant:30],
-            [_favoriteIconView.centerXAnchor constraintEqualToAnchor:_favoriteControl.centerXAnchor],
-            [_favoriteIconView.centerYAnchor constraintEqualToAnchor:_favoriteControl.centerYAnchor],
-            [_favoriteIconView.widthAnchor constraintEqualToConstant:17],
-            [_favoriteIconView.heightAnchor constraintEqualToConstant:17],
             [_tagsLabel.leadingAnchor constraintEqualToAnchor:_iconView.leadingAnchor],
             [_tagsLabel.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
             [_tagsLabel.bottomAnchor constraintEqualToAnchor:_downloadsLabel.topAnchor constant:-3],
@@ -389,17 +367,6 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         ]];
     }
     return self;
-}
-
-- (void)ame_favoriteTapped {
-    if (self.onFavorite) self.onFavorite();
-}
-
-- (void)ame_setFavorite:(BOOL)favorite {
-    UIImage *heart = [UIImage systemImageNamed:(favorite ? @"heart.fill" : @"heart")];
-    self.favoriteIconView.image = [heart imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    self.favoriteIconView.tintColor = favorite ? [ZL2Theme tertiary] : [ZL2Theme onSurfaceVariant];
-    self.favoriteControl.accessibilityLabel = favorite ? localize(@"prisma.ui.remove.from.favorites", nil) : localize(@"prisma.ui.favorite", nil);
 }
 
 // 旧页 cell 同款：高亮态压暗卡片（ZL2 Compose 的 ripple 等价物）
@@ -414,9 +381,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 
 - (void)prepareForReuse {
     [super prepareForReuse];
-    self.onFavorite = nil;
     self.onInstall = nil;
-    [self ame_setFavorite:NO];
     self.nameLabel.text = nil;
     self.authorLabel.text = nil;
     self.authorLabel.hidden = NO;
@@ -449,7 +414,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     // 作者（ZL2 "标题 | 作者: X" 同排语义；CF/Modrinth 均补齐 author 键）
     NSString *author = data[@"author"];
     if ([author isKindOfClass:[NSString class]] && author.length > 0 && ![author isEqualToString:@"Unknown"]) {
-        self.authorLabel.text = [NSString stringWithFormat:localize(@"prisma.ui.author.2", nil), author];
+        self.authorLabel.text = [NSString stringWithFormat:NSLocalizedString(@"By %@", nil), author];
         self.authorLabel.hidden = NO;
     } else {
         self.authorLabel.text = NSLocalizedString(@"By –", nil);
@@ -594,6 +559,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 @property (nonatomic, strong) UIButton *sortControl;
 @property (nonatomic, strong) UIButton *filtersButton;
 @property (nonatomic, strong) NSArray<UIButton *> *sourceButtons;
+@property (nonatomic, strong) UIStackView *activeFilters;
 
 // 页码控制器（ZL2 PageController：1 / 500 + 前后翻页，真机截图口径）
 @property (nonatomic, strong) UIView *paginationBar;
@@ -832,40 +798,90 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     BOOL isSearchMode = !self.favoritesMode;
 
-    UIStackView *toolbar = [UIStackView new];
-    toolbar.spacing = 5;
-    toolbar.distribution = UIStackViewDistributionFillProportionally;
+    UIStackView *sources = [UIStackView new];
+    sources.spacing = 5;
+    NSMutableArray *buttons = [NSMutableArray array];
+    for (NSString *name in @[@"CurseForge", @"Modrinth"]) {
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        button.tag = [name isEqual:@"Modrinth"] ? 1 : 2;
+        button.accessibilityLabel = name;
+        button.backgroundColor = [ZL2Theme surfaceContainerHigh];
+        button.layer.cornerRadius = 7;
+        button.enabled = self.assetType != ZL2AssetSearchTypeWorld || button.tag == 2;
+        UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage imageNamed:[@"Cubic" stringByAppendingString:name]]];
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        [icon.heightAnchor constraintEqualToConstant:18].active = YES;
+        UILabel *label = [UILabel new];
+        label.text = name;
+        label.textColor = [ZL2Theme onSurface];
+        label.font = [UIFont boldSystemFontOfSize:10];
+        UIStackView *face = [[UIStackView alloc] initWithArrangedSubviews:@[icon, label]];
+        face.userInteractionEnabled = NO;
+        face.axis = UILayoutConstraintAxisVertical;
+        face.alignment = UIStackViewAlignmentCenter;
+        face.spacing = 2;
+        face.translatesAutoresizingMaskIntoConstraints = NO;
+        [button addSubview:face];
+        [NSLayoutConstraint activateConstraints:@[
+            [face.centerXAnchor constraintEqualToAnchor:button.centerXAnchor],
+            [face.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
+            [button.widthAnchor constraintEqualToConstant:62],
+            [button.heightAnchor constraintEqualToConstant:42]
+        ]];
+        [button addTarget:self action:@selector(cubicSourceTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [sources addArrangedSubview:button];
+        [buttons addObject:button];
+    }
+    self.sourceButtons = buttons;
     _nameSearchBar = [ZL2M3SearchBar new];
     _nameSearchBar.placeholder = [self ame_placeholderText];
     _nameSearchBar.accessibilityLabel = _nameSearchBar.placeholder;
-    NSMutableArray *sources = [NSMutableArray array];
-    for (NSString *name in @[@"CurseForge", @"Modrinth"]) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        [button setTitle:name forState:UIControlStateNormal];
-        [button setImage:[[UIImage imageNamed:[@"Cubic" stringByAppendingString:name]] imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
-        button.tag = [name isEqualToString:@"Modrinth"] ? 1 : 2;
-        [button addTarget:self action:@selector(cubicSourceTapped:) forControlEvents:UIControlEventTouchUpInside];
-        button.enabled = self.assetType != ZL2AssetSearchTypeWorld || button.tag == 2;
-        [sources addObject:button];
-        [toolbar addArrangedSubview:button];
-    }
-    self.sourceButtons = sources;
     _filtersButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _filtersButton.showsMenuAsPrimaryAction = YES;
-    [toolbar addArrangedSubview:_filtersButton];
     _sortControl = [UIButton buttonWithType:UIButtonTypeSystem];
     [_sortControl setTitle:NSLocalizedString(@"Sort", nil) forState:UIControlStateNormal];
     [_sortControl addTarget:self action:@selector(ame_sortTapped) forControlEvents:UIControlEventTouchUpInside];
-    [toolbar addArrangedSubview:_sortControl];
-    for (UIButton *button in toolbar.arrangedSubviews) {
+    for (UIButton *button in @[_filtersButton, _sortControl]) {
         button.titleLabel.font = [UIFont boldSystemFontOfSize:12];
-        button.titleLabel.adjustsFontSizeToFitWidth = YES;
         button.layer.cornerRadius = 7;
         button.tintColor = [ZL2Theme onSurface];
         button.backgroundColor = [ZL2Theme surfaceContainerHigh];
-        button.contentEdgeInsets = UIEdgeInsetsMake(5, 6, 5, 6);
+        button.contentEdgeInsets = UIEdgeInsetsMake(6, 8, 6, 8);
+        [button setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     }
-    UIStackView *controls = [[UIStackView alloc] initWithArrangedSubviews:@[toolbar, _nameSearchBar]];
+    UILabel *heading = [UILabel new];
+    heading.font = [UIFont boldSystemFontOfSize:22];
+    heading.textColor = [ZL2Theme onSurface];
+    heading.text = self.pageTitle;
+    heading.adjustsFontSizeToFitWidth = YES;
+    heading.minimumScaleFactor = 0.7;
+    UIStackView *headingRow = [[UIStackView alloc] initWithArrangedSubviews:@[heading, sources]];
+    headingRow.spacing = 6;
+    headingRow.alignment = UIStackViewAlignmentCenter;
+    UIStackView *tools = [[UIStackView alloc] initWithArrangedSubviews:@[_nameSearchBar, _filtersButton, _sortControl]];
+    tools.spacing = 5;
+    tools.alignment = UIStackViewAlignmentCenter;
+    UIStackView *controls = [UIStackView new];
+    if (self.targetProfileName.length && self.navigationController.viewControllers.count > 1) {
+        UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
+        [back setTitle:[NSString stringWithFormat:@"‹ %@", self.targetProfileName] forState:UIControlStateNormal];
+        back.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+        back.tintColor = [ZL2Theme onPrimary];
+        back.backgroundColor = [ZL2Theme primary];
+        back.layer.cornerRadius = 7;
+        back.contentEdgeInsets = UIEdgeInsetsMake(6, 9, 6, 9);
+        [back addTarget:self action:@selector(cubicBackToProfile) forControlEvents:UIControlEventTouchUpInside];
+        UIStackView *navigation = [[UIStackView alloc] initWithArrangedSubviews:@[back, [UIView new], sources]];
+        navigation.alignment = UIStackViewAlignmentCenter;
+        [controls addArrangedSubview:navigation];
+        [headingRow addArrangedSubview:_filtersButton];
+        [headingRow addArrangedSubview:_sortControl];
+    }
+    [controls addArrangedSubview:headingRow];
+    [controls addArrangedSubview:tools];
+    self.activeFilters = [UIStackView new];
+    self.activeFilters.spacing = 4;
+    [controls addArrangedSubview:self.activeFilters];
     controls.axis = UILayoutConstraintAxisVertical;
     controls.spacing = 4;
     controls.translatesAutoresizingMaskIntoConstraints = NO;
@@ -968,7 +984,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         [controls.topAnchor constraintEqualToAnchor:safe.topAnchor constant:3],
         [controls.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:10],
         [controls.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-10],
-        [toolbar.heightAnchor constraintEqualToConstant:32],
+
         [_paginationBar.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
         [_paginationBar.centerXAnchor constraintEqualToAnchor:_tableView.centerXAnchor],
         [_paginationBar.heightAnchor constraintEqualToConstant:32],
@@ -1014,14 +1030,45 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 }
 
 // 通用面板单行字段（图标右置 + 值文本，ZL2 右栏字段形态；高度 48）
+- (void)cubicRemoveFilter:(UIButton *)chip {
+    if (chip.tag == 0) self.loaderFilter = nil;
+    else if (chip.tag == 1) self.gameVersionFilter = nil;
+    else self.categoryFilter = nil;
+    [self ame_applyFilterPanelAppearance];
+    [self ame_triggerSearchWithQuery:self.searchQuery ?: @""];
+}
+
+- (void)cubicBackToProfile {
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
 - (void)cubicSourceTapped:(UIButton *)button {
     [self ame_applyPlatform:button.tag];
 }
 
 - (void)ame_applyFilterPanelAppearance {
+    for (UIView *view in self.activeFilters.arrangedSubviews) [view removeFromSuperview];
+    NSArray *values = @[self.loaderFilter.capitalizedString ?: @"", self.gameVersionFilter ?: @"", self.categoryFilter ?: @""];
+    [values enumerateObjectsUsingBlock:^(NSString *value, NSUInteger index, BOOL *stop) {
+        if (!value.length) return;
+        UIButton *chip = [UIButton buttonWithType:UIButtonTypeSystem];
+        [chip setTitle:[value stringByAppendingString:@"  ×"] forState:UIControlStateNormal];
+        chip.accessibilityLabel = [NSString stringWithFormat:NSLocalizedString(@"Remove %@ filter", nil),value];
+        chip.titleLabel.font = [UIFont boldSystemFontOfSize:11];
+        chip.tintColor = [ZL2Theme onSurface];
+        chip.backgroundColor = [ZL2Theme surfaceContainerHigh];
+        chip.layer.cornerRadius = 5;
+        chip.contentEdgeInsets = UIEdgeInsetsMake(4, 6, 4, 6);
+        chip.tag = index;
+        [chip addTarget:self action:@selector(cubicRemoveFilter:) forControlEvents:UIControlEventTouchUpInside];
+        [self.activeFilters addArrangedSubview:chip];
+    }];
+    self.activeFilters.hidden = !self.activeFilters.arrangedSubviews.count;
+    [self.activeFilters addArrangedSubview:[UIView new]];
     NSInteger source = [self ame_apiSourceForType];
     for (UIButton *button in self.sourceButtons) {
         BOOL active = button.tag == source;
+        button.backgroundColor = active ? [ZL2Theme primaryContainer] : [ZL2Theme surfaceContainerHigh];
         button.layer.borderWidth = active ? 1 : 0;
         button.layer.borderColor = [ZL2Theme primary].CGColor;
         button.accessibilityTraits = UIAccessibilityTraitButton | (active ? UIAccessibilityTraitSelected : 0);
@@ -1788,32 +1835,10 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                     placeholderName:symbol
                      fallbackSymbol:[symbol stringByAppendingString:@".fill"]];
     }
-    // 收藏心形（7.0-UI-14：搜索卡与收藏页共用 toggle，写入 ZL2FavoritesStore）
-    {
-        NSString *pid = item[@"id"] ?: @"";
-        NSInteger source = [item[@"apiSource"] isKindOfClass:NSNumber.class]
-            ? [item[@"apiSource"] integerValue] : [self ame_apiSourceForType];
-        BOOL fav = [[ZL2FavoritesStore sharedStore] isFavoritePlatform:source projectId:pid];
-        [cell ame_setFavorite:fav];
-    }
     __weak typeof(self) weakSelf = self;
-    // 7.0-UI-16：卡面独立下载钮退役（ZL2 真机卡无此件），点卡进版本页由
-    // didSelectRow 承担；收藏心形保留（搜索卡与收藏页共用 toggle）
     cell.onInstall = ^{
         NSInteger index = [weakSelf.results indexOfObjectIdenticalTo:item];
         if (index != NSNotFound) [weakSelf ame_openResultAtIndex:index];
-    };
-    cell.onFavorite = ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        NSDictionary *entry = item;
-        if (![entry isKindOfClass:[NSDictionary class]]) return;
-        NSMutableDictionary *snapshot = [entry mutableCopy];
-        NSInteger source = [entry[@"apiSource"] isKindOfClass:NSNumber.class]
-            ? [entry[@"apiSource"] integerValue] : [strongSelf ame_apiSourceForType];
-        snapshot[@"platform"] = @(source);
-        snapshot[@"projectId"] = entry[@"id"] ?: @"";
-        [[ZL2FavoritesStore sharedStore] toggleFavoriteWithProject:snapshot];
     };
     return cell;
 }

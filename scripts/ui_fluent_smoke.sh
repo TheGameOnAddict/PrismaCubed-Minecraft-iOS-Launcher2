@@ -162,6 +162,11 @@ preview_mode() {
   mkdir -p "$app"
   cp "$OUT/AmeFluentPreview" "$app/AmeFluentPreview"
   cp "$NATIVES/Preview/CubicPreviewAvatar.png" "$app/"
+  cp "$NATIVES/Assets.xcassets/WelcomeAppIcon.imageset/WelcomeAppIcon.png" "$app/"
+  local brands="$OUT/Brands.xcassets"
+  mkdir -p "$brands"
+  cp -R "$NATIVES/Assets.xcassets/CubicCurseForge.imageset" "$NATIVES/Assets.xcassets/CubicModrinth.imageset" "$brands/"
+  xcrun actool "$brands" --compile "$app" --platform iphonesimulator --minimum-deployment-target 14.0 --target-device iphone || { FAIL=1; return; }
   mkdir -p "$app/en.lproj"
   cp "$NATIVES/resources/en.lproj/Localizable.strings" "$app/en.lproj/"
   for cover in "$NATIVES"/Assets.xcassets/CubicProfileCover*.imageset; do

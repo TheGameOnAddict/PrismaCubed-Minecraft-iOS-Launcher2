@@ -165,6 +165,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 // （ame_onPlay）；长按 = M3 底部菜单（由 VC 的网格长按手势统一处理）。
 @interface ZL2HomeVersionCardCell : UICollectionViewCell
 
+@property (nonatomic, strong) UILabel *versionBadge;
 @property (nonatomic, strong) ZL2HomeTapControl *cardBody;
 @property (nonatomic, strong) UIView *iconBg;
 @property (nonatomic, strong) UIImageView *iconView;
@@ -212,6 +213,20 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         _iconView.userInteractionEnabled = NO;
         [_iconBg addSubview:_iconView];
 
+        _versionBadge = [UILabel new];
+        _versionBadge.font = [UIFont boldSystemFontOfSize:11];
+        _versionBadge.textColor = UIColor.whiteColor;
+        _versionBadge.backgroundColor = [UIColor colorWithWhite:0.06 alpha:0.88];
+        _versionBadge.layer.cornerRadius = 5;
+        _versionBadge.clipsToBounds = YES;
+        _versionBadge.translatesAutoresizingMaskIntoConstraints = NO;
+        [_iconBg addSubview:_versionBadge];
+        [NSLayoutConstraint activateConstraints:@[
+            [_versionBadge.leadingAnchor constraintEqualToAnchor:_iconBg.leadingAnchor constant:6],
+            [_versionBadge.topAnchor constraintEqualToAnchor:_iconBg.topAnchor constant:6],
+            [_versionBadge.trailingAnchor constraintLessThanOrEqualToAnchor:_iconBg.trailingAnchor constant:-6],
+            [_versionBadge.heightAnchor constraintEqualToConstant:19]
+        ]];
         // —— 名称 / 信息行 ——
         _nameLabel = [[UILabel alloc] init];
         _nameLabel.font = [ZL2Theme fontLabelLarge];
@@ -308,6 +323,8 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     BOOL isSelected = [row[@"isSelected"] boolValue];
 
     self.nameLabel.text = profileName;
+    NSString *loaderName = loader.length ? [ModLoaderIconHelper displayNameForLoader:loader] : @"Vanilla";
+    self.versionBadge.text = [NSString stringWithFormat:@"  %@ · %@  ", loaderName, mcVersion.length ? mcVersion : @"–"];
 
     // 信息行：MC 版本/加载器小字；无效版本 = error 色提示（版本页同语义）
     if (!valid) {
@@ -947,7 +964,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     }
     self.packBrowser.view.hidden = NO;
     [self.contentArea bringSubviewToFront:self.packBrowser.view];
-    self.sectionHeading.text = NSLocalizedString(@"Browse Modpacks", nil);
+    self.sectionHeading.text = nil;
     [self.browseTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
     [self.profilesTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
 }
