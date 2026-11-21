@@ -33,6 +33,7 @@
 //
 
 #import "ZL2SettingsViewController.h"
+#import "utils.h"
 #import "ZL2Theme.h"
 #import "ZL2SettingPages.h"
 
@@ -267,16 +268,16 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
     //   7 Java 管理 / 8 控制管理 ｜ 9 关于
     //   （AI/调试插在启动器后：主页插件 chip 定点 index=4 不受影响）
     NSArray<NSArray<NSString *> *> *defs = @[
-        @[@"渲染器",   @"cpu",                       @"gearshape"],
-        @[@"游戏",     @"gamecontroller",            @""],
-        @[@"控制",     @"hand.tap",                  @"hand.point.up.left"],
-        @[@"手柄",     @"gamecontroller.fill",       @"gamecontroller"],
-        @[@"启动器",   @"gearshape.fill",            @"gear"],
+        @[localize(@"preference.title.renderer", nil),   @"cpu",                       @"gearshape"],
+        @[localize(@"prisma.ui.game", nil),     @"gamecontroller",            @""],
+        @[localize(@"prisma.ui.controls", nil),     @"hand.tap",                  @"hand.point.up.left"],
+        @[localize(@"dl.controls.cat.gamepad", nil),     @"gamecontroller.fill",       @"gamecontroller"],
+        @[localize(@"prisma.ui.launcher", nil),   @"gearshape.fill",            @"gear"],
         @[@"AI",       @"sparkles",                  @""],
-        @[@"调试",     @"ladybug",                   @"ant.fill"],
-        @[@"Java 管理", @"wrench.and.screwdriver",   @"wrench"],
-        @[@"控制管理", @"square.on.square",          @"square.split.2x1"],
-        @[@"关于",     @"info.circle",               @""],
+        @[localize(@"prisma.ui.debugging", nil),     @"ladybug",                   @"ant.fill"],
+        @[localize(@"prisma.ui.java.management", nil), @"wrench.and.screwdriver",   @"wrench"],
+        @[localize(@"prisma.ui.manage.controls", nil), @"square.on.square",          @"square.split.2x1"],
+        @[localize(@"preference.title.about", nil),     @"info.circle",               @""],
     ];
     for (NSUInteger i = 0; i < defs.count; i++) {
         ZL2SettingsRailItem *item = [[ZL2SettingsRailItem alloc]
@@ -372,16 +373,16 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
 
 - (NSString *)ame_titleForIndex:(NSInteger)index {
     switch (index) {
-        case 0: return @"渲染器";
-        case 1: return @"游戏";
-        case 2: return @"控制";
-        case 3: return @"手柄";
-        case 4: return @"启动器";
+        case 0: return localize(@"preference.title.renderer", nil);
+        case 1: return localize(@"prisma.ui.game", nil);
+        case 2: return localize(@"prisma.ui.controls", nil);
+        case 3: return localize(@"dl.controls.cat.gamepad", nil);
+        case 4: return localize(@"prisma.ui.launcher", nil);
         case 5: return @"AI";
-        case 6: return @"调试";
-        case 7: return @"Java 管理";
-        case 8: return @"控制管理";
-        case 9: return @"关于";
+        case 6: return localize(@"prisma.ui.debugging", nil);
+        case 7: return localize(@"prisma.ui.java.management", nil);
+        case 8: return localize(@"prisma.ui.manage.controls", nil);
+        case 9: return localize(@"preference.title.about", nil);
         default: return @"";
     }
 }

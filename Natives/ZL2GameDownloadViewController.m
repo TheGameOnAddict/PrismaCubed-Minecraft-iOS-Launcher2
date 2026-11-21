@@ -38,6 +38,7 @@
 //
 
 #import "ZL2GameDownloadViewController.h"
+#import "utils.h"
 #import "ZL2Theme.h"
 #import "ZL2M3Kit.h"
 #import "ZL2GameAddonsViewController.h"
@@ -129,7 +130,7 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
         _wikiButton = [[UIControl alloc] init];
         _wikiButton.translatesAutoresizingMaskIntoConstraints = NO;
         _wikiButton.isAccessibilityElement = YES;
-        _wikiButton.accessibilityLabel = @"查看 Wiki";
+        _wikiButton.accessibilityLabel = localize(@"prisma.ui.open.wiki", nil);
         UIImageView *wikiIcon = [[UIImageView alloc] initWithImage:
             [[UIImage systemImageNamed:@"link"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
         wikiIcon.tintColor = [ZL2Theme onSurfaceVariant];
@@ -319,7 +320,7 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     _chipsStack.translatesAutoresizingMaskIntoConstraints = NO;
     [_chipsScroll addSubview:_chipsStack];
 
-    NSArray<NSString *> *titles = @[@"正式版", @"快照版", @"愚人节版", @"远古版"];
+    NSArray<NSString *> *titles = @[localize(@"Releases", nil), localize(@"prisma.ui.snapshot", nil), localize(@"prisma.ui.april.fools.version", nil), localize(@"i18n_str_154", nil)];
     for (NSUInteger i = 0; i < titles.count; i++) {
         ZL2M3FilterChip *chip = [[ZL2M3FilterChip alloc] initWithText:titles[i]];
         chip.tag = (NSInteger)i;
@@ -333,11 +334,11 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
 
     // ② 搜索框（weight 1；ZL2 SimpleTextInputField 同款：surfaceContainer 底）
     _searchField = [[UITextField alloc] init];
-    _searchField.placeholder = @"搜索";
+    _searchField.placeholder = localize(@"prisma.ui.search", nil);
     _searchField.font = [UIFont systemFontOfSize:12.0];
     _searchField.textColor = [ZL2Theme onSurface];
     _searchField.attributedPlaceholder =
-        [[NSAttributedString alloc] initWithString:@"搜索"
+        [[NSAttributedString alloc] initWithString:localize(@"prisma.ui.search", nil)
                                         attributes:@{NSForegroundColorAttributeName: [ZL2Theme onSurfaceVariant]}];
     _searchField.backgroundColor = [ZL2Theme surfaceContainer];
     _searchField.layer.cornerRadius = [ZL2Theme radiusS];
@@ -350,7 +351,7 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     _searchField.leftViewMode = UITextFieldViewModeAlways;
     _searchField.translatesAutoresizingMaskIntoConstraints = NO;
     _searchField.isAccessibilityElement = YES;
-    _searchField.accessibilityLabel = @"搜索版本";
+    _searchField.accessibilityLabel = localize(@"prisma.ui.search.versions", nil);
     [_searchField addTarget:self
                      action:@selector(ame_searchChanged:)
            forControlEvents:UIControlEventEditingChanged];
@@ -360,7 +361,7 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     _refreshButton = [[UIControl alloc] init];
     _refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
     _refreshButton.isAccessibilityElement = YES;
-    _refreshButton.accessibilityLabel = @"刷新";
+    _refreshButton.accessibilityLabel = localize(@"resman.common.refresh", nil);
     [_refreshButton addTarget:self
                        action:@selector(ame_refreshTapped)
              forControlEvents:UIControlEventTouchUpInside];
@@ -418,12 +419,12 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     _retryButton.hidden = YES;
     _retryButton.translatesAutoresizingMaskIntoConstraints = NO;
     _retryButton.isAccessibilityElement = YES;
-    _retryButton.accessibilityLabel = @"重试";
+    _retryButton.accessibilityLabel = localize(@"mc_news.retry", nil);
     [_retryButton addTarget:self
                      action:@selector(ame_refreshTapped)
            forControlEvents:UIControlEventTouchUpInside];
     UILabel *retryLabel = [[UILabel alloc] init];
-    retryLabel.text = @"重试";
+    retryLabel.text = localize(@"mc_news.retry", nil);
     retryLabel.font = [ZL2Theme fontLabelLarge];
     retryLabel.textColor = [ZL2Theme primary];
     retryLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -556,8 +557,8 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
 
         if (real.count == 0) {
             s.emptyLabel.text = loaded
-                ? @"版本清单加载失败，请检查网络后重试"
-                : @"版本清单加载超时，请重试";
+                ? localize(@"prisma.ui.could.not.load.the.version.list.check.your.connection.and.try.again", nil)
+                : localize(@"prisma.ui.loading.the.version.list.timed.out.try.again", nil);
             s.emptyLabel.hidden = NO;
             s.retryButton.hidden = NO;
             return;
@@ -621,7 +622,7 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     self.emptyLabel.hidden = !empty;
     self.retryButton.hidden = YES;
     if (empty) {
-        self.emptyLabel.text = @"没有符合筛选条件的版本";
+        self.emptyLabel.text = localize(@"prisma.ui.no.versions.match.your.filters", nil);
     }
 }
 
@@ -634,23 +635,23 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     dispatch_once(&onceToken, ^{
         // @[版本 id, 摘要]（ZL2 _MinecraftVersionCatalog allAprilFools 顺序）
         table = @[
-            @[@"26w14a", @"别整理背包了，你的物品和方块想跟你一起浪！"],
-            @[@"25w14craftmine", @"现在你可以合成任何东西，甚至合成整个世界！"],
-            @[@"24w14potato", @"多年来，毒马铃薯一直被玩家忽视和低估，于是我们史诗级加强了它！"],
-            @[@"23w13a_or_b", @"研究表明：玩家最喜欢作出选择，所以我们让你为一切投票！"],
-            @[@"22w13oneblockatatime", @"我们精简了游戏到最纯粹的形态：一次只能拿一个方块。"],
-            @[@"20w14infinite", @"我们加入了 20 亿个（准确地说是 2,147,483,647 个）新维度！"],
-            @[@"20w14∞", @"我们加入了 20 亿个（准确地说是 2,147,483,647 个）新维度！"],
-            @[@"3D Shareware v1.34", @"我们从地下室深处挖出了这款“1994 年 DOS 版”Minecraft！"],
-            @[@"1.RV-Pre1", @"未来已来！我们为 Minecraft 加入了现代科技！"],
-            @[@"15w14a", @"爱与拥抱更新，让世界充满和平与彩虹。"],
-            @[@"2.0_blue", @"我们不会更新它们！如果您发现漏洞，那您就倒霉了！XD"],
-            @[@"2.0_red", @"我们不会更新它们！如果您发现漏洞，那您就倒霉了！XD"],
-            @[@"2.0_purple", @"我们不会更新它们！如果您发现漏洞，那您就倒霉了！XD"],
+            @[@"26w14a", @"prisma.ui.forget.organizing.your.inventory.your.items.and.blocks.want.to.come"],
+            @[@"25w14craftmine", @"prisma.ui.now.you.can.craft.anything.even.the.entire.world"],
+            @[@"24w14potato", @"prisma.ui.players.ignored.and.underestimated.the.poisonous.potato.for.years.so"],
+            @[@"23w13a_or_b", @"prisma.ui.research.shows.players.love.making.choices.so.we.let.you.vote.on.eve"],
+            @[@"22w13oneblockatatime", @"prisma.ui.we.stripped.the.game.down.to.its.purest.form.you.can.only.hold.one.b"],
+            @[@"20w14infinite", @"prisma.ui.we.added.two.billion.new.dimensions.2.147.483.647.to.be.exact"],
+            @[@"20w14∞", @"prisma.ui.we.added.two.billion.new.dimensions.2.147.483.647.to.be.exact"],
+            @[@"3D Shareware v1.34", @"prisma.ui.we.dug.this.1994.dos.edition.of.minecraft.out.of.the.basement"],
+            @[@"1.RV-Pre1", @"prisma.ui.the.future.is.here.we.brought.modern.technology.to.minecraft"],
+            @[@"15w14a", @"prisma.ui.the.love.and.hugs.update.fills.the.world.with.peace.and.rainbows"],
+            @[@"2.0_blue", @"prisma.ui.we.won.t.update.them.if.you.find.a.bug.you.re.out.of.luck.xd"],
+            @[@"2.0_red", @"prisma.ui.we.won.t.update.them.if.you.find.a.bug.you.re.out.of.luck.xd"],
+            @[@"2.0_purple", @"prisma.ui.we.won.t.update.them.if.you.find.a.bug.you.re.out.of.luck.xd"],
         ];
     });
     for (NSArray *entry in table) {
-        if ([entry[0] caseInsensitiveCompare:versionId] == NSOrderedSame) return entry[1];
+        if ([entry[0] caseInsensitiveCompare:versionId] == NSOrderedSame) return localize(entry[1], nil);
     }
     return nil;
 }
@@ -666,21 +667,21 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
     BOOL isAprilFools = ([self ame_aprilFoolsSummaryForId:vid] != nil);
 
     if (isAprilFools) {
-        return @[@"愚人节版", @"img_diamond_block", @"snapshot"];
+        return @[localize(@"prisma.ui.april.fools.version", nil), @"img_diamond_block", @"snapshot"];
     }
     if ([type isEqualToString:@"release"]) {
-        return @[@"正式版", @"img_minecraft", @"release"];
+        return @[localize(@"Releases", nil), @"img_minecraft", @"release"];
     }
     if ([type isEqualToString:@"snapshot"]) {
-        return @[@"快照版", @"img_command_block", @"snapshot"];
+        return @[localize(@"prisma.ui.snapshot", nil), @"img_command_block", @"snapshot"];
     }
     if ([type isEqualToString:@"old_beta"]) {
-        return @[@"Beta 版", @"img_old_cobblestone", @"none"];
+        return @[localize(@"prisma.ui.beta", nil), @"img_old_cobblestone", @"none"];
     }
     if ([type isEqualToString:@"old_alpha"]) {
-        return @[@"Alpha 版", @"img_old_grass_block", @"none"];
+        return @[localize(@"prisma.ui.alpha", nil), @"img_old_grass_block", @"none"];
     }
-    return @[@"版本", @"", @"none"];
+    return @[localize(@"preference.profile.title.version", nil), @"", @"none"];
 }
 
 /// ZL2 日期格式（date_format zh-CN："yyyy 年 MM 月 dd 日 HH:mm:ss"）
@@ -695,10 +696,10 @@ static const NSUInteger ZL2GamePageSizeMore = 40;
         parser.dateFormat = @"yyyy-MM-dd'T'HH:mm:ssZZZZZ";
         parser.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
         formatter = [[NSDateFormatter alloc] init];
-        formatter.dateFormat = @"yyyy 年 MM 月 dd 日 HH:mm:ss";
     });
     NSDate *date = [parser dateFromString:iso];
     if (!date) return iso;
+    formatter.dateFormat = localize(@"prisma.ui.release.date.format", nil);
     return [formatter stringFromDate:date];
 }
 

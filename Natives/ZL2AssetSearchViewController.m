@@ -168,28 +168,9 @@ static NSString *ZL2AssetSha1FromPrimaryFile(NSDictionary *primaryFile) {
     return nil;
 }
 
-// 格式化下载量数字（旧页 formatDownloadCount 同款：1234 → 1.2K / 1234567 → 1.2M）
-// 格式化下载量数字（7.0-UI-16：ZL2 中文量级对齐——真机截图 1.9万/112万/137万；
-// 旧 K/M 为英文社区口径，与 ZL2 上游不符）
-static NSString *ZL2AssetFormatTrimZero(NSString *text) {
-    if ([text hasSuffix:@".0"]) {
-        return [text substringToIndex:text.length - 2];
-    }
-    return text;
-}
-
 static NSString *ZL2AssetFormatDownloadCount(NSNumber *downloads) {
-    if (!downloads) return @"0";
-    NSInteger dl = [downloads integerValue];
-    if (dl >= 100000000) {
-        NSString *raw = [NSString stringWithFormat:@"%.1f亿", dl / 100000000.0];
-        return ZL2AssetFormatTrimZero(raw);
-    }
-    if (dl >= 10000) {
-        NSString *raw = [NSString stringWithFormat:@"%.1f万", dl / 10000.0];
-        return ZL2AssetFormatTrimZero(raw);
-    }
-    return [NSString stringWithFormat:@"%ld", (long)dl];
+    return [NSNumberFormatter localizedStringFromNumber:downloads ?: @0
+                                           numberStyle:NSNumberFormatterDecimalStyle];
 }
 
 // 搜索结果分页页大小（旧页六类 loadXxxList 统一 @30；7.0-UI-16 页码控制器沿用，
@@ -332,7 +313,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
         _favoriteControl = [[UIControl alloc] init];
         _favoriteControl.translatesAutoresizingMaskIntoConstraints = NO;
         _favoriteControl.isAccessibilityElement = YES;
-        _favoriteControl.accessibilityLabel = @"收藏";
+        _favoriteControl.accessibilityLabel = localize(@"prisma.ui.favorite", nil);
         _favoriteControl.accessibilityTraits = UIAccessibilityTraitButton;
         [_favoriteControl addTarget:self
                              action:@selector(ame_favoriteTapped)
@@ -416,9 +397,9 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     UIImage *heart = [UIImage systemImageNamed:(favorite ? @"heart.fill" : @"heart")];
     self.favoriteIconView.image = [heart imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     self.favoriteIconView.tintColor = favorite ? [ZL2Theme tertiary] : [ZL2Theme onSurfaceVariant];
-    self.favoriteLabel.text = @"收藏";
+    self.favoriteLabel.text = localize(@"prisma.ui.favorite", nil);
     self.favoriteLabel.textColor = favorite ? [ZL2Theme tertiary] : [ZL2Theme onSurfaceVariant];
-    self.favoriteControl.accessibilityLabel = favorite ? @"取消收藏" : @"收藏";
+    self.favoriteControl.accessibilityLabel = favorite ? localize(@"prisma.ui.remove.from.favorites", nil) : localize(@"prisma.ui.favorite", nil);
 }
 
 // 旧页 cell 同款：高亮态压暗卡片（ZL2 Compose 的 ripple 等价物）
@@ -463,7 +444,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     // 作者（ZL2 "标题 | 作者: X" 同排语义；CF/Modrinth 均补齐 author 键）
     NSString *author = data[@"author"];
     if ([author isKindOfClass:[NSString class]] && author.length > 0) {
-        self.authorLabel.text = [NSString stringWithFormat:@"| 作者: %@", author];
+        self.authorLabel.text = [NSString stringWithFormat:localize(@"prisma.ui.author.2", nil), author];
         self.authorLabel.hidden = NO;
     } else {
         self.authorLabel.text = nil;
@@ -729,7 +710,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     self = [super initWithNibName:nil bundle:nil];
     if (self) {
         _assetType = ZL2AssetSearchTypeMod;   // 占位（收藏模式按项内 projectType 分流）
-        _pageTitle = @"收藏";
+        _pageTitle = localize(@"prisma.ui.favorite", nil);
         _favoritesMode = YES;
         _results = [NSMutableArray array];
         _searchQuery = @"";
@@ -806,14 +787,14 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
 // 搜索框占位（按类型区分中文文案，任务规格）
 - (NSString *)ame_placeholderText {
     switch (self.assetType) {
-        case ZL2AssetSearchTypeMod:          return @"搜索模组";
-        case ZL2AssetSearchTypeModpack:      return @"搜索整合包";
-        case ZL2AssetSearchTypeResourcePack: return @"搜索资源包";
-        case ZL2AssetSearchTypeWorld:        return @"搜索存档";
-        case ZL2AssetSearchTypeShader:       return @"搜索光影包";
-        case ZL2AssetSearchTypeDataPack:     return @"搜索数据包";   // Task323
+        case ZL2AssetSearchTypeMod:          return localize(@"prisma.ui.search.mods", nil);
+        case ZL2AssetSearchTypeModpack:      return localize(@"prisma.ui.search.modpacks", nil);
+        case ZL2AssetSearchTypeResourcePack: return localize(@"prisma.ui.search.resource.packs", nil);
+        case ZL2AssetSearchTypeWorld:        return localize(@"prisma.ui.search.worlds", nil);
+        case ZL2AssetSearchTypeShader:       return localize(@"prisma.ui.search.shaders", nil);
+        case ZL2AssetSearchTypeDataPack:     return localize(@"prisma.ui.search.data.packs", nil);   // Task323
     }
-    return @"搜索";
+    return localize(@"prisma.ui.search", nil);
 }
 
 // 引导空态文案（初始未搜索时，ZL2 式引导）
@@ -932,7 +913,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
                                                        valueLabel:&loaderValueLabel];
         _loaderFieldValueLabel = loaderValueLabel;
         _loaderFieldControl.isAccessibilityElement = YES;
-        _loaderFieldControl.accessibilityLabel = @"加载器";
+        _loaderFieldControl.accessibilityLabel = localize(@"i18n_str_114", nil);
         _loaderFieldControl.accessibilityTraits = UIAccessibilityTraitButton;
         [_loaderFieldControl addTarget:self
                                 action:@selector(ame_loaderFieldTapped)
@@ -1012,7 +993,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
                      forState:UIControlStateNormal];
     _prevPageButton.tintColor = [ZL2Theme onSurface];
     _prevPageButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _prevPageButton.accessibilityLabel = @"上一页";
+    _prevPageButton.accessibilityLabel = localize(@"prisma.ui.previous.page", nil);
     [_prevPageButton addTarget:self
                         action:@selector(ame_prevPageTapped)
               forControlEvents:UIControlEventTouchUpInside];
@@ -1026,7 +1007,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     _pageInfoLabel.numberOfLines = 1;
     _pageInfoLabel.textAlignment = NSTextAlignmentCenter;
     _pageInfoLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _pageInfoLabel.text = @"第 1 页";
+    _pageInfoLabel.text = localize(@"prisma.ui.page.1", nil);
     [pageStack addArrangedSubview:_pageInfoLabel];
 
     _nextPageButton = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -1035,7 +1016,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
                      forState:UIControlStateNormal];
     _nextPageButton.tintColor = [ZL2Theme onSurface];
     _nextPageButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _nextPageButton.accessibilityLabel = @"下一页";
+    _nextPageButton.accessibilityLabel = localize(@"prisma.ui.next.page", nil);
     [_nextPageButton addTarget:self
                         action:@selector(ame_nextPageTapped)
               forControlEvents:UIControlEventTouchUpInside];
@@ -1053,7 +1034,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     _tableView.estimatedRowHeight = 0;
     _tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     _tableView.translatesAutoresizingMaskIntoConstraints = NO;
-    _tableView.accessibilityLabel = @"搜索结果";
+    _tableView.accessibilityLabel = localize(@"prisma.ui.search.results", nil);
     [self.view addSubview:_tableView];
     [_tableView registerClass:[ZL2AssetResultCell class] forCellReuseIdentifier:@"ZL2AssetResultCell"];
 
@@ -1272,7 +1253,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     self.platformChipLabel.textColor = [UIColor whiteColor];
 
     NSInteger sortIndex = [self.sortValues indexOfObject:(self.sortField ?: @"")];
-    NSString *sortTitle = @"相关性";
+    NSString *sortTitle = localize(@"prisma.ui.relevance", nil);
     if (sortIndex >= 0 && sortIndex < (NSInteger)self.sortTitleKeys.count) {
         NSString *localized = localize(self.sortTitleKeys[sortIndex], nil);
         if (localized.length > 0) sortTitle = localized;
@@ -1310,7 +1291,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
             self.loaderFieldValueLabel.text = loaderText;
             self.loaderFieldValueLabel.textColor = [ZL2Theme onSurface];
         } else {
-            self.loaderFieldValueLabel.text = @"加载器";
+            self.loaderFieldValueLabel.text = localize(@"i18n_str_114", nil);
             self.loaderFieldValueLabel.textColor = [ZL2Theme onSurfaceVariant];
         }
     }
@@ -1709,7 +1690,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     sheetTable.separatorStyle = UITableViewCellSeparatorStyleNone;
     sheetTable.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     sheetTable.translatesAutoresizingMaskIntoConstraints = NO;
-    sheetTable.accessibilityLabel = @"版本列表";
+    sheetTable.accessibilityLabel = localize(@"prisma.ui.versions", nil);
     [content addSubview:sheetTable];
     [sheetTable registerClass:[UITableViewCell class] forCellReuseIdentifier:@"ZL2VersionSheetCell"];
 
@@ -1823,33 +1804,33 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     }
     NSDictionary *tables = @{
         @"mod": @[
-            @[@"adventure", @"冒险"], @[@"technology", @"科技"], @[@"magic", @"魔法"],
-            @[@"utility", @"实用"], @[@"optimization", @"性能优化"], @[@"decoration", @"装饰"],
-            @[@"equipment", @"装备"], @[@"combat", @"战斗"], @[@"food", @"食物"],
-            @[@"storage", @"存储"], @[@"transportation", @"运输"], @[@"worldgen", @"世界生成"],
-            @[@"library", @"前置库"], @[@"social", @"社交"], @[@"education", @"教育"],
-            @[@"economy", @"经济"], @[@"game-mechanics", @"游戏机制"], @[@"mobs", @"生物"],
+            @[@"adventure", localize(@"prisma.ui.adventure", nil)], @[@"technology", localize(@"prisma.ui.technology", nil)], @[@"magic", localize(@"prisma.ui.magic", nil)],
+            @[@"utility", localize(@"prisma.ui.utility", nil)], @[@"optimization", localize(@"prisma.ui.optimization", nil)], @[@"decoration", localize(@"prisma.ui.decoration", nil)],
+            @[@"equipment", localize(@"prisma.ui.equipment", nil)], @[@"combat", localize(@"prisma.ui.combat", nil)], @[@"food", localize(@"prisma.ui.food", nil)],
+            @[@"storage", localize(@"prisma.ui.storage", nil)], @[@"transportation", localize(@"prisma.ui.transportation", nil)], @[@"worldgen", localize(@"prisma.ui.world.generation", nil)],
+            @[@"library", localize(@"prisma.ui.libraries", nil)], @[@"social", localize(@"prisma.ui.social", nil)], @[@"education", localize(@"prisma.ui.education", nil)],
+            @[@"economy", localize(@"prisma.ui.economy", nil)], @[@"game-mechanics", localize(@"prisma.ui.game.mechanics", nil)], @[@"mobs", localize(@"prisma.ui.mobs", nil)],
         ],
         @"modpack": @[
-            @[@"adventure", @"冒险"], @[@"technology", @"科技"], @[@"magic", @"魔法"],
-            @[@"multiplayer", @"多人"], @[@"quests", @"任务"], @[@"hardcore", @"硬核"],
-            @[@"vanilla+", @"原版增强"], @[@"map-based", @"基于地图"], @[@"horror", @"恐怖"],
-            @[@"exploration", @"探索"], @[@"extra-large", @"超大型"], @[@"lightweight", @"轻量"],
+            @[@"adventure", localize(@"prisma.ui.adventure", nil)], @[@"technology", localize(@"prisma.ui.technology", nil)], @[@"magic", localize(@"prisma.ui.magic", nil)],
+            @[@"multiplayer", localize(@"prisma.ui.multiplayer", nil)], @[@"quests", localize(@"prisma.ui.quests", nil)], @[@"hardcore", localize(@"prisma.ui.hardcore", nil)],
+            @[@"vanilla+", localize(@"prisma.ui.vanilla", nil)], @[@"map-based", localize(@"prisma.ui.map.based", nil)], @[@"horror", localize(@"prisma.ui.horror", nil)],
+            @[@"exploration", localize(@"prisma.ui.exploration", nil)], @[@"extra-large", localize(@"prisma.ui.large", nil)], @[@"lightweight", localize(@"prisma.ui.lightweight", nil)],
         ],
         @"resourcepack": @[
             @[@"16x", @"16x"], @[@"32x", @"32x"], @[@"64x", @"64x"],
             @[@"128x", @"128x"], @[@"256x", @"256x"], @[@"512x", @"512x"],
-            @[@"vanilla-like", @"原版风"], @[@"simplistic", @"简约"], @[@"realistic", @"写实"],
-            @[@"fantasy", @"奇幻"], @[@"animated", @"动态"], @[@"parchment", @"羊皮纸"],
+            @[@"vanilla-like", localize(@"prisma.ui.vanilla.style", nil)], @[@"simplistic", localize(@"prisma.ui.simplistic", nil)], @[@"realistic", localize(@"prisma.ui.realistic", nil)],
+            @[@"fantasy", localize(@"prisma.ui.fantasy", nil)], @[@"animated", localize(@"prisma.ui.animated", nil)], @[@"parchment", localize(@"prisma.ui.parchment", nil)],
         ],
         @"shader": @[
-            @[@"fantasy", @"奇幻"], @[@"realistic", @"写实"], @[@"cartoon", @"卡通"],
-            @[@"vanilla", @"原版风"], @[@"performance", @"性能"], @[@"potent", @"强力"],
-            @[@"colored", @"彩色"], @[@"screenshot", @"截图"], @[@"semi-realistic", @"半写实"],
+            @[@"fantasy", localize(@"prisma.ui.fantasy", nil)], @[@"realistic", localize(@"prisma.ui.realistic", nil)], @[@"cartoon", localize(@"prisma.ui.cartoon", nil)],
+            @[@"vanilla", localize(@"prisma.ui.vanilla.style", nil)], @[@"performance", localize(@"prisma.ui.performance", nil)], @[@"potent", localize(@"prisma.ui.high.end", nil)],
+            @[@"colored", localize(@"prisma.ui.colorful", nil)], @[@"screenshot", localize(@"prisma.ui.screenshots", nil)], @[@"semi-realistic", localize(@"prisma.ui.semi.realistic", nil)],
         ],
         @"world": @[
-            @[@"adventure", @"冒险"], @[@"survival", @"生存"], @[@"creation", @"创造"],
-            @[@"parkour", @"跑酷"], @[@"puzzle", @"解谜"], @[@"game-map", @"游戏地图"],
+            @[@"adventure", localize(@"prisma.ui.adventure", nil)], @[@"survival", localize(@"prisma.ui.survival", nil)], @[@"creation", localize(@"prisma.ui.creative", nil)],
+            @[@"parkour", localize(@"prisma.ui.parkour", nil)], @[@"puzzle", localize(@"prisma.ui.puzzle", nil)], @[@"game-map", localize(@"prisma.ui.game.maps", nil)],
         ],
     };
     return tables[type] ?: @[];
@@ -1977,7 +1958,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
 // CurseForge modLoaderType fabric 4/forge 1/quilt 5/neoforge 6，
 // Modrinth categories:<loader> facet）
 - (NSArray<NSArray<NSString *> *> *)ame_loaderTable {
-    return @[ @[@"", @"全部"],
+    return @[ @[@"", localize(@"resman.mods.filter.all", nil)],
               @[@"fabric", @"Fabric"],
               @[@"forge", @"Forge"],
               @[@"quilt", @"Quilt"],
@@ -2003,7 +1984,7 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
     self.loaderSheetContent = content;
 
     UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.text = @"加载器";
+    titleLabel.text = localize(@"i18n_str_114", nil);
     titleLabel.font = [ZL2Theme fontTitleMedium];
     titleLabel.textColor = [ZL2Theme onSurface];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;

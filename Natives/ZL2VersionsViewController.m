@@ -247,13 +247,13 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
 /// ①页头行：大标题「版本」+ 右侧刷新 / 安装新游戏两枚 40×40 图标钮
 - (void)buildHeaderRow {
     _titleLabel = [[UILabel alloc] init];
-    _titleLabel.text = @"版本";
+    _titleLabel.text = localize(@"preference.profile.title.version", nil);
     _titleLabel.font = [ZL2Theme fontTitleLarge];
     _titleLabel.textColor = [ZL2Theme onSurface];
     _titleLabel.numberOfLines = 1;
     _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _titleLabel.isAccessibilityElement = YES;
-    _titleLabel.accessibilityLabel = @"版本";
+    _titleLabel.accessibilityLabel = localize(@"preference.profile.title.version", nil);
 
     // 弹性占位：把右侧两枚按钮推到行尾（hugging 显式低于标题，布局确定无歧义）
     UIView *spacer = [[UIView alloc] init];
@@ -270,7 +270,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     ZL2VersionsTapControl *refreshButton = [self iconButtonWithImageName:@"arrow.clockwise"
                                                                 fallback:@"sync"
                                                                     size:40
-                                                              accessibility:@"刷新"];
+                                                              accessibility:localize(@"resman.common.refresh", nil)];
     refreshButton.backgroundColor = [ZL2Theme surfaceContainer];
     refreshButton.ame_action = ^{
         [weakSelf reloadVersions];
@@ -281,7 +281,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     ZL2VersionsTapControl *installButton = [self iconButtonWithImageName:@"arrow.down.circle.fill"
                                                                 fallback:@"arrow.down.circle"
                                                                     size:40
-                                                              accessibility:@"安装新游戏"];
+                                                              accessibility:localize(@"prisma.ui.install.new.game", nil)];
     installButton.backgroundColor = [ZL2Theme surfaceContainer];
     installButton.ame_action = ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate"
@@ -297,7 +297,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     ZL2VersionsTapControl *scanButton = [self iconButtonWithImageName:@"magnifyingglass"
                                                              fallback:@"magnifyingglass"
                                                                  size:40
-                                                        accessibility:@"扫描版本"];
+                                                        accessibility:localize(@"vm.scan.title", nil)];
     scanButton.backgroundColor = [ZL2Theme surfaceContainer];
     scanButton.ame_action = ^{
         [weakSelf ame338_showScanSheet];
@@ -324,9 +324,9 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     _chipsRow.spacing = 10;
     _chipsRow.translatesAutoresizingMaskIntoConstraints = NO;
 
-    [self addChipWithTitle:@"全部"];
-    [self addChipWithTitle:@"原版"];
-    [self addChipWithTitle:@"可安装模组"];
+    [self addChipWithTitle:localize(@"resman.mods.filter.all", nil)];
+    [self addChipWithTitle:localize(@"prisma.ui.vanilla.2", nil)];
+    [self addChipWithTitle:localize(@"prisma.ui.modded", nil)];
 
     [_contentStack addArrangedSubview:_chipsRow];
 }
@@ -389,7 +389,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     iconView.translatesAutoresizingMaskIntoConstraints = NO;
 
     UILabel *label = [[UILabel alloc] init];
-    label.text = @"没有安装版本";
+    label.text = localize(@"prisma.ui.no.versions.installed", nil);
     label.font = [ZL2Theme fontBodyMedium];
     label.textColor = [ZL2Theme onSurfaceVariant];
     label.textAlignment = NSTextAlignmentCenter;
@@ -587,8 +587,8 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
         ? self.categoryChipLabels[ZL2VersionsCategoryVanilla] : nil;
     UILabel *modloaderLabel = self.categoryChipLabels.count > (NSUInteger)ZL2VersionsCategoryModloader
         ? self.categoryChipLabels[ZL2VersionsCategoryModloader] : nil;
-    vanillaLabel.text = [NSString stringWithFormat:@"原版 (%ld)", (long)vanillaCount];
-    modloaderLabel.text = [NSString stringWithFormat:@"可安装模组 (%ld)", (long)modloaderCount];
+    vanillaLabel.text = [NSString stringWithFormat:localize(@"prisma.ui.vanilla.ld", nil), (long)vanillaCount];
+    modloaderLabel.text = [NSString stringWithFormat:localize(@"prisma.ui.modded.ld", nil), (long)modloaderCount];
     [self ame_applyChipStyles];
 
     // —— 分类过滤（switch 全枚举：全部 / 原版 / 可安装模组）——
@@ -662,8 +662,8 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     card.translatesAutoresizingMaskIntoConstraints = NO;
     card.isAccessibilityElement = YES;
     card.accessibilityTraits = UIAccessibilityTraitButton;
-    card.accessibilityLabel = [NSString stringWithFormat:@"实例 %@，%@", profileName,
-                               valid ? @"有效" : @"该版本无效"];
+    card.accessibilityLabel = [NSString stringWithFormat:localize(@"prisma.ui.instance", nil), profileName,
+                               valid ? localize(@"prisma.ui.valid", nil) : localize(@"prisma.ui.this.version.is.invalid", nil)];
 
     // —— 整卡点击 = 选用（ZL2 Surface onClick 同语义；无效版本沿用旧 VC
     //    口径不拦截——旧 selectProfileNamed 无有效性守卫）——
@@ -753,7 +753,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
         // ★ Task351：versionId 空 = 未选择版本，区别于“选了但实体缺失”
         badgeLabel.text = (versionId.length == 0)
             ? localize(@"ame351.instance.no_version", nil)
-            : @"该版本无效";
+            : localize(@"prisma.ui.this.version.is.invalid", nil);
         badgeLabel.font = [ZL2Theme fontLabelMedium];
         badgeLabel.textColor = [ZL2Theme error];
         badgeLabel.numberOfLines = 1;
@@ -798,7 +798,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     ZL2VersionsTapControl *settingsButton = [self iconButtonWithImageName:@"gearshape"
                                                                  fallback:@"gear"
                                                                      size:32
-                                                           accessibility:@"版本设置"];
+                                                           accessibility:localize(@"prisma.ui.version.settings", nil)];
     settingsButton.ame_action = ^{
         [weakSelf ame_openSettingsForProfile:profileName];
     };
@@ -808,7 +808,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     ZL2VersionsTapControl *moreButton = [self iconButtonWithImageName:@"ellipsis"
                                                              fallback:nil
                                                                  size:32
-                                                       accessibility:@"更多操作"];
+                                                       accessibility:localize(@"prisma.ui.more.actions", nil)];
     // 按钮自身被 block 捕获（作 iPad popover 锚点）→ weak 防自持环；
     // actionSheet 同步弹出窗口期内按钮必然存活
     __weak ZL2VersionsTapControl *weakMoreButton = moreButton;
@@ -1276,7 +1276,7 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
     [_rowsStack addArrangedSubview:header];
 
     _emptyLabel = [[UILabel alloc] init];
-    _emptyLabel.text = @"没有可清理的垃圾";
+    _emptyLabel.text = localize(@"prisma.ui.nothing.to.clean.up", nil);
     _emptyLabel.font = [ZL2Theme fontBodyMedium];
     _emptyLabel.textColor = [ZL2Theme onSurfaceVariant];
     _emptyLabel.textAlignment = NSTextAlignmentCenter;

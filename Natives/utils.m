@@ -825,6 +825,17 @@ NSString* localize(NSString* key, NSString* comment) {
         os_unfair_lock_unlock(&ame274_localizeLock);
     }
 
+    NSString *language = ame274_langKey ?: NSLocale.preferredLanguages.firstObject;
+    NSString *languageCode = [NSLocale componentsFromLocaleIdentifier:language ?: @"en"][NSLocaleLanguageCode];
+    if ([languageCode isEqualToString:@"en"]) {
+        NSString *english = [targetBundle localizedStringForKey:key value:@"" table:nil];
+        if (english.length == 0 || [english isEqualToString:key]) {
+            NSBundle *enBundle = ame274_cachedLprojBundle(@"en", &ame274_localizeEn, &ame274_localizeEnProbed);
+            english = [enBundle localizedStringForKey:key value:key table:nil];
+        }
+        return english.length > 0 ? english : key;
+    }
+
     NSString *value;
     if (targetBundle) {
         value = [targetBundle localizedStringForKey:key value:key table:nil];

@@ -147,7 +147,7 @@
 
     // ① ScreenHeader：游戏版本大字 + 自定义版本名输入框 + 安装钮（ZL2 顶行同构）
     _gameVersionLabel = [[UILabel alloc] init];
-    _gameVersionLabel.text = [NSString stringWithFormat:@"安装 - %@", self.gameVersion];
+    _gameVersionLabel.text = [NSString stringWithFormat:localize(@"prisma.ui.install", nil), self.gameVersion];
     _gameVersionLabel.font = [ZL2Theme fontTitleLarge];
     _gameVersionLabel.textColor = [ZL2Theme onSurface];
     _gameVersionLabel.numberOfLines = 1;
@@ -155,7 +155,7 @@
     [self.view addSubview:_gameVersionLabel];
 
     _nameField = [[UITextField alloc] init];
-    _nameField.placeholder = [NSString stringWithFormat:@"版本名（默认 %@）", self.gameVersion];
+    _nameField.placeholder = [NSString stringWithFormat:localize(@"prisma.ui.version.name.default", nil), self.gameVersion];
     _nameField.text = self.gameVersion;
     _nameField.font = [ZL2Theme fontBodyMedium];
     _nameField.textColor = [ZL2Theme onSurface];
@@ -171,14 +171,14 @@
     _nameField.returnKeyType = UIReturnKeyDone;
     _nameField.translatesAutoresizingMaskIntoConstraints = NO;
     _nameField.isAccessibilityElement = YES;
-    _nameField.accessibilityLabel = @"自定义版本名";
+    _nameField.accessibilityLabel = localize(@"prisma.ui.custom.version.name", nil);
     [self.view addSubview:_nameField];
 
     _installButton = [[UIControl alloc] init];
     _installButton.layer.cornerRadius = [ZL2Theme radiusS];
     _installButton.translatesAutoresizingMaskIntoConstraints = NO;
     _installButton.isAccessibilityElement = YES;
-    _installButton.accessibilityLabel = @"安装";
+    _installButton.accessibilityLabel = localize(@"i18n_str_904", nil);
     [_installButton addTarget:self
                        action:@selector(ame_installTapped)
              forControlEvents:UIControlEventTouchUpInside];
@@ -243,7 +243,7 @@
     // 点击安装原版」：与其出五张注定失败的红字卡，不如明示「无加载器可用，
     // 可直接安装原版」，安装钮永不误导。
     _noLoaderNote = [[UILabel alloc] init];
-    _noLoaderNote.text = @"该版本暂无可用模组加载器，可直接安装原版。";
+    _noLoaderNote.text = localize(@"prisma.ui.there.are.no.compatible.mod.loaders.for.this.version.you.can.install", nil);
     _noLoaderNote.font = [ZL2Theme fontBodyMedium];
     _noLoaderNote.textColor = [ZL2Theme onSurfaceVariant];
     _noLoaderNote.textAlignment = NSTextAlignmentCenter;
@@ -593,16 +593,19 @@
             id json = [self ame_parseJSON:data];
             if ([json isKindOfClass:[NSArray class]]) {
                 NSMutableArray *out_ = [NSMutableArray array];
-                for (NSDictionary *entry in json) {
+                for (id entry in json) {
+                    if (![entry isKindOfClass:NSDictionary.class]) continue;
                     NSString *version = entry[@"version"];
-                    if (version.length > 0) [out_ addObject:version];
+                    if ([version isKindOfClass:NSString.class] && version.length > 0) {
+                        [out_ addObject:version];
+                    }
                 }
                 if (out_.count > 0) return out_;
             }
         }
         NSLog(@"[ZL2Addons] forge bmclapi list failed -- falling back to official maven-metadata.xml");
         NSData *meta = [self ame_syncFetch:
-            @"https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"];
+            @"https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"];
         if (meta) {
             NSString *xml = [[NSString alloc] initWithData:meta encoding:NSUTF8StringEncoding];
             if (xml.length > 0) {
@@ -613,7 +616,7 @@
                                   usingBlock:^(NSTextCheckingResult *m, NSMatchingFlags f, BOOL *stop) {
                     NSString *v = [xml substringWithRange:[m rangeAtIndex:1]];
                     // 形如 1.21.1-52.0.24：按游戏版本前缀过滤
-                    if ([v hasPrefix:gameVersion] && [v rangeOfString:@"-"].location != NSNotFound) {
+                    if ([v hasPrefix:[gameVersion stringByAppendingString:@"-"]]) {
                         [out_ addObject:v];
                     }
                 }];
@@ -917,8 +920,8 @@
         // 与 Task335 清单 busy 态（恒可点）不同，这是真实的不可中断操作
         self.installButton.userInteractionEnabled = NO;
         self.installButton.alpha = 0.6;
-        self.installLabel.text = @"安装中…";
-        self.installButton.accessibilityLabel = @"安装中";
+        self.installLabel.text = localize(@"ame318.repo.installing", nil);
+        self.installButton.accessibilityLabel = localize(@"prisma.ui.installing", nil);
         return;
     }
     self.installButton.userInteractionEnabled = YES;
@@ -928,8 +931,8 @@
     // ★ Task335：busy 态不再改安装钮文案 —— 旧版 busy 时按钮长期显示“清单加载中…”
     // （慢源 40s+ 兑底链期间），用户感知“卡在清单加载中”且不敢点（装机投诉原话）。
     // 加载态由各卡自带 spinner 表达；安装钮文案只反映语义（装什么），恒可点。
-    self.installLabel.text = hasSelection ? @"安装"
-                            : @"安装（原版）";
+    self.installLabel.text = hasSelection ? localize(@"i18n_str_904", nil)
+                            : localize(@"prisma.ui.install.vanilla", nil);
     self.installButton.accessibilityLabel = self.installLabel.text;
 }
 
@@ -969,12 +972,12 @@
         }
         __weak typeof(self) weakSelf = self;
         NSString *apiNote = installAPI
-            ? [NSString stringWithFormat:@"\n将同时安装 %@ API", vendor] : @"";
+            ? [NSString stringWithFormat:localize(@"prisma.ui.n.api.will.also.be.installed", nil), vendor] : @"";
         NSString *confirmBody = [NSString stringWithFormat:
-            @"游戏版本 %@\n加载器 %@ %@%@", self.gameVersion, vendor, loaderVer, apiNote];
-        [ZL2M3Dialog showTitle:@"确认安装"
+            localize(@"prisma.ui.minecraft.version.nloader", nil), self.gameVersion, vendor, loaderVer, apiNote];
+        [ZL2M3Dialog showTitle:localize(@"prisma.ui.confirm.installation", nil)
                           body:confirmBody
-                  confirmTitle:@"安装"
+                  confirmTitle:localize(@"i18n_str_904", nil)
                     destructive:NO
                      onConfirm:^{
             __strong typeof(weakSelf) s = weakSelf;
@@ -997,16 +1000,16 @@
                         postNotificationName:@"ReloadProfileList" object:nil];
                     // Task324：安装成功即时补齐隔离骨架（注册表已隔离 → 六目录可见可即用）
                     [ModService ame324_ensureIsolationSkeletonsAll];
-                    [ZL2M3Dialog showTitle:@"安装完成"
+                    [ZL2M3Dialog showTitle:localize(@"i18n_str_1270", nil)
                                       body:[NSString stringWithFormat:@"%@\n(%@ %@)",
                                             profileId ?: st.gameVersion, vendor, loaderVer]
-                              confirmTitle:@"知道了"
+                              confirmTitle:localize(@"i18n_str_197", nil)
                                 destructive:NO
                                  onConfirm:nil onCancel:nil];
                 } else {
-                    [ZL2M3Dialog showTitle:@"安装失败"
-                                      body:error.localizedDescription ?: @"网络异常，可重试。"
-                              confirmTitle:@"知道了"
+                    [ZL2M3Dialog showTitle:localize(@"i18n_str_918", nil)
+                                      body:error.localizedDescription ?: localize(@"prisma.ui.a.network.error.occurred.try.again", nil)
+                              confirmTitle:localize(@"i18n_str_197", nil)
                                 destructive:NO
                                  onConfirm:nil onCancel:nil];
                 }
@@ -1027,11 +1030,11 @@
         NSString *amLoaderVer = (neoforge.length > 0) ? neoforge : forge;
         __weak typeof(self) weakSelf = self;
         NSString *confirmBody = [NSString stringWithFormat:
-            @"游戏版本 %@\n加载器 %@ %@\n（离线安装器直装）",
+            localize(@"prisma.ui.minecraft.version.nloader.n.direct.installation", nil),
             self.gameVersion, amVendor, amLoaderVer];
-        [ZL2M3Dialog showTitle:@"确认安装"
+        [ZL2M3Dialog showTitle:localize(@"prisma.ui.confirm.installation", nil)
                           body:confirmBody
-                  confirmTitle:@"安装"
+                  confirmTitle:localize(@"i18n_str_904", nil)
                     destructive:NO
                      onConfirm:^{
             __strong typeof(weakSelf) s = weakSelf;
@@ -1049,9 +1052,9 @@
                 st.ame336Installing = NO;
                 [st ame_refreshInstallButton];
                 if (!success) {
-                    [ZL2M3Dialog showTitle:@"安装失败"
-                                      body:error.localizedDescription ?: @"安装器下载或解析失败，可重试。"
-                              confirmTitle:@"知道了"
+                    [ZL2M3Dialog showTitle:localize(@"i18n_str_918", nil)
+                                      body:error.localizedDescription ?: localize(@"prisma.ui.the.installer.could.not.be.downloaded.or.read.try.again", nil)
+                              confirmTitle:localize(@"i18n_str_197", nil)
                                 destructive:NO
                                  onConfirm:nil onCancel:nil];
                     return;
@@ -1068,10 +1071,10 @@
                     st.pendingOptiFineGameVersion = profileId ?: versionId;
                     [st ame_installOptiFinePatch];
                 } else {
-                    [ZL2M3Dialog showTitle:@"安装完成"
+                    [ZL2M3Dialog showTitle:localize(@"i18n_str_1270", nil)
                                       body:[NSString stringWithFormat:@"%@\n(%@ %@)",
                                             profileId ?: versionId, amVendor, amLoaderVer]
-                              confirmTitle:@"知道了"
+                              confirmTitle:localize(@"i18n_str_197", nil)
                                 destructive:NO
                                  onConfirm:nil onCancel:nil];
                 }
@@ -1096,9 +1099,9 @@
 
 - (void)ame_installVanilla:(NSString *)versionId {
     if (self.activeTask) {
-        [ZL2M3Dialog showTitle:@"任务进行中"
-                          body:@"有安装任务正在进行，请稍候。"
-                  confirmTitle:@"知道了"
+        [ZL2M3Dialog showTitle:localize(@"prisma.ui.installation.in.progress", nil)
+                          body:localize(@"prisma.ui.an.installation.is.already.running.please.wait", nil)
+                  confirmTitle:localize(@"i18n_str_197", nil)
                     destructive:NO
                      onConfirm:nil onCancel:nil];
         return;
@@ -1157,15 +1160,15 @@
     if (success) {
         // Task324：原版安装成功即时补齐隔离骨架（上方 profile 已写 gameDir=versions/<id>）
         [ModService ame324_ensureIsolationSkeletonsAll];
-        [ZL2M3Dialog showTitle:@"安装完成"
+        [ZL2M3Dialog showTitle:localize(@"i18n_str_1270", nil)
                           body:self.gameVersion
-                  confirmTitle:@"知道了"
+                  confirmTitle:localize(@"i18n_str_197", nil)
                     destructive:NO
                      onConfirm:nil onCancel:nil];
     } else {
-        [ZL2M3Dialog showTitle:@"安装失败"
-                          body:@"下载中断或网络异常，可重试安装。"
-                  confirmTitle:@"知道了"
+        [ZL2M3Dialog showTitle:localize(@"i18n_str_918", nil)
+                          body:localize(@"prisma.ui.the.download.was.interrupted.or.the.network.failed.try.the.installat", nil)
+                  confirmTitle:localize(@"i18n_str_197", nil)
                     destructive:NO
                      onConfirm:nil onCancel:nil];
     }
@@ -1188,8 +1191,18 @@
 
     // ① versionId：Forge 清单为复合形态 "<mc>-<v>"（ame185 过滤后仍复合），
     //    提取纯加载器段；NeoForge 清单为纯加载器版本号（"26.1.2"）。
+    NSCharacterSet *invalidVersionCharacters =
+        [[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-"] invertedSet];
+    if (gameVersion.length == 0 || versionString.length == 0 ||
+        [gameVersion rangeOfCharacterFromSet:invalidVersionCharacters].location != NSNotFound ||
+        [versionString rangeOfCharacterFromSet:invalidVersionCharacters].location != NSNotFound) {
+        safeCompletion(NO, nil, [NSError errorWithDomain:@"ZL2Addons" code:-1
+            userInfo:@{NSLocalizedDescriptionKey: localize(@"prisma.install.invalid.loader.version", nil)}]);
+        return;
+    }
+
     NSString *pureLoader = versionString;
-    NSString *compoundPrefix = [NSString stringWithFormat:@"%@-", gameVersion];
+    NSString *compoundPrefix = [gameVersion stringByAppendingString:@"-"];
     if ([pureLoader hasPrefix:compoundPrefix]) {
         pureLoader = [pureLoader substringFromIndex:compoundPrefix.length];
     }
@@ -1211,8 +1224,10 @@
                          versionString, versionString];
         }
     } else {
+        NSString *forgeCoordinate = [versionString hasPrefix:compoundPrefix]
+            ? versionString : [compoundPrefix stringByAppendingString:versionString];
         am337Path = [NSString stringWithFormat:@"net/minecraftforge/forge/%@/forge-%@-installer.jar",
-                     versionString, versionString];
+                     forgeCoordinate, forgeCoordinate];
     }
     NSString *ds = getPrefObject(@"general.download_source");
     BOOL am337BmclFirst = [ds isEqualToString:@"bmclapi"];
@@ -1226,6 +1241,11 @@
     }
     NSURL *am337Bmcl = [NSURL URLWithString:
         [NSString stringWithFormat:@"https://bmclapi2.bangbang93.com/maven/%@", am337Path]];
+    if (!am337Official || !am337Bmcl) {
+        safeCompletion(NO, nil, [NSError errorWithDomain:@"ZL2Addons" code:-1
+            userInfo:@{NSLocalizedDescriptionKey: localize(@"prisma.install.invalid.loader.version", nil)}]);
+        return;
+    }
     NSArray<NSURL *> *am337Cands = am337BmclFirst
         ? @[am337Bmcl, am337Official] : @[am337Official, am337Bmcl];
 
@@ -1240,7 +1260,7 @@
             am337TryNext = nil;
             safeCompletion(NO, nil, [NSError errorWithDomain:@"ZL2Addons" code:-1
                 userInfo:@{NSLocalizedDescriptionKey:
-                @"安装器下载失败：官方与镜像源均不可达，可切换下载源后重试。"}]);
+                localize(@"prisma.ui.the.official.and.mirror.sources.could.not.download.the.installer.swi", nil)}]);
             return;
         }
         NSURL *u = am337Cands[am337Idx];
@@ -1254,7 +1274,7 @@
                 return;
             }
             NSHTTPURLResponse *http = (NSHTTPURLResponse *)resp;
-            if ([http isKindOfClass:NSHTTPURLResponse.class] && http.statusCode >= 400) {
+            if (![http isKindOfClass:NSHTTPURLResponse.class] || http.statusCode < 200 || http.statusCode >= 300) {
                 NSLog(@"[ZL2Addons] Task337 installer download HTTP %ld (%@)",
                       (long)http.statusCode, u.host);
                 [[NSFileManager defaultManager] removeItemAtPath:location.path error:nil];
@@ -1266,6 +1286,7 @@
             [[NSFileManager defaultManager] moveItemAtURL:location
                                                     toURL:[NSURL fileURLWithPath:am337Dest]
                                                     error:&moveError];
+            am337TryNext = nil;
             if (moveError) {
                 safeCompletion(NO, nil, moveError);
                 return;
@@ -1302,9 +1323,9 @@
     }
     NSArray *parts = [packed componentsSeparatedByString:@"\x1f"];
     if (parts.count < 2) {
-        [ZL2M3Dialog showTitle:@"OptiFine 载荷异常"
-                          body:@"请刷新 OptiFine 清单后重试。"
-                  confirmTitle:@"知道了"
+        [ZL2M3Dialog showTitle:localize(@"prisma.ui.invalid.optifine.installer", nil)
+                          body:localize(@"prisma.ui.refresh.the.optifine.list.and.try.again", nil)
+                  confirmTitle:localize(@"i18n_str_197", nil)
                     destructive:NO
                      onConfirm:nil onCancel:nil];
         return;
@@ -1349,10 +1370,10 @@
         if (!jarData) {
             [[DownloadTaskManager sharedManager] updateTaskWithId:taskId stageAtIndex:kStageInstaller status:PLTaskStageStatusFailed];
             [[DownloadTaskManager sharedManager] setTaskWithId:taskId completedWithError:
-                [NSError errorWithDomain:@"OptiFineInstall" code:1 userInfo:@{NSLocalizedDescriptionKey: @"下载失败"}]];
+                [NSError errorWithDomain:@"OptiFineInstall" code:1 userInfo:@{NSLocalizedDescriptionKey: localize(@"i18n_str_448", nil)}]];
             dispatch_async(dispatch_get_main_queue(), ^{
-                [ZL2M3Dialog showTitle:@"安装失败" body:@"OptiFine 下载失败，请检查网络后重试。"
-                          confirmTitle:@"知道了" destructive:NO onConfirm:nil onCancel:nil];
+                [ZL2M3Dialog showTitle:localize(@"i18n_str_918", nil) body:localize(@"prisma.ui.optifine.could.not.be.downloaded.check.your.connection.and.try.again", nil)
+                          confirmTitle:localize(@"i18n_str_197", nil) destructive:NO onConfirm:nil onCancel:nil];
             });
             return;
         }
@@ -1410,11 +1431,11 @@
             [[DownloadTaskManager sharedManager] updateTaskWithId:taskId stageAtIndex:kStageInstall status:PLTaskStageStatusFailed];
             [[DownloadTaskManager sharedManager] setTaskWithId:taskId completedWithError:
                 [NSError errorWithDomain:@"OptiFineInstall" code:3 userInfo:@{NSLocalizedDescriptionKey:
-                    [NSString stringWithFormat:@"父版本 %@ 不存在，请先安装原版。", gameVersion]}]];
+                    [NSString stringWithFormat:localize(@"prisma.ui.base.version.is.missing.install.vanilla.minecraft.first", nil), gameVersion]}]];
             dispatch_async(dispatch_get_main_queue(), ^{
-                [ZL2M3Dialog showTitle:@"安装失败"
-                                  body:[NSString stringWithFormat:@"父版本 %@ 不存在，请先安装原版。", gameVersion]
-                          confirmTitle:@"知道了" destructive:NO
+                [ZL2M3Dialog showTitle:localize(@"i18n_str_918", nil)
+                                  body:[NSString stringWithFormat:localize(@"prisma.ui.base.version.is.missing.install.vanilla.minecraft.first", nil), gameVersion]
+                          confirmTitle:localize(@"i18n_str_197", nil) destructive:NO
                            onConfirm:nil onCancel:nil];
             });
             return;
@@ -1438,9 +1459,9 @@
             s.pendingOptiFineAfterForge = nil;
             [[NSNotificationCenter defaultCenter]
                 postNotificationName:@"ReloadProfileList" object:nil];
-            [ZL2M3Dialog showTitle:@"安装完成"
+            [ZL2M3Dialog showTitle:localize(@"i18n_str_1270", nil)
                               body:currentVersionId
-                      confirmTitle:@"知道了"
+                      confirmTitle:localize(@"i18n_str_197", nil)
                         destructive:NO
                          onConfirm:nil onCancel:nil];
         });
@@ -1532,7 +1553,7 @@
     _clearButton = [[UIControl alloc] init];
     _clearButton.translatesAutoresizingMaskIntoConstraints = NO;
     _clearButton.isAccessibilityElement = YES;
-    _clearButton.accessibilityLabel = [NSString stringWithFormat:@"清除%@选择", self.title];
+    _clearButton.accessibilityLabel = [NSString stringWithFormat:localize(@"prisma.ui.clear.selection", nil), self.title];
     [_clearButton addTarget:self
                      action:@selector(ame_clearTapped)
            forControlEvents:UIControlEventTouchUpInside];
@@ -1548,7 +1569,7 @@
     _reloadButton = [[UIControl alloc] init];
     _reloadButton.translatesAutoresizingMaskIntoConstraints = NO;
     _reloadButton.isAccessibilityElement = YES;
-    _reloadButton.accessibilityLabel = [NSString stringWithFormat:@"刷新%@清单", self.title];
+    _reloadButton.accessibilityLabel = [NSString stringWithFormat:localize(@"prisma.ui.refresh.list", nil), self.title];
     [_reloadButton addTarget:self
                       action:@selector(ame_reloadTapped)
             forControlEvents:UIControlEventTouchUpInside];
@@ -1605,7 +1626,7 @@
     [_cardView addSubview:_spinner];
 
     _failedLabel = [[UILabel alloc] init];
-    _failedLabel.text = @"清单加载失败，点刷新重试";
+    _failedLabel.text = localize(@"prisma.ui.could.not.load.the.list.tap.refresh.to.try.again", nil);
     _failedLabel.font = [ZL2Theme fontBodyMedium];
     _failedLabel.textColor = [ZL2Theme error];
     _failedLabel.numberOfLines = 1;
@@ -1681,7 +1702,7 @@
 }
 
 - (void)ame_refreshAppearance {
-    _valueLabel.text = self.selectedItem.length > 0 ? self.selectedItem : @"未选择";
+    _valueLabel.text = self.selectedItem.length > 0 ? self.selectedItem : localize(@"i18n_str_864", nil);
 
     BOOL hasItems = self.items.count > 0;
     _clearButton.hidden = (self.selectedItem.length == 0);

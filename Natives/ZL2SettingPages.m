@@ -320,8 +320,8 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingRowList *rendererRow =
         [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                  options:rendererNames optionKeys:rendererKeys];
-    rendererRow.title = @"渲染器（全局默认）";
-    rendererRow.subtitle = @"各实例可在版本设置的实例页单独覆盖";
+    rendererRow.title = localize(@"prisma.ui.renderer.global.default", nil);
+    rendererRow.subtitle = localize(@"prisma.ui.individual.instances.can.override.this.in.version.settings", nil);
     [rendererRow ame_reloadSelectedIndex:currentIdx];
     rendererRow.onSelect = ^(NSInteger index) {
         if (index < 0 || (NSUInteger)index >= rendererKeys.count) return;
@@ -335,8 +335,8 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingRowSlider *resolutionRow =
         [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
                                    minimum:25 maximum:150 suffix:@"%"];
-    resolutionRow.title = @"分辨率缩放";
-    resolutionRow.subtitle = @"渲染分辨率百分比（各实例可单独覆盖）";
+    resolutionRow.title = localize(@"preference.profile.title.resolution_scale", nil);
+    resolutionRow.subtitle = localize(@"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance", nil);
     [resolutionRow ame_setValue:resolution];
     resolutionRow.onValueChanged = ^(NSInteger value) {
         setPrefFloat(@"video.resolution", (float)value);
@@ -348,8 +348,8 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     BOOL fullscreenOn = fullscreenRaw ? [fullscreenRaw boolValue] : YES;
     ZL2SettingRowSwitch *fullscreenRow =
         [[ZL2SettingRowSwitch alloc] initWithTitle:@"" subtitle:nil];
-    fullscreenRow.title = @"全屏输出（外接显示器）";
-    fullscreenRow.subtitle = @"连接外接屏幕时以全屏显示游戏画面";
+    fullscreenRow.title = localize(@"prisma.ui.full.screen.output.external.display", nil);
+    fullscreenRow.subtitle = localize(@"prisma.ui.display.minecraft.full.screen.on.a.connected.external.display", nil);
     [fullscreenRow ame_setOn:fullscreenOn];
     fullscreenRow.onToggle = ^(BOOL on) {
         setPrefBool(@"video.fullscreen_airplay", on);
@@ -365,7 +365,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     // FSR 档位（video.fsr1_setting，0-4 五档；Task78 补齐 Performance 档）
     NSArray<NSString *> *fsrKeys = @[@"0", @"1", @"2", @"3", @"4"];
     NSArray<NSString *> *fsrNames = @[
-        localize(@"preference.title.mg_fsr1_setting-0", nil),
+        localize(@"prisma.ui.close", nil),
         localize(@"preference.title.mg_fsr1_setting-1", nil),
         localize(@"preference.title.mg_fsr1_setting-2", nil),
         localize(@"preference.title.mg_fsr1_setting-3", nil),
@@ -572,10 +572,10 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingCardGroup *group2 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    moreRow.title = @"更多视频与图形设置";
-    moreRow.subtitle = @"FSR 档位、MobileGlues、音频等完整分区";
+    moreRow.title = localize(@"prisma.ui.more.video.and.graphics.settings", nil);
+    moreRow.subtitle = localize(@"prisma.ui.fsr.mobileglues.audio.and.other.options", nil);
     moreRow.onTap = ^{
-        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:@"更多设置"];
+        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:localize(@"prisma.ui.more.settings", nil)];
     };
     [group2 ame_addRow:moreRow];
     [self ame_addGroup:group2];
@@ -619,9 +619,9 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingRowSlider *memoryRow =
         [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
                                    minimum:256 maximum:memoryCap suffix:@"MB"];
-    memoryRow.title = @"内存分配";
+    memoryRow.title = localize(@"i18n_str_2037", nil);
     memoryRow.subtitle = [NSString stringWithFormat:
-        @"当前实例「%@」的 JVM 堆上限（MB）", profileName];
+        localize(@"prisma.ui.maximum.jvm.heap.for.instance.mb", nil), profileName];
     [memoryRow ame_setValue:memory];
     memoryRow.onValueChanged = ^(NSInteger value) {
         // 与 ProfileSettings.saveSettings 同一写路径：实例字典 + save
@@ -643,7 +643,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingRowEnum *presetRow =
         [[ZL2SettingRowEnum alloc] initWithTitle:@"" subtitle:nil options:presetNames];
     presetRow.title = localize(@"preference.title.jvm_preset", nil);
-    presetRow.subtitle = @"GC 策略档位（实例覆写 → 全局 → normal）";
+    presetRow.subtitle = localize(@"prisma.ui.garbage.collection.preset.instance.override.global.setting.then.norm", nil);
     NSString *preset = ame_pages_stringOr(getPrefObject(@"java.jvm_preset"), @"normal");
     [presetRow ame_reloadSelectedIndex:(NSInteger)[presetKeys indexOfObject:preset]];
     presetRow.onSelect = ^(NSInteger index) {
@@ -658,7 +658,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
                               placeholder:@"-XX:+UseZGC …"
                                      text:ame_pages_stringOr(getPrefObject(@"java.jvm_preset_custom_args"), @"")];
     customArgsRow.title = localize(@"preference.title.jvm_preset_custom_args", nil);
-    customArgsRow.subtitle = @"预设选「自定义」时注入";
+    customArgsRow.subtitle = localize(@"prisma.ui.applied.when.the.custom.preset.is.selected", nil);
     customArgsRow.onTextChanged = ^(NSString *text) {
         setPrefString(@"java.jvm_preset_custom_args", text);
     };
@@ -670,7 +670,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
                               placeholder:nil
                                      text:ame_pages_stringOr(getPrefObject(@"java.java_args"), @"")];
     javaArgsRow.title = localize(@"preference.title.java_args", nil);
-    javaArgsRow.subtitle = @"附加到启动命令（留空使用默认）";
+    javaArgsRow.subtitle = localize(@"prisma.ui.appended.to.the.launch.command.leave.blank.to.use.the.default", nil);
     javaArgsRow.onTextChanged = ^(NSString *text) {
         setPrefString(@"java.java_args", text);
     };
@@ -685,8 +685,8 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     // 重算应用，LauncherPreferences 既有契约；重启后完全生效）
     ZL2SettingRowSwitch *isolationRow =
         [[ZL2SettingRowSwitch alloc] initWithTitle:@"" subtitle:nil];
-    isolationRow.title = @"版本隔离";
-    isolationRow.subtitle = @"当前游戏目录使用独立偏好集（重启启动器后完全生效）";
+    isolationRow.title = localize(@"profile.isolation.title", nil);
+    isolationRow.subtitle = localize(@"prisma.ui.use.separate.preferences.for.the.current.game.directory.restart.the", nil);
     [isolationRow ame_setOn:getPrefBool(@"internal.isolated")];
     isolationRow.onToggle = ^(BOOL on) {
         [weakSelf ame_writeInstanceIsolation:on];
@@ -757,7 +757,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
         UIAlertController *alert = [UIAlertController
             alertControllerWithTitle:localize(@"mem_help.title", @"关于内存限制")
                              message:localize(@"mem_help.message",
-                                 @"·扩展内存限制权限，使用GetMoreRAM开启\n"
+                                 localize(@"prisma.ui.enable.the.extended.memory.entitlement.with.getmoreram.n", nil)
                                   "让iOS为启动器分配更多内存空间，通常能分配6GB内存\n\n"
                                   "·扩展虚拟内存权限，开启方式见下\n"
                                   "让iOS为启动器分配更多内存寻址，通常能分配7GB内存并提升稳定性\n\n"
@@ -781,10 +781,10 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingCardGroup *group3 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    moreRow.title = @"更多游戏设置";
-    moreRow.subtitle = @"Java 版本、环境变量、调试等完整分区";
+    moreRow.title = localize(@"prisma.ui.more.game.settings", nil);
+    moreRow.subtitle = localize(@"prisma.ui.java.versions.environment.variables.debugging.and.other.options", nil);
     moreRow.onTap = ^{
-        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:@"更多设置"];
+        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:localize(@"prisma.ui.more.settings", nil)];
     };
     [group3 ame_addRow:moreRow];
     [self ame_addGroup:group3];
@@ -845,7 +845,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
         [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                  options:modeNames optionKeys:@[@"0", @"1", @"2"]];
     modeRow.title = localize(@"preference.touchcontroller.mode.title", nil);
-    modeRow.subtitle = @"TouchController 模组与启动器的通信通道";
+    modeRow.subtitle = localize(@"prisma.ui.communication.channel.between.the.touchcontroller.mod.and.the.launch", nil);
     // 有效态 = mod_touch_enable && mod_touch_mode（旧页同口径）
     BOOL enabled = getPrefBool(@"control.mod_touch_enable");
     NSInteger mode = getPrefInt(@"control.mod_touch_mode");
@@ -911,7 +911,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingRowAction *editorRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     editorRow.title = localize(@"preference.title.custom_controls", nil);
-    editorRow.subtitle = @"全屏画布编辑器（添加/拖动/缩放控件）";
+    editorRow.subtitle = localize(@"prisma.ui.full.screen.editor.for.adding.dragging.and.resizing.controls", nil);
     editorRow.onTap = ^{
         CustomControlsViewController *editor = [[CustomControlsViewController alloc] init];
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:editor];
@@ -1124,10 +1124,10 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     ZL2SettingCardGroup *group2 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *fullRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    fullRow.title = @"完整触控设置";
-    fullRow.subtitle = @"通信模式说明、关于 TouchController";
+    fullRow.title = localize(@"prisma.ui.all.touch.settings", nil);
+    fullRow.subtitle = localize(@"prisma.ui.communication.modes.and.information.about.touchcontroller", nil);
     fullRow.onTap = ^{
-        [weakSelf ame_push:[[TouchControllerPreferencesViewController alloc] init] titled:@"触控设置"];
+        [weakSelf ame_push:[[TouchControllerPreferencesViewController alloc] init] titled:localize(@"prisma.ui.touch.settings", nil)];
     };
     [group2 ame_addRow:fullRow];
     [self ame_addGroup:group2];
@@ -1443,8 +1443,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey,id> *
     ];
     ZL2SettingRowEnum *typeRow =
         [[ZL2SettingRowEnum alloc] initWithTitle:@"" subtitle:nil options:typeNames];
-    typeRow.title = @"手柄类型";
-    typeRow.subtitle = @"面键图标风格；选任天堂即交换 A/B、X/Y 键面（Switch 布局）";
+    typeRow.title = localize(@"controller_configurator.section.controller_style", nil);
+    typeRow.subtitle = localize(@"prisma.ui.face.button.icons.nintendo.swaps.a.b.and.x.y.to.match.the.switch.lay", nil);
     NSString *type = ame_pages_stringOr(getPrefObject(@"control.controller_type"), @"xbox");
     [typeRow ame_reloadSelectedIndex:(NSInteger)[typeKeys indexOfObject:type]];
     typeRow.onSelect = ^(NSInteger index) {
@@ -1458,7 +1458,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey,id> *
     ZL2SettingRowAction *mappingRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     mappingRow.title = localize(@"preference.title.default_gamepad_ctrl", nil);
-    mappingRow.subtitle = @"编辑当前映射文件（按键 → 键位）";
+    mappingRow.subtitle = localize(@"prisma.ui.edit.the.current.button.to.key.mapping.file", nil);
     mappingRow.onTap = ^{
         [weakSelf ame_push:[[LauncherPrefContCfgViewController alloc] init]
                    titled:localize(@"preference.title.default_gamepad_ctrl", nil)];
@@ -1470,8 +1470,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey,id> *
     ZL2SettingRowSlider *scrollRow =
         [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
                                    minimum:25 maximum:300 suffix:@"%"];
-    scrollRow.title = @"模拟滚轮速度";
-    scrollRow.subtitle = @"滚动按钮/手柄滚轮键的滚动速度（真滚轮不受影响）";
+    scrollRow.title = localize(@"prisma.ui.simulated.scroll.speed", nil);
+    scrollRow.subtitle = localize(@"prisma.ui.scroll.speed.for.on.screen.and.gamepad.buttons.physical.scroll.wheel", nil);
     scrollRow.onValueChanged = ^(NSInteger value) {
         setPrefFloat(@"control.scroll_speed", (float)value);
     };
@@ -1485,10 +1485,10 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey,id> *
     ZL2SettingCardGroup *group2 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    moreRow.title = @"更多控制与手柄设置";
-    moreRow.subtitle = @"键位调整、自定义鼠标、陀螺仪等完整分区";
+    moreRow.title = localize(@"prisma.ui.more.controls.and.gamepad.settings", nil);
+    moreRow.subtitle = localize(@"prisma.ui.key.bindings.custom.mouse.gyroscope.and.other.options", nil);
     moreRow.onTap = ^{
-        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:@"更多设置"];
+        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:localize(@"prisma.ui.more.settings", nil)];
     };
     [group2 ame_addRow:moreRow];
     [self ame_addGroup:group2];
@@ -1553,8 +1553,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSString *report = [FileLayoutService ame316_importExternalLauncherFolder:urls[0] error:nil];
         dispatch_async(dispatch_get_main_queue(), ^{
-            NSString *body = report ?: @"导入失败：无法读取所选文件夹（安全作用域被拒或路径无效）。";
-            [ZL2M3Dialog showTitle:@"导入结果"
+            NSString *body = report ?: localize(@"prisma.ui.import.failed.the.selected.folder.is.inaccessible.or.its.path.is.inv", nil);
+            [ZL2M3Dialog showTitle:localize(@"prisma.ui.import.results", nil)
                               body:body
                       confirmTitle:localize(@"OK", nil)
                        destructive:NO
@@ -1642,7 +1642,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                  options:langNames optionKeys:langCodes];
     languageRow.title = localize(@"i18n_str_2068", nil);
-    languageRow.subtitle = @"切换后界面立即重载（未翻译语言回退并标记）";
+    languageRow.subtitle = localize(@"prisma.ui.reload.the.interface.when.the.language.changes", nil);
     NSString *language = ame_pages_stringOr(getPrefObject(@"general.app_language"), @"system");
     [languageRow ame_reloadSelectedIndex:(NSInteger)[langCodes indexOfObject:language]];
     languageRow.onSelect = ^(NSInteger index) {
@@ -1663,7 +1663,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                  options:effectNames
                               optionKeys:@[@"blur", @"translucent"]];
-    effectRow.title = @"界面效果";
+    effectRow.title = localize(@"prisma.ui.interface.effects", nil);
     effectRow.subtitle = localize(@"background.effect.footer", nil);
     [effectRow ame_reloadSelectedIndex:(bg.uiEffect == BackgroundUIEffectBlur ? 0 : 1)];
     effectRow.onSelect = ^(NSInteger index) {
@@ -1678,7 +1678,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowSlider *opacityRow =
         [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
                                    minimum:10 maximum:100 suffix:@"%"];
-    opacityRow.title = @"背景不透明度";
+    opacityRow.title = localize(@"prisma.ui.background.opacity", nil);
     [opacityRow ame_setValue:(NSInteger)round(bg.uiOpacity * 100.0)];
     opacityRow.onValueChanged = ^(NSInteger value) {
         [BackgroundManager sharedManager].uiOpacity = value / 100.0;
@@ -1690,7 +1690,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowSlider *blurRow =
         [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
                                    minimum:0 maximum:100 suffix:@"%"];
-    blurRow.title = @"背景模糊强度";
+    blurRow.title = localize(@"prisma.ui.background.blur", nil);
     [blurRow ame_setValue:(NSInteger)round(bg.blurIntensity * 100.0)];
     blurRow.onValueChanged = ^(NSInteger value) {
         // setter 内部落 Task256 blurUserSet 标记（模糊=0 为真实意图）
@@ -1799,7 +1799,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *resetColorsRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     resetColorsRow.title = localize(@"i18n_str_386", nil);
-    resetColorsRow.subtitle = @"恢复强调色/文字色/卡片色出厂默认";
+    resetColorsRow.subtitle = localize(@"prisma.ui.restore.default.accent.text.and.card.colors", nil);
     resetColorsRow.onTap = ^{
         setPrefObject(@"general.accent_color", @"");
         setPrefObject(@"general.text_color", @"");
@@ -1850,11 +1850,11 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         localize(@"preference.title.mirror_policy-speed_first", nil),
     ];
     NSDictionary<NSString *, NSString *> *sourceTitles = @{
-        @"download.mod_mirror":           @"模组镜像源",
-        @"download.fileSource":          @"文件下载源",
-        @"download.assetSearchSource":   @"资源搜索源",
-        @"download.assetDownloadSource": @"资源下载源",
-        @"download.modLoaderSource":     @"加载器下载源",
+        @"download.mod_mirror":           localize(@"preference.title.mod_mirror", nil),
+        @"download.fileSource":          localize(@"preference.title.fileSource", nil),
+        @"download.assetSearchSource":   localize(@"preference.title.assetSearchSource", nil),
+        @"download.assetDownloadSource": localize(@"preference.title.assetDownloadSource", nil),
+        @"download.modLoaderSource":     localize(@"prisma.ui.mod.loader.download.source", nil),
     };
     NSMutableArray<ZL2SettingRowList *> *sourceRows = [NSMutableArray array];
     NSMutableArray<NSString *> *sourceRowKeys = [NSMutableArray array];
@@ -1987,7 +1987,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *eraseDemoRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     eraseDemoRow.title = localize(@"preference.title.erase_demo_data", nil);
-    eraseDemoRow.subtitle = @"删除内置演示账户的全部游戏数据";
+    eraseDemoRow.subtitle = localize(@"prisma.ui.delete.all.game.data.for.the.built.in.demo.account", nil);
     eraseDemoRow.errorState = YES;
     eraseDemoRow.onTap = ^{
         NSString *demoPath = [NSString stringWithFormat:@"%s/.demo", getenv("POJAV_HOME")];
@@ -2011,14 +2011,14 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *resetWarnRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     resetWarnRow.title = localize(@"preference.title.reset_warnings", nil);
-    resetWarnRow.subtitle = @"重新显示此前永久关闭的安全提示";
+    resetWarnRow.subtitle = localize(@"prisma.ui.show.previously.dismissed.safety.prompts.again", nil);
     resetWarnRow.onTap = ^{
         resetWarnings();
     };
     ZL2SettingRowAction *resetSetRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     resetSetRow.title = localize(@"preference.title.reset_settings", nil);
-    resetSetRow.subtitle = @"所有自定义首选项恢复出厂";
+    resetSetRow.subtitle = localize(@"prisma.ui.restore.all.custom.preferences.to.their.defaults", nil);
     resetSetRow.errorState = YES;
     resetSetRow.onTap = ^{
         [ZL2M3Dialog showTitle:localize(@"preference.title.reset_settings", nil)
@@ -2038,37 +2038,37 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingCardGroup *group3 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *backgroundRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    backgroundRow.title = @"背景设置";
+    backgroundRow.title = localize(@"prisma.ui.background.settings", nil);
     backgroundRow.onTap = ^{
-        [weakSelf ame_push:[[BackgroundSettingsViewController alloc] init] titled:@"背景设置"];
+        [weakSelf ame_push:[[BackgroundSettingsViewController alloc] init] titled:localize(@"prisma.ui.background.settings", nil)];
     };
     ZL2SettingRowAction *galleryRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    galleryRow.title = @"壁纸画廊";
+    galleryRow.title = localize(@"prisma.ui.wallpaper.gallery", nil);
     galleryRow.onTap = ^{
         // 工厂方法返回按设备宽度预配置网格布局的 UICollectionViewController
-        [weakSelf ame_push:[BingWallpaperGalleryViewController galleryController] titled:@"壁纸画廊"];
+        [weakSelf ame_push:[BingWallpaperGalleryViewController galleryController] titled:localize(@"prisma.ui.wallpaper.gallery", nil)];
     };
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    moreRow.title = @"更多启动器设置";
-    moreRow.subtitle = @"界面缩放、强调色、公告、数据导出等完整分区";
+    moreRow.title = localize(@"prisma.ui.more.launcher.settings", nil);
+    moreRow.subtitle = localize(@"prisma.ui.interface.scale.accent.colors.announcements.data.export.and.other.op", nil);
     moreRow.onTap = ^{
-        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:@"更多设置"];
+        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:localize(@"prisma.ui.more.settings", nil)];
     };
     // Task316（文件层桌面/安卓同构）：游戏目录/实例切换入口 + 跨启动器导入
     ZL2SettingRowAction *gameDirRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    gameDirRow.title = @"游戏目录与实例";
-    gameDirRow.subtitle = @"查看/切换实例目录（instances），切换后重启生效";
+    gameDirRow.title = localize(@"prisma.ui.game.directory.and.instances", nil);
+    gameDirRow.subtitle = localize(@"prisma.ui.view.or.change.the.instances.directory.restart.the.launcher.to.apply", nil);
     gameDirRow.onTap = ^{
         [weakSelf ame_push:[[LauncherPrefGameDirViewController alloc] init]
                    titled:localize(@"preference.title.game_directory", nil)];
     };
     ZL2SettingRowAction *importRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    importRow.title = @"导入外部启动器数据";
-    importRow.subtitle = @"识别 .minecraft / HMCL·PCL / MultiMC·Prism / 安卓启动器目录，合入当前实例";
+    importRow.title = localize(@"prisma.ui.import.data.from.another.launcher", nil);
+    importRow.subtitle = localize(@"prisma.ui.import.a.minecraft.hmcl.pcl.multimc.prism.or.android.launcher.direct", nil);
     importRow.onTap = ^{
         [weakSelf ame316_pickExternalFolder];
     };
@@ -2327,7 +2327,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
             [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                      options:optionNames optionKeys:optionKeys];
         row.title = tagDef[@"title"];
-        row.subtitle = @"未安装匹配运行时时启动链自动回退";
+        row.subtitle = localize(@"prisma.ui.use.the.default.runtime.when.no.matching.java.version.is.installed", nil);
         NSString *picked = defaultPicks[tag];
         [row ame_reloadSelectedIndex:
             picked ? (NSInteger)[optionKeys indexOfObject:picked] : 0];
@@ -2356,20 +2356,20 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         // 空态明确显示（不造假列表）
         ZL2SettingRowAction *emptyRow =
             [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-        emptyRow.title = @"未发现已安装的 Java 运行时";
-        emptyRow.subtitle = @"内置运行时随启动器分发；可用「完整 Java 管理」导入";
+        emptyRow.title = localize(@"prisma.ui.no.java.runtimes.found", nil);
+        emptyRow.subtitle = localize(@"prisma.ui.the.launcher.includes.a.runtime.use.all.java.settings.to.import.anot", nil);
         [group2 ame_addRow:emptyRow];
     } else {
         for (NSDictionary *runtime in runtimes) {
             NSString *title = [runtime[@"internal"] boolValue]
-                ? [NSString stringWithFormat:@"%@（内置）", runtime[@"name"]]
+                ? [NSString stringWithFormat:localize(@"prisma.ui.built.in.2", nil), runtime[@"name"]]
                 : runtime[@"name"];
             ZL2SettingRowAction *row =
                 [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
             row.title = title;
             row.subtitle = [NSString stringWithFormat:@"Java %@ · %@",
                                 runtime[@"version"],
-                                [runtime[@"internal"] boolValue] ? @"内置" : @"外部安装"];
+                                [runtime[@"internal"] boolValue] ? localize(@"prisma.ui.built.in", nil) : localize(@"prisma.ui.external", nil)];
             [group2 ame_addRow:row];
         }
     }
@@ -2380,14 +2380,14 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *runJarRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     runJarRow.title = localize(@"launcher.menu.execute_jar", nil);
-    runJarRow.subtitle = @"选择 Jar 后经守卫链全屏运行";
+    runJarRow.subtitle = localize(@"prisma.ui.choose.a.jar.file.to.run.full.screen", nil);
     runJarRow.onTap = ^{
         [weakSelf ame_pickJarFile];
     };
     ZL2SettingRowAction *manageRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    manageRow.title = @"完整 Java 管理";
-    manageRow.subtitle = @"导入 / 删除运行时、调整分区预选";
+    manageRow.title = localize(@"prisma.ui.all.java.settings", nil);
+    manageRow.subtitle = localize(@"prisma.ui.import.or.remove.runtimes.and.manage.version.defaults", nil);
     manageRow.onTap = ^{
         [weakSelf ame_push:[[LauncherPrefManageJREViewController alloc] init]
                    titled:localize(@"preference.title.manage_runtime", nil)];
@@ -2532,16 +2532,16 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         // 空态明确显示（controlmap 目录缺失/为空）
         ZL2SettingRowAction *emptyRow =
             [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-        emptyRow.title = @"未找到控制布局文件";
-        emptyRow.subtitle = @"可从「控件仓库」下载，或用「键位调整」创建";
+        emptyRow.title = localize(@"prisma.ui.no.control.layouts.found", nil);
+        emptyRow.subtitle = localize(@"prisma.ui.download.a.layout.from.the.control.repository.or.create.one.in.key.b", nil);
         [group1 ame_addRow:emptyRow];
     } else {
         NSString *current = ame_pages_stringOr(getPrefObject(@"control.default_ctrl"), @"custom.json");
         ZL2SettingRowList *layoutRow =
             [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                      options:layouts optionKeys:layouts];
-        layoutRow.title = @"当前布局";
-        layoutRow.subtitle = @"游戏内屏幕控件布局（controlmap 目录）";
+        layoutRow.title = localize(@"prisma.ui.current.layout", nil);
+        layoutRow.subtitle = localize(@"prisma.ui.in.game.touch.layout.in.the.controlmap.directory", nil);
         NSInteger idx = (NSInteger)[layouts indexOfObject:current];
         [layoutRow ame_reloadSelectedIndex:(idx >= 0 ? idx : 0)];
         layoutRow.onSelect = ^(NSInteger index) {
@@ -2560,8 +2560,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (gamepads.count == 0) {
         ZL2SettingRowAction *gpEmptyRow =
             [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-        gpEmptyRow.title = @"未找到手柄映射文件";
-        gpEmptyRow.subtitle = @"可从「手柄仓库」下载（内建默认同源备份）";
+        gpEmptyRow.title = localize(@"prisma.ui.no.gamepad.mappings.found", nil);
+        gpEmptyRow.subtitle = localize(@"prisma.ui.download.a.mapping.from.the.gamepad.repository.which.also.hosts.the", nil);
         gpEmptyRow.onTap = ^{
             ControlRepoViewController *repo = [[ControlRepoViewController alloc] init];
             repo.initialCategoryIndex = 2;  // 直达手柄分类
@@ -2573,8 +2573,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         ZL2SettingRowList *gpRow =
             [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                      options:gamepads optionKeys:gamepads];
-        gpRow.title = @"当前手柄映射";
-        gpRow.subtitle = @"手柄键码映射（controlmap/gamepads 目录）";
+        gpRow.title = localize(@"prisma.ui.current.gamepad.mapping", nil);
+        gpRow.subtitle = localize(@"prisma.ui.gamepad.key.mappings.in.the.controlmap.gamepads.directory", nil);
         NSInteger gpIdx = currentGp ? (NSInteger)[gamepads indexOfObject:currentGp] : -1;
         [gpRow ame_reloadSelectedIndex:(gpIdx >= 0 ? gpIdx : 0)];
         gpRow.onSelect = ^(NSInteger index) {
@@ -2585,8 +2585,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     }
     ZL2SettingRowAction *gpRepoRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    gpRepoRow.title = @"手柄仓库";
-    gpRepoRow.subtitle = @"官方精选/社区手柄映射下载（装完即用）";
+    gpRepoRow.title = localize(@"prisma.ui.gamepad.repository", nil);
+    gpRepoRow.subtitle = localize(@"prisma.ui.download.curated.and.community.gamepad.mappings.ready.to.use", nil);
     gpRepoRow.onTap = ^{
         ControlRepoViewController *repo = [[ControlRepoViewController alloc] init];
         repo.initialCategoryIndex = 2;  // 直达手柄分类
@@ -2600,7 +2600,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *editorRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     editorRow.title = localize(@"preference.title.custom_controls", nil);
-    editorRow.subtitle = @"全屏画布编辑器（添加/拖动/缩放控件）";
+    editorRow.subtitle = localize(@"prisma.ui.full.screen.editor.for.adding.dragging.and.resizing.controls", nil);
     editorRow.onTap = ^{
         // 旧设置页 openChildPaneAtIndexPath custom_controls 同款：nav 模态
         //（画布编辑器专用，非 push；页内自带关闭钮）
@@ -2611,18 +2611,18 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     };
     ZL2SettingRowAction *repoRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    repoRow.title = @"控件仓库";
-    repoRow.subtitle = @"浏览与下载社区控制布局";
+    repoRow.title = localize(@"custom_controls.control_menu.repo", nil);
+    repoRow.subtitle = localize(@"prisma.ui.browse.and.download.community.control.layouts", nil);
     repoRow.onTap = ^{
-        [weakSelf ame_push:[[ControlRepoViewController alloc] init] titled:@"控件仓库"];
+        [weakSelf ame_push:[[ControlRepoViewController alloc] init] titled:localize(@"custom_controls.control_menu.repo", nil)];
     };
     ZL2SettingRowAction *resetRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    resetRow.title = @"恢复默认布局";
-    resetRow.subtitle = @"写回出厂布局 custom.json（Task77 口径）";
+    resetRow.title = localize(@"prisma.ui.restore.default.layout", nil);
+    resetRow.subtitle = localize(@"prisma.ui.restore.the.factory.custom.json.layout", nil);
     resetRow.onTap = ^{
-        [ZL2M3Dialog showTitle:@"恢复默认布局"
-                          body:@"将当前控制布局重置为出厂布局 custom.json，下次进入游戏生效。"
+        [ZL2M3Dialog showTitle:localize(@"prisma.ui.restore.default.layout", nil)
+                          body:localize(@"prisma.ui.reset.the.current.control.layout.to.the.factory.default.this.takes.e", nil)
                   confirmTitle:localize(@"OK", nil)
                    destructive:YES
                     onConfirm:^{
@@ -2637,10 +2637,10 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingCardGroup *group3 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    moreRow.title = @"更多控制设置";
-    moreRow.subtitle = @"手柄配置、虚拟鼠标、陀螺仪等完整分区";
+    moreRow.title = localize(@"prisma.ui.more.control.settings", nil);
+    moreRow.subtitle = localize(@"prisma.ui.gamepad.configuration.virtual.mouse.gyroscope.and.other.options", nil);
     moreRow.onTap = ^{
-        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:@"更多设置"];
+        [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:localize(@"prisma.ui.more.settings", nil)];
     };
     [group3 ame_addRow:moreRow];
     [self ame_addGroup:group3];
@@ -2701,11 +2701,11 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSString *build = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"] ?: version;
     ZL2SettingRowAction *versionRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    versionRow.title = @"版本号";
+    versionRow.title = localize(@"prisma.ui.version.number", nil);
     versionRow.detailText = version;
     ZL2SettingRowAction *buildRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    buildRow.title = @"构建号";
+    buildRow.title = localize(@"prisma.ui.build.number", nil);
     buildRow.detailText = build;
 
     // 启动时自动检查更新（general.auto_update_check；Task125 语义）
@@ -2722,7 +2722,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *checkRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     checkRow.title = localize(@"preference.title.check_update", nil);
-    checkRow.subtitle = @"GitHub Releases 正式版检查";
+    checkRow.subtitle = localize(@"prisma.ui.check.github.releases.for.updates", nil);
     checkRow.onTap = ^{
         [weakSelf ame_checkForUpdate];
     };
@@ -2734,7 +2734,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingCardGroup *group2 = [[ZL2SettingCardGroup alloc] init];
     ZL2SettingRowAction *projectRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    projectRow.title = @"项目主页";
+    projectRow.title = localize(@"prisma.ui.project.homepage", nil);
     projectRow.subtitle = @"https://github.com/Gsjsjzhznsz/Prisma-Minecraft-iOS-Launcher";
     projectRow.onTap = ^{
         [weakSelf ame_openURL:[NSURL URLWithString:
@@ -2751,8 +2751,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     };
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    moreRow.title = @"更多关于信息";
-    moreRow.subtitle = @"致谢、许可证、支持我们";
+    moreRow.title = localize(@"prisma.ui.more.about.prisma", nil);
+    moreRow.subtitle = localize(@"prisma.ui.acknowledgments.licenses.and.ways.to.support.us", nil);
     moreRow.onTap = ^{
         [weakSelf ame_push:[[AboutViewController alloc] init]
                    titled:localize(@"about.nav_title", nil)];
@@ -2853,7 +2853,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *providerRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     providerRow.title = localize(@"preference.title.provider_config", nil);
-    providerRow.subtitle = @"配置 API 地址与密钥（OpenAI 兼容协议）";
+    providerRow.subtitle = localize(@"prisma.ui.configure.an.openai.compatible.api.endpoint.and.key", nil);
     providerRow.onTap = ^{
         AIProviderConfigViewController *vc = [[AIProviderConfigViewController alloc] init];
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
@@ -2863,7 +2863,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *sessionRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     sessionRow.title = localize(@"preference.title.session_list", nil);
-    sessionRow.subtitle = @"查看与继续历史 AI 对话";
+    sessionRow.subtitle = localize(@"prisma.ui.view.and.continue.previous.ai.chats", nil);
     sessionRow.onTap = ^{
         AISessionListViewController *vc = [[AISessionListViewController alloc] init];
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
@@ -2874,7 +2874,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowAction *promptRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     promptRow.title = localize(@"preference.title.system_prompt", nil);
-    promptRow.subtitle = @"自定义注入对话的系统级提示词";
+    promptRow.subtitle = localize(@"prisma.ui.set.a.custom.system.prompt.for.ai.chats", nil);
     promptRow.onTap = ^{
         AISystemPromptEditorViewController *vc = [[AISystemPromptEditorViewController alloc] init];
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
@@ -2919,7 +2919,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ZL2SettingRowSwitch *markdownRow =
         [[ZL2SettingRowSwitch alloc] initWithTitle:@"" subtitle:nil];
     markdownRow.title = localize(@"preference.title.markdown_enabled", nil);
-    markdownRow.subtitle = @"AI 回复以 Markdown 格式渲染";
+    markdownRow.subtitle = localize(@"prisma.ui.display.ai.replies.as.markdown", nil);
     // ★ Ame361：直连 AiSettings（消费方 AiSettings.markdownEnabled 同源）
     [markdownRow ame_setOn:[[AiSettings sharedSettings] markdownEnabled]];
     markdownRow.onToggle = ^(BOOL on) {
@@ -2982,6 +2982,26 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [weakSelf ame_presentVC:nav];
     };
     [group1 ame_addRow:stikRow];
+    ZL2SettingRowAction *installShortcutRow = [[ZL2SettingRowAction alloc]
+        initWithTitle:localize(@"prisma.jit.shortcut.install.title", nil)
+             subtitle:localize(@"prisma.jit.shortcut.install.detail", nil)];
+    installShortcutRow.onTap = ^{
+        NSURL *url = [NSURL URLWithString:@"https://www.icloud.com/shortcuts/878629f2925e45daa75301fbada5c892"];
+        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+    };
+    ZL2SettingRowAction *prepareShortcutRow = [[ZL2SettingRowAction alloc]
+        initWithTitle:localize(@"prisma.jit.shortcut.prepare.title", nil)
+             subtitle:localize(@"prisma.jit.shortcut.prepare.detail", nil)];
+    prepareShortcutRow.onTap = ^{
+        [weakSelf ame_runMadeiraJITShortcutWithInput:@"start cellular"];
+    };
+    ZL2SettingRowAction *restoreCellularRow = [[ZL2SettingRowAction alloc]
+        initWithTitle:localize(@"prisma.jit.shortcut.restore.title", nil)
+             subtitle:localize(@"prisma.jit.shortcut.restore.detail", nil)];
+    restoreCellularRow.onTap = ^{
+        [weakSelf ame_runMadeiraJITShortcutWithInput:@"cellular"];
+    };
+    [group1 ame_addRows:@[installShortcutRow, prepareShortcutRow, restoreCellularRow]];
     [self ame_addGroup:group1];
 
     // --- 组 2：JIT 故障面（四开关；后两件有前置条件——旧页 enableCondition 同口径）---
@@ -3007,7 +3027,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         ZL2SettingRowSwitch *universalRow =
             [[ZL2SettingRowSwitch alloc] initWithTitle:@"" subtitle:nil];
         universalRow.title = localize(@"preference.title.debug_universal_script_jit", nil);
-        universalRow.subtitle = @"通用 JIT 脚本（TXM 设备实验特性）";
+        universalRow.subtitle = localize(@"prisma.ui.universal.jit.script.experimental.feature.for.txm.devices", nil);
         [universalRow ame_setOn:getPrefBool(@"debug.debug_universal_script_jit")];
         universalRow.onToggle = ^(BOOL on) {
             setPrefBool(@"debug.debug_universal_script_jit", on);
@@ -3072,6 +3092,23 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 
 - (void)ame_refreshState {
     [self ame_rebuildGroups];
+}
+
+- (void)ame_runMadeiraJITShortcutWithInput:(NSString *)input {
+    NSURLComponents *url = [NSURLComponents componentsWithString:@"shortcuts://run-shortcut"];
+    url.queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"name" value:@"Madeira JIT"],
+        [NSURLQueryItem queryItemWithName:@"input" value:@"text"],
+        [NSURLQueryItem queryItemWithName:@"text" value:input],
+    ];
+    [UIApplication.sharedApplication openURL:url.URL options:@{} completionHandler:^(BOOL opened) {
+        if (!opened) {
+            [ZL2M3Dialog showTitle:localize(@"prisma.jit.shortcut.unavailable.title", nil)
+                             body:localize(@"prisma.jit.shortcut.unavailable.detail", nil)
+                     confirmTitle:localize(@"i18n_str_197", nil)
+                       destructive:NO onConfirm:nil onCancel:nil];
+        }
+    }];
 }
 
 @end

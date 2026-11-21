@@ -391,14 +391,14 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     _railItems = [NSMutableArray array];
     // (标题, SF 主名, SF 兜底)：ZL2 settingItems 图标语义映射 SF1.x 可用族
     NSArray<NSArray<NSString *> *> *defs = @[
-        @[@"概览",   @"square.grid.2x2",         @"circle.grid.2x2"],
-        @[@"模组",   @"puzzlepiece.extension",   @"puzzlepiece"],
-        @[@"存档",   @"globe",                   @"circle"],
-        @[@"资源包", @"paintbrush",              @"circle"],
-        @[@"光影",   @"lightbulb",               @"circle"],
-        @[@"截图",   @"photo.on.rectangle",      @"photo"],
-        @[@"服务器", @"dns",                     @"network"],
-        @[@"配置",   @"slider.horizontal.3",     @"gearshape"],
+        @[localize(@"prisma.ui.overview", nil),   @"square.grid.2x2",         @"circle.grid.2x2"],
+        @[localize(@"i18n_str_1283", nil),   @"puzzlepiece.extension",   @"puzzlepiece"],
+        @[localize(@"prisma.ui.worlds", nil),   @"globe",                   @"circle"],
+        @[localize(@"i18n_str_116", nil), @"paintbrush",              @"circle"],
+        @[localize(@"i18n_str_1284", nil),   @"lightbulb",               @"circle"],
+        @[localize(@"prisma.ui.screenshots", nil),   @"photo.on.rectangle",      @"photo"],
+        @[localize(@"i18n_str_880", nil), @"dns",                     @"network"],
+        @[localize(@"prisma.ui.configuration", nil),   @"slider.horizontal.3",     @"gearshape"],
     ];
     // division 位（ZL2 VersionSettingsScreen.kt L159-168：模组 / 服务器前）
     NSArray<NSNumber *> *divisionMarks = @[@1, @6];

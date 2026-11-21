@@ -9,6 +9,7 @@
 //
 
 #import "FileLayoutService.h"
+#import "utils.h"
 #import <UIKit/UIKit.h>
 
 #define FLLog(fmt, ...) NSLog(@"[FileLayout] ame316: " fmt, ##__VA_ARGS__)
@@ -248,7 +249,7 @@
         BOOL isDir = NO;
         if (![fm fileExistsAtPath:srcPath isDirectory:&isDir] || !isDir) {
             if (error) *error = [NSError errorWithDomain:@"FileLayoutService" code:1
-                                userInfo:@{NSLocalizedDescriptionKey : @"所选路径不是文件夹"}];
+                                userInfo:@{NSLocalizedDescriptionKey : localize(@"prisma.import.folder.required", nil)}];
             return nil;
         }
 

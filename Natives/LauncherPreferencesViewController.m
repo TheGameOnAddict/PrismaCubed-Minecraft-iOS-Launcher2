@@ -2777,8 +2777,9 @@ if ([section isEqualToString:@"general"]) {
         return versionString;
     }
 
-    NSString *footer = NSLocalizedStringWithDefaultValue(([NSString stringWithFormat:@"preference.section.footer.%@", self.prefSections[section]]), @"Localizable", NSBundle.mainBundle, @" ", nil);
-    if ([footer isEqualToString:@" "]) {
+    NSString *footerKey = [NSString stringWithFormat:@"preference.section.footer.%@", self.prefSections[section]];
+    NSString *footer = localize(footerKey, nil);
+    if ([footer isEqualToString:footerKey] || [footer isEqualToString:@" "]) {
         return nil;
     }
     return footer;
