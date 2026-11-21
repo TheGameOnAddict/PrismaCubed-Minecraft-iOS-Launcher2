@@ -3290,3 +3290,11 @@
 
 "ame351.instance.no_version" = "No version selected";
 "ame351.import.saves_rescued" = "Rescued %lu world(s) from the backup's legacy layout into the current instance";
+
+"modpack.import.curseforge.code.title" = "CurseForge コードからインポート";
+"modpack.import.curseforge.code.prompt" = "CurseForge のプロファイル共有コードまたはリンクを貼り付けてください。コードの有効期限は 7 日間です。";
+"modpack.import.curseforge.code.invalid" = "CurseForge のプロファイル共有コードまたは Minecraft 共有リンクを入力してください。";
+"modpack.import.curseforge.code.downloading" = "CurseForge プロファイルをダウンロード中…";
+"modpack.import.curseforge.code.expired" = "この CurseForge コードは無効か、有効期限が切れています。共有した人に新しいコードを依頼してください。";
+"modpack.import.curseforge.code.downloadFailed" = "CurseForge プロファイルをダウンロードできませんでした。ネットワーク接続を確認して再試行してください。";
+"modpack.import.curseforge.code.invalidArchive" = "CurseForge から有効なモッドパックのアーカイブを取得できませんでした。";

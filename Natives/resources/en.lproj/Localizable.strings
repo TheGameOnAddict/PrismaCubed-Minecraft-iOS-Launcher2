@@ -3842,3 +3842,11 @@
 "prisma.launch.vulkan.renderer.required" = "Vulkan requires the MoltenVK renderer. This launch is using the default graphics API.";
 "prisma.import.folder.required" = "The selected path is not a folder.";
 "prisma.jit.cellular_tip" = "No Wi-Fi? Connect LocalDevVPN if your JIT method requires it, then turn off Cellular Data and tap Enable JIT. You can turn Cellular Data back on once JIT is enabled.";
+
+"modpack.import.curseforge.code.title" = "Import from CurseForge Code";
+"modpack.import.curseforge.code.prompt" = "Paste a CurseForge profile share code or link. Codes expire after 7 days.";
+"modpack.import.curseforge.code.invalid" = "Enter a CurseForge profile share code or a CurseForge Minecraft share link.";
+"modpack.import.curseforge.code.downloading" = "Downloading CurseForge profile…";
+"modpack.import.curseforge.code.expired" = "This CurseForge code is invalid or has expired. Ask the person who shared it for a new code.";
+"modpack.import.curseforge.code.downloadFailed" = "Could not download the CurseForge profile. Check your connection and try again.";
+"modpack.import.curseforge.code.invalidArchive" = "CurseForge did not return a valid modpack archive.";

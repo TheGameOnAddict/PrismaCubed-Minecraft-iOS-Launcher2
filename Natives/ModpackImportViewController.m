@@ -132,6 +132,12 @@
     [self.importButton addTarget:self action:@selector(selectModpackFile) forControlEvents:UIControlEventTouchUpInside];
     [self.headerContainerView addSubview:self.importButton];
 
+    UIButton *shareCodeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    shareCodeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [shareCodeButton setTitle:localize(@"modpack.import.curseforge.code.title", nil) forState:UIControlStateNormal];
+    [shareCodeButton addTarget:self action:@selector(promptForCurseForgeShareCode) forControlEvents:UIControlEventTouchUpInside];
+    [self.headerContainerView addSubview:shareCodeButton];
+
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.backgroundColor = [UIColor clearColor];
@@ -165,7 +171,11 @@
         [self.importButton.leadingAnchor constraintEqualToAnchor:self.headerContainerView.leadingAnchor],
         [self.importButton.trailingAnchor constraintEqualToAnchor:self.headerContainerView.trailingAnchor],
         [self.importButton.heightAnchor constraintEqualToConstant:50],
-        [self.importButton.bottomAnchor constraintEqualToAnchor:self.headerContainerView.bottomAnchor],
+        [shareCodeButton.topAnchor constraintEqualToAnchor:self.importButton.bottomAnchor constant:4],
+        [shareCodeButton.leadingAnchor constraintEqualToAnchor:self.headerContainerView.leadingAnchor],
+        [shareCodeButton.trailingAnchor constraintEqualToAnchor:self.headerContainerView.trailingAnchor],
+        [shareCodeButton.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        [shareCodeButton.bottomAnchor constraintEqualToAnchor:self.headerContainerView.bottomAnchor],
 
         [self.tableView.topAnchor constraintEqualToAnchor:self.headerContainerView.bottomAnchor constant:12],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -256,6 +266,91 @@
     [self presentViewController:picker animated:YES completion:nil];
 }
 
+#pragma mark - CurseForge share codes
+
+- (void)promptForCurseForgeShareCode {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:localize(@"modpack.import.curseforge.code.title", nil)
+                                                                   message:localize(@"modpack.import.curseforge.code.prompt", nil)
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        field.autocorrectionType = UITextAutocorrectionTypeNo;
+        field.spellCheckingType = UITextSpellCheckingTypeNo;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:localize(@"resman.common.cancel", nil)
+                                             style:UIAlertActionStyleCancel handler:nil]];
+    __weak UIAlertController *weakAlert = alert;
+    [alert addAction:[UIAlertAction actionWithTitle:localize(@"i18n_str_156", nil)
+                                             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self downloadCurseForgeSharedProfile:weakAlert.textFields.firstObject.text ?: @""];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)downloadCurseForgeSharedProfile:(NSString *)input {
+    NSString *code = [input stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSURLComponents *link = [NSURLComponents componentsWithString:code];
+    NSString *host = link.host.lowercaseString;
+    NSString *sharePrefix = @"/minecraft/share/";
+    if ([link.scheme.lowercaseString isEqualToString:@"https"] &&
+        ([host isEqualToString:@"www.curseforge.com"] || [host isEqualToString:@"curseforge.com"]) &&
+        [link.percentEncodedPath hasPrefix:sharePrefix]) {
+        code = [link.percentEncodedPath substringFromIndex:sharePrefix.length];
+        if ([code hasSuffix:@"/"]) {
+            code = [code substringToIndex:code.length - 1];
+        }
+    }
+    if ([code rangeOfString:@"\\A[A-Za-z0-9]{1,64}\\z" options:NSRegularExpressionSearch].location == NSNotFound) {
+        [self showAlertWithTitle:localize(@"i18n_str_206", nil)
+                         message:localize(@"modpack.import.curseforge.code.invalid", nil)];
+        return;
+    }
+
+    NSURL *url = [[NSURL URLWithString:@"https://api.curseforge.com/v1/shared-profile/"] URLByAppendingPathComponent:code];
+    [self showLoadingHUD:localize(@"modpack.import.curseforge.code.downloading", nil)];
+    self.tabSegment.enabled = NO;
+
+    [[NSURLSession.sharedSession downloadTaskWithURL:url completionHandler:^(NSURL *location, NSURLResponse *response, NSError *networkError) {
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        NSInteger status = httpResponse.statusCode;
+        if (networkError || !location || status < 200 || status >= 300) {
+            NSString *key = (status == 404 || status == 410)
+                ? @"modpack.import.curseforge.code.expired" : @"modpack.import.curseforge.code.downloadFailed";
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self finishParsingModpack:nil errorMessage:localize(key, nil) temporaryDirectory:nil];
+            });
+            return;
+        }
+
+        NSURL *directory = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+                            URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+        NSURL *fileURL = [directory URLByAppendingPathComponent:@"CurseForge.zip"];
+        NSFileManager *files = NSFileManager.defaultManager;
+        NSError *error = nil;
+        NSDictionary *modpackInfo = nil;
+
+        // URLSession removes its temporary download after this callback returns.
+        if ([files createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error] &&
+            [files moveItemAtURL:location toURL:fileURL error:&error]) {
+            @try {
+                modpackInfo = [self.importService parseModpackAtURL:fileURL error:&error];
+            } @catch (NSException *exception) {
+                error = [NSError errorWithDomain:@"ModpackImportError" code:1005
+                                        userInfo:@{NSLocalizedDescriptionKey: localize(@"modpack.import.curseforge.code.invalidArchive", nil)}];
+            }
+        }
+
+        NSString *message = error.localizedDescription;
+        if (![modpackInfo[@"format"] isEqualToString:@"curseforge"]) {
+            modpackInfo = nil;
+            message = message ?: localize(@"modpack.import.curseforge.code.invalidArchive", nil);
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self finishParsingModpack:modpackInfo errorMessage:message temporaryDirectory:directory];
+        });
+    }] resume];
+}
+
 #pragma mark - UIDocumentPickerDelegate
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
@@ -330,7 +425,7 @@
             }
             self.currentImportingModpack = modpackInfo;
             [self hideLoadingHUD];
-            [self showModpackPreview:modpackInfo fileURL:parseURL];
+            [self showModpackPreview:modpackInfo fileURL:parseURL temporaryDirectory:nil];
         });
     });
 }
@@ -356,7 +451,34 @@
 
 #pragma mark - 整合包预览卡片（参照 FCL ModpackPreviewSheet / HMCL ModpackInfoPage）
 
-- (void)showModpackPreview:(NSDictionary *)modpackInfo fileURL:(NSURL *)fileURL {
+- (void)finishParsingModpack:(NSDictionary *)modpackInfo
+                errorMessage:(NSString *)errorMessage
+          temporaryDirectory:(NSURL *)temporaryDirectory {
+    [self hideLoadingHUD];
+    self.tabSegment.enabled = YES;
+    BOOL visible = self.view.window && ![self isMovingFromParentViewController] &&
+        (!self.navigationController || self.navigationController.topViewController == self);
+    if (!modpackInfo || errorMessage || !visible) {
+        if (temporaryDirectory) {
+            [NSFileManager.defaultManager removeItemAtURL:temporaryDirectory error:nil];
+        }
+        if (visible) {
+            NSLog(@"[MODPACK-LOCAL] 解析失败: %@", errorMessage ?: @"(no error)");
+            [self showAlertWithTitle:localize(@"i18n_str_206", nil)
+                             message:errorMessage ?: localize(@"i18n_str_574", nil)];
+        }
+        return;
+    }
+
+    self.currentImportingModpack = modpackInfo;
+    [self showModpackPreview:modpackInfo
+                        fileURL:[temporaryDirectory URLByAppendingPathComponent:@"CurseForge.zip"]
+             temporaryDirectory:temporaryDirectory];
+}
+
+- (void)showModpackPreview:(NSDictionary *)modpackInfo
+                   fileURL:(NSURL *)fileURL
+        temporaryDirectory:(NSURL *)temporaryDirectory {
     NSString *name = modpackInfo[@"name"] ?: localize(@"i18n_str_121", nil);
     NSString *version = modpackInfo[@"version"] ?: localize(@"i18n_str_121", nil);
     NSString *author = modpackInfo[@"author"] ?: @"";
@@ -411,9 +533,12 @@
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:localize(@"resman.common.cancel", nil) style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
         self.currentImportingModpack = nil;
+        if (temporaryDirectory) {
+            [NSFileManager.defaultManager removeItemAtURL:temporaryDirectory error:nil];
+        }
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:localize(@"i18n_str_156", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        [self startModpackImport:modpackInfo];
+        [self startModpackImport:modpackInfo temporaryDirectory:temporaryDirectory];
     }]];
 
     if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
@@ -425,7 +550,7 @@
 
 #pragma mark - 导入流程
 
-- (void)startModpackImport:(NSDictionary *)modpackInfo {
+- (void)startModpackImport:(NSDictionary *)modpackInfo temporaryDirectory:(NSURL *)temporaryDirectory {
     // 重置取消状态
     [self.importService resetCancelState];
 
@@ -446,6 +571,10 @@
         } @catch (NSException *exception) {
             error = [NSError errorWithDomain:@"ModpackImportError" code:9998
                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_586", nil), exception.reason]}];
+        }
+
+        if (temporaryDirectory) {
+            [NSFileManager.defaultManager removeItemAtURL:temporaryDirectory error:nil];
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
