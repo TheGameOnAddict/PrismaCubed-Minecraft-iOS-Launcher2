@@ -450,6 +450,23 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
                      completion:(void (^)(NSArray<ModVersion *> * _Nullable versions, NSError * _Nullable error))completion;
 @end
 
+static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
+    BOOL packs = [filters[@"projectType"] isEqual:@"modpack"];
+    NSArray *names = packs ? @[@"Skyward Adventures", @"Frostfall Expeditions", @"The Workshop"] : @[@"Jade", @"AppleSkin", @"AmbientSounds"];
+    NSArray *authors = packs ? @[@"Skyward Team", @"Frostfall Team", @"Workshop Team"] : @[@"Snownee", @"squeek502", @"CreativeMD"];
+    NSArray *descriptions = packs ? @[@"Explore floating islands with friends.", @"Journey through a frozen wilderness.", @"Build machines and automate your base."] : @[@"Learn about the block or entity under your cursor.", @"See hunger and saturation on your HUD.", @"Ambient sounds for a more immersive world."];
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSUInteger i = 0; i < names.count; i++) {
+        [items addObject:@{@"id":[NSString stringWithFormat:@"fixture-%lu",(unsigned long)i], @"apiSource":@(source), @"isModpack":@(packs), @"projectType":packs ? @"modpack" : @"mod",
+            @"title":names[i], @"author":authors[i], @"description":descriptions[i],
+            @"imageUrl":i == 0 ? @"preview:CubicProfileCover" : [NSString stringWithFormat:@"preview:CubicProfileCover%lu",(unsigned long)i],
+            @"downloads":@(128000 / (i + 1)), @"browseLoader":@"Forge", @"browseVersion":@"1.20.1",
+            @"fileSize":@(packs ? 52428800 : 131072), @"lastUpdated":@"2026-11-12",
+            @"categories":packs ? @[@"Adventure", @"Exploration"] : @[@"Utility", @"HUD"]}.mutableCopy];
+    }
+    return items;
+}
+
 @implementation ModrinthAPI
 
 + (instancetype)sharedInstance {
@@ -464,6 +481,12 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
 - (void)searchModWithFilters:(NSDictionary *)filters
                   completion:(void (^)(NSArray * _Nullable results, NSError * _Nullable error))completion {
     if (!completion) return;
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicScreens"]) {
+        NSArray *items = CubicSampleCatalog(filters, [self isKindOfClass:ModrinthAPI.class] ? 1 : 2);
+        self.lastSearchTotalCount = items.count;
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(items,nil); });
+        return;
+    }
     self.lastSearchTotalCount = 359;
     NSMutableArray *demo = [NSMutableArray array];
     NSArray *titles = @[@"Sodium", @"Fabric API", @"Iris Shaders"];
@@ -546,6 +569,12 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
 - (void)searchModWithFilters:(NSDictionary *)filters
                   completion:(void (^)(NSArray * _Nullable results, NSError * _Nullable error))completion {
     if (!completion) return;
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicScreens"]) {
+        NSArray *items = CubicSampleCatalog(filters, [self isKindOfClass:ModrinthAPI.class] ? 1 : 2);
+        self.lastSearchTotalCount = items.count;
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(items,nil); });
+        return;
+    }
     self.lastSearchTotalCount = 4210;
     NSMutableArray *demo = [NSMutableArray array];
     NSArray *titles = @[@"Just Enough Items (JEI)", @"AppleSkin", @"Mouse Tweaks"];
@@ -1098,6 +1127,12 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
                   targetSize:(CGSize)targetSize
                      options:(NSUInteger)options
                   completion:(nullable void (^)(UIImage * _Nullable image))completion {
+    if ([url hasPrefix:@"preview:"]) {
+        UIImage *image = [UIImage imageNamed:[url substringFromIndex:8]];
+        imageView.image = image;
+        if (completion) completion(image);
+        return;
+    }
     if (imageView) imageView.image = placeholder ?: fallback;
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });

@@ -7,10 +7,12 @@ name: UI Fluent smoke (7.0 test repo - frontend preview)
 # 手动触发，无任何 release 步骤；完整出包仍走 development.yml（同样仅手动）。
 
 on:
+  push:
+    branches: [preview/prismacubic-screens]
   workflow_dispatch:
     inputs:
       mode:
-        description: "smoke mode: syntax / preview / all"
+        description: "smoke mode: screens (8 screens in both orientations) / cubic / syntax / preview / all"
         required: false
         default: "all"
 
@@ -37,7 +39,7 @@ jobs:
           xcrun simctl list devices available | grep -m3 iPhone || true
 
       - name: Run UI Fluent smoke
-        run: bash scripts/ui_fluent_smoke.sh "${{ github.event.inputs.mode || 'all' }}"
+        run: bash scripts/ui_fluent_smoke.sh "${{ github.event.inputs.mode || 'screens' }}"
 
       - name: Upload preview artifacts (screenshots + failure logs)
         if: always()
@@ -45,6 +47,7 @@ jobs:
         with:
           name: ame-fluent-preview
           path: |
+            build/ame-preview/*.html
             build/ame-preview/*.png
             build/ame-preview/*.log
           if-no-files-found: ignore

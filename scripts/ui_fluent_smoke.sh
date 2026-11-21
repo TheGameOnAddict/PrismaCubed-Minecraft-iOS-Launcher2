@@ -232,6 +232,7 @@ PLIST
         cp "$docs/$png" "$OUT/"
       done
     done
+    python3 "$ROOT/scripts/native_preview_gallery.py" "$OUT" || FAIL=1
     return
   fi
   if [[ "$MODE" == "cubic" ]]; then
