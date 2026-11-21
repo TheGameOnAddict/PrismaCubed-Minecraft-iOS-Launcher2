@@ -396,7 +396,6 @@ NSString *const PREF_MOD_MIRROR = @"general.mod_mirror";
             // 检测 → apple-magnifier；iOS>=17.4 → stikjit；16.7-17.3.1 →
             // sidestore）与 iOS 26 JS 脚本 JIT 开关（默认携带脚本）
             @"jit_enabler": @"auto",
-            @"prisma_jit_shortcut": @NO,
             @"jit26_script_disable": @NO,
             // ★ Task342：JIT 镜像代码缓存退役自救开关（默认关零行为变化；
             //   SIGBUS@call_stub 装机实弹的自救通道，崩溃弹窗一键开启）

@@ -1,5 +1,4 @@
 #import "PLLogOutputView.h"
-#import "PrismaJITShortcut.h"
 #import "PLCrashView.h"
 #import "AmeNativeMenu.h"   // ★ Task240：菜单全面系统原生 UIMenu 化
 #import "SurfaceViewController.h"
@@ -196,9 +195,6 @@ static PLLogOutputView* current;
 }
 
 + (void)handleExitCode:(int)code {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [PrismaJITShortcut restoreWithCompletion:nil];
-    });
     if (!current) return;
     
     // 如果有错误，显示新的崩溃界面

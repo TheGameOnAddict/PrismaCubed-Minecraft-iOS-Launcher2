@@ -3841,12 +3841,4 @@
 "prisma.install.invalid.loader.version" = "The selected mod loader version is invalid. Refresh the list and choose a version again.";
 "prisma.launch.vulkan.renderer.required" = "Vulkan requires the MoltenVK renderer. This launch is using the default graphics API.";
 "prisma.import.folder.required" = "The selected path is not a folder.";
-"welcome.jit.shortcut.done" = "Done";
-"prisma.jit.shortcut.setup.title" = "PrismaCubed Cellular JIT";
-"prisma.jit.shortcut.setup.subtitle" = "Optional • Automate network setup for game launches";
-"prisma.jit.shortcut.setup.detail" = "Create the PrismaCubed JIT shortcut using the setup instructions before enabling this option. Requires iOS 27 or later and LocalDevVPN. This option can briefly turn cellular data off and replace your VPN before JIT. If the game needs a live debugger, the network is restored after the game exits or the next time PrismaCubed opens.";
-"prisma.jit.shortcut.enable" = "Use PrismaCubed JIT Shortcut";
-"prisma.jit.shortcut.disable" = "Turn Off JIT Shortcut";
-"prisma.jit.shortcut.preparing" = "Preparing LocalDevVPN for JIT…";
-"prisma.jit.shortcut.failed" = "PrismaCubed JIT could not prepare the connection. Check that the shortcut is installed under that exact name and that LocalDevVPN is set up. If cellular data is still off, use Settings to turn it back on.";
-"prisma.jit.shortcut.instructions" = "Shortcut Setup Instructions";
+"prisma.jit.cellular_tip" = "No Wi-Fi? Connect LocalDevVPN if your JIT method requires it, then turn off Cellular Data and tap Enable JIT. You can turn Cellular Data back on once JIT is enabled.";

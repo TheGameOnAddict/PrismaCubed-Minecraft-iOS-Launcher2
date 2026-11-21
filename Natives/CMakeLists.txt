@@ -550,7 +550,6 @@ add_executable(AngelAuraAmethyst
   PLMirrorCenter.m
   # Task323：启动续链 JIT 门禁共享助手（ZL2 主页断链根修；RP 状态机 1:1）
   PLJITGate.m
-  PrismaJITShortcut.m
   DataTransferService.m
   DataExportViewController.m
   AboutViewController.m
@@ -902,7 +901,6 @@ target_link_libraries(AngelAuraAmethyst
   #   链接该框架，缺省 = _OBJC_CLASS_$_UN* 三符号 undefined。
   "-framework UserNotifications"
   "-framework UnzipKit"
-  "-framework SystemConfiguration"
   "-framework WebKit"
   "-weak_framework SafariServices"
   # Task312：服务地区门运营商角度（CTCarrier MCC=460；weak 容错，类缺失/异常一律降级为无此信号）

@@ -51,7 +51,6 @@
 #import "BackgroundManager.h"
 #import "AmeTheme.h"   // ★ 7.0-UI-3d：Fluent 设计令牌（颜色/字体单一事实源）
 #import "WelcomeViewController.h"
-#import "PrismaJITShortcut.h"
 #import "AboutViewController.h"
 #import "LauncherPreferences.h"
 #import "PLMirrorCenter.h"
@@ -1354,18 +1353,11 @@ static const NSInteger ame218_welcomeStepCount = 8;  // Task246：+1 界面风�
         [self.jitRows addObject:ame224_row];
     }
 
-    if (@available(iOS 27.0, *)) {
-        UIButton *cellularJITRow = [self ame224_selectionRowWithIcon:@"antenna.radiowaves.left.and.right"
-                                                              title:localize(@"prisma.jit.shortcut.setup.title", nil)
-                                                           subtitle:localize(@"prisma.jit.shortcut.setup.subtitle", nil)];
-        [cellularJITRow addTarget:self action:@selector(showCellularJITSetup)
-                forControlEvents:UIControlEventTouchUpInside];
-        [ame219_jitRows addArrangedSubview:cellularJITRow];
-    }
-
     // JIT 说明（LiveContainer 下的包名识别口径）
     UILabel *ame219_jitHint = [[UILabel alloc] init];
-    ame219_jitHint.text = localize(ame219_inLC ? @"welcome.jit.hint.lc" : @"welcome.jit.hint", nil);
+    ame219_jitHint.text = [NSString stringWithFormat:@"%@\n\n%@",
+        localize(ame219_inLC ? @"welcome.jit.hint.lc" : @"welcome.jit.hint", nil),
+        localize(@"prisma.jit.cellular_tip", nil)];
     ame219_jitHint.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
     ame219_jitHint.textColor = [self ame224_directSecondaryColor];
     ame219_jitHint.numberOfLines = 0;
@@ -1442,25 +1434,6 @@ static const NSInteger ame218_welcomeStepCount = 8;  // Task246：+1 界面风�
     self.jitStatusLabel.text = ame219_on ? localize(@"welcome.jit.status.on", nil)
                                          : localize(@"welcome.jit.status.off", nil);
     self.jitStatusLabel.textColor = ame219_on ? [AmeTheme statusSuccess] : [AmeTheme textSecondary];
-}
-
-- (void)showCellularJITSetup {
-    UIAlertController *setup = [UIAlertController
-        alertControllerWithTitle:localize(@"prisma.jit.shortcut.setup.title", nil)
-                         message:localize(@"prisma.jit.shortcut.setup.detail", nil)
-                  preferredStyle:UIAlertControllerStyleAlert];
-    [setup addAction:[UIAlertAction actionWithTitle:localize(@"prisma.jit.shortcut.instructions", nil)
-                                             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [UIApplication.sharedApplication openURL:PrismaJITShortcutSetupURL() options:@{} completionHandler:nil];
-    }]];
-    BOOL enabled = getPrefBool(@"debug.prisma_jit_shortcut");
-    [setup addAction:[UIAlertAction actionWithTitle:localize(enabled ? @"prisma.jit.shortcut.disable" : @"prisma.jit.shortcut.enable", nil)
-                                             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        setPrefBool(@"debug.prisma_jit_shortcut", !enabled);
-    }]];
-    [setup addAction:[UIAlertAction actionWithTitle:localize(@"welcome.jit.shortcut.done", nil)
-                                             style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:setup animated:YES completion:nil];
 }
 
 /// 复制宿主包名（②指引的配套动作）。

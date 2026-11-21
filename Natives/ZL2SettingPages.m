@@ -98,7 +98,6 @@
 //
 
 #import "ZL2SettingPages.h"
-#import "PrismaJITShortcut.h"
 #import "ZL2SettingCards.h"
 #import "ZL2Theme.h"
 #import "ZL2M3Kit.h"
@@ -2958,7 +2957,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                  options:jitNames optionKeys:jitKeys];
     jitRow.title = localize(@"preference.title.jit_enabler", nil);
-    jitRow.subtitle = localize(@"preference.detail.jit_enabler", nil);
+    jitRow.subtitle = [NSString stringWithFormat:@"%@\n\n%@", localize(@"preference.detail.jit_enabler", nil),
+                       localize(@"prisma.jit.cellular_tip", nil)];
     [jitRow ame_reloadSelectedIndex:(NSInteger)[jitKeys indexOfObject:
         ame_pages_stringOr(getPrefObject(@"debug.jit_enabler"), @"auto")]];
     jitRow.onSelect = ^(NSInteger index) {
@@ -2978,21 +2978,6 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [weakSelf ame_presentVC:nav];
     };
     [group1 ame_addRow:stikRow];
-    if (@available(iOS 27.0, *)) {
-        ZL2SettingRowSwitch *shortcutRow = [[ZL2SettingRowSwitch alloc]
-            initWithTitle:localize(@"prisma.jit.shortcut.setup.title", nil)
-                 subtitle:localize(@"prisma.jit.shortcut.setup.detail", nil)];
-        [shortcutRow ame_setOn:getPrefBool(@"debug.prisma_jit_shortcut")];
-        shortcutRow.onToggle = ^(BOOL on) {
-            setPrefBool(@"debug.prisma_jit_shortcut", on);
-        };
-        ZL2SettingRowAction *instructionsRow = [[ZL2SettingRowAction alloc]
-            initWithTitle:localize(@"prisma.jit.shortcut.instructions", nil) subtitle:nil];
-        instructionsRow.onTap = ^{
-            [UIApplication.sharedApplication openURL:PrismaJITShortcutSetupURL() options:@{} completionHandler:nil];
-        };
-        [group1 ame_addRows:@[instructionsRow, shortcutRow]];
-    }
     [self ame_addGroup:group1];
 
     // --- 组 2：JIT 故障面（四开关；后两件有前置条件——旧页 enableCondition 同口径）---

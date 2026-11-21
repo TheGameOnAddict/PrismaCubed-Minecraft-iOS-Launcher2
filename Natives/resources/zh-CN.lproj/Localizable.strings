@@ -3837,12 +3837,4 @@
 "prisma.install.invalid.loader.version" = "所选的模组加载器版本无效。请刷新列表并重新选择版本。";
 "prisma.launch.vulkan.renderer.required" = "Vulkan API 仅支持 MoltenVK 渲染器，本次启动已回退默认图形 API。";
 "prisma.import.folder.required" = "所选路径不是文件夹";
-"welcome.jit.shortcut.done" = "完成";
-"prisma.jit.shortcut.setup.title" = "PrismaCubed 蜂窝网络 JIT";
-"prisma.jit.shortcut.setup.subtitle" = "可选 · 游戏启动时自动配置网络";
-"prisma.jit.shortcut.setup.detail" = "在 iOS 27 或更新系统上创建 PrismaCubed JIT 快捷指令，并设置 LocalDevVPN。此选项可能在启用 JIT 前暂时关闭蜂窝数据并替换 VPN。若游戏需要保持调试器连接，则在游戏退出或下次开启 PrismaCubed 时恢复网络。";
-"prisma.jit.shortcut.enable" = "使用 PrismaCubed JIT 快捷指令";
-"prisma.jit.shortcut.disable" = "关闭 JIT 快捷指令";
-"prisma.jit.shortcut.preparing" = "正在为 JIT 准备 LocalDevVPN…";
-"prisma.jit.shortcut.failed" = "PrismaCubed JIT 无法准备网络连接。请确认快捷指令名称正确，并已设置 LocalDevVPN。若蜂窝数据仍处于关闭状态，请在系统设置中开启。";
-"prisma.jit.shortcut.instructions" = "快捷指令设置说明";
+"prisma.jit.cellular_tip" = "没有 Wi-Fi？如果当前 JIT 方式需要 LocalDevVPN，请先连接，再关闭蜂窝数据并轻点「启用 JIT」。JIT 启用后可重新开启蜂窝数据。";
