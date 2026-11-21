@@ -223,7 +223,7 @@ PLIST
         rm -f "$docs/$png"
         xcrun simctl launch --console "$device" "$bundle" -cubicScreens -route "$route" -orientation "$orientation" > "$OUT/$route-$orientation.log" 2>&1 &
         pid=$!
-        for attempt in {1..24}; do
+        for attempt in {1..90}; do
           [[ -s "$docs/$png" ]] && break
           kill -0 "$pid" 2>/dev/null || break
           sleep 1
