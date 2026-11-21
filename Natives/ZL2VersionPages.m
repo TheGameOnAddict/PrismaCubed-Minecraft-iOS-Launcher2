@@ -1318,10 +1318,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         UIStackView *wrap = [self ameV13_rowCardWithViews:@[iconBox, textStack, spacer, check]
                                                 alignment:UIStackViewAlignmentCenter];
         UITapGestureRecognizer *rowTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameV13_cardTapped:)];
-        UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(cubicModHeld:)];
-    [wrap addGestureRecognizer:hold];
-    [rowTap requireGestureRecognizerToFail:hold];
-    [wrap addGestureRecognizer:rowTap];
+        [wrap addGestureRecognizer:rowTap];
         objc_setAssociatedObject(wrap, @selector(ameV13_cardTapped:), mod.filePath, OBJC_ASSOCIATION_COPY_NONATOMIC);
         return wrap;
     }
@@ -1334,16 +1331,13 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     [toggle addTarget:self action:@selector(ameV13_toggleChanged:) forControlEvents:UIControlEventValueChanged];
     objc_setAssociatedObject(toggle, @selector(ameV13_toggleChanged:), mod.filePath, OBJC_ASSOCIATION_COPY_NONATOMIC);
 
-    UIControl *deleteButton = [self ameV13_iconButtonWithImageName:@"trash"
-                                                          fallback:@"trash.fill"
-                                                             size:32
-                                                     accessibility:localize(@"resman.common.delete", nil)
-                                                             action:^{ [self ameV13_confirmDeleteMod:mod]; }];
-
-    UIStackView *wrap = [self ameV13_rowCardWithViews:@[iconBox, textStack, spacer, toggle, deleteButton]
+    UIStackView *wrap = [self ameV13_rowCardWithViews:@[iconBox, textStack, spacer, toggle]
                                             alignment:UIStackViewAlignmentCenter];
     // 行点按 = Modrinth 项目页（onlineID 命中）；未命中出「链接不可用」说明
     UITapGestureRecognizer *rowTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameV13_cardTapped:)];
+    UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(cubicModHeld:)];
+    [wrap addGestureRecognizer:hold];
+    [rowTap requireGestureRecognizerToFail:hold];
     [wrap addGestureRecognizer:rowTap];
     objc_setAssociatedObject(wrap, @selector(ameV13_cardTapped:), mod.filePath, OBJC_ASSOCIATION_COPY_NONATOMIC);
     return wrap;

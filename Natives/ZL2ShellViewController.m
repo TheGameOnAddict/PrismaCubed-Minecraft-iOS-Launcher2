@@ -750,7 +750,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     BOOL local = [method isEqual:@"local"] || (!method && !auth[@"xboxGamertag"]);
     NSString *type = thirdParty ? localize(@"login.option.3rdparty", nil) : local ? localize(@"login.option.local", nil) : @"Microsoft";
     NSString *username = [auth[@"username"] isKindOfClass:NSString.class] ? auth[@"username"] : nil;
-    NSString *accountTitle = username.length ? [NSString stringWithFormat:@"%@\n%@ · Manage Accounts ›", username, type] : NSLocalizedString(@"Add Account ›", nil);
+    NSString *accountTitle = username.length ? [NSString stringWithFormat:@"%@\n%@\nManage Accounts ›", username, type] : NSLocalizedString(@"Add Account ›", nil);
     NSArray *titles = @[accountTitle, NSLocalizedString(@"Directory", nil), NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
     NSArray *icons = @[@"person.crop.circle", @"folder", @"person.2", @"gearshape"];
     __weak typeof(self) weakSelf = self;
@@ -759,7 +759,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         [item setTitle:title forState:UIControlStateNormal];
         UIImage *image = index == 0 ? self.cubicAccountButton.currentImage : [UIImage systemImageNamed:icons[index]];
         [item setImage:image forState:UIControlStateNormal];
-        item.titleLabel.numberOfLines = index == 0 ? 2 : 1;
+        item.titleLabel.numberOfLines = index == 0 ? 3 : 1;
+        if (index == 0) item.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
         item.tintColor = [ZL2Theme onSurface];
         item.backgroundColor = [ZL2Theme surfaceContainer];
         item.layer.cornerRadius = 8;

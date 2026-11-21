@@ -17,7 +17,7 @@
 
 #import "ModpackImportViewController.h"
 #import "AmeNativeMenu.h"       // ★ Task240：菜单全面系统原生 UIMenu 化
-#import "BackgroundManager.h"
+#import "ZL2Theme.h"
 #import "ModpackImportService.h"
 #import "AmeTheme.h"            // ★ 7.0-UI-3f：Fluent 设计令牌（导入页按钮/文案/卡片面迁移）
 #import "ModpackExportViewController.h"
@@ -46,11 +46,9 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    // 适配自定义启动器背景：将当前视图控制器透明化，使全局背景壁纸能够透出
-    [[BackgroundManager sharedManager] makeViewControllerTransparent:self];
+    self.view.backgroundColor = [ZL2Theme surface];
+    self.view.tintColor = [ZL2Theme primary];
     self.title = localize(@"i18n_str_118", nil);
-
-    [[BackgroundManager sharedManager] applyEffectToView:self.view];
 
     self.importService = [[ModpackImportService alloc] init];
     self.importedModpacks = [NSMutableArray array];
@@ -59,14 +57,6 @@
     [self setupUI];
     [self loadImportedModpacks];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(handleBackgroundUIEffectChanged:)
-                                                 name:@"BackgroundUIEffectChanged"
-                                               object:nil];
-}
-
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"BackgroundUIEffectChanged" object:nil];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -183,7 +173,7 @@
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
 
         [self.emptyLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.emptyLabel.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]
+        [self.emptyLabel.centerYAnchor constraintEqualToAnchor:self.tableView.centerYAnchor]
     ]];
 }
 
@@ -801,17 +791,6 @@
         alert.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 0, 0);
     }
     [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)handleBackgroundUIEffectChanged:(NSNotification *)notification {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // 重新应用透明化，确保背景效果切换后视图仍能透出全局背景
-        [[BackgroundManager sharedManager] makeViewControllerTransparent:self];
-        self.tableView.backgroundColor = [UIColor clearColor];
-        self.tableView.backgroundView = nil;
-        [[BackgroundManager sharedManager] applyEffectToView:self.view];
-        [self.tableView reloadData];
-    });
 }
 
 @end

@@ -1345,6 +1345,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     }
     BOOL prevEnabled = (self.currentPage > 1);
     BOOL nextEnabled = hasTotal ? (self.currentPage < totalPages) : self.hasMore;
+    self.paginationBar.hidden = !prevEnabled && !nextEnabled;
     self.prevPageButton.enabled = prevEnabled;
     self.nextPageButton.enabled = nextEnabled;
     self.prevPageButton.alpha = prevEnabled ? 1.0 : 0.35;

@@ -867,10 +867,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [browse setTitle:NSLocalizedString(@"Browse Modpacks", nil) forState:UIControlStateNormal];
     [browse addTarget:self action:@selector(cubicBrowseModpacks) forControlEvents:UIControlEventTouchUpInside];
     UIButton *import = [UIButton buttonWithType:UIButtonTypeSystem];
-    [import setTitle:NSLocalizedString(@"Import", nil) forState:UIControlStateNormal];
+    [import setTitle:[@"↓ " stringByAppendingString:NSLocalizedString(@"Import", nil)] forState:UIControlStateNormal];
     [import addTarget:self action:@selector(cubicImport) forControlEvents:UIControlEventTouchUpInside];
     UIButton *create = [UIButton buttonWithType:UIButtonTypeSystem];
-    [create setTitle:NSLocalizedString(@"New Profile", nil) forState:UIControlStateNormal];
+    [create setTitle:[@"+ " stringByAppendingString:NSLocalizedString(@"New Profile", nil)] forState:UIControlStateNormal];
     [create addTarget:self action:@selector(cubicCreateProfile) forControlEvents:UIControlEventTouchUpInside];
     UIButton *profiles = [UIButton buttonWithType:UIButtonTypeSystem];
     [profiles setTitle:NSLocalizedString(@"My Profiles", nil) forState:UIControlStateNormal];
@@ -896,8 +896,9 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     import.backgroundColor = [ZL2Theme surfaceContainerHigh];
     create.backgroundColor = [ZL2Theme primary];
     [create setTitleColor:[ZL2Theme onPrimary] forState:UIControlStateNormal];
-    actions.distribution = UIStackViewDistributionFillProportionally;
-    actions.spacing = 8;
+    [actions insertArrangedSubview:[UIView new] atIndex:2];
+    actions.distribution = UIStackViewDistributionFill;
+    actions.spacing = 4;
     actions.tintColor = [ZL2Theme primary];
     actions.translatesAutoresizingMaskIntoConstraints = NO;
     UIStackView *navigation = [[UIStackView alloc] initWithArrangedSubviews:@[login, actions]];
@@ -1206,7 +1207,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 // 菜单占 240 后内容区过窄的兜底，防止出现 <140pt 破相卡）
 - (NSInteger)ame_columnsForWidth:(CGFloat)width {
     if (width <= 0) return 1;
-    NSInteger columns = (self.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad) ? 3 : 2;
+    NSInteger columns = width >= 600 ? 4 : 2;
     CGFloat available = width - ZL2HomeGridInsetH * 2;
     while (columns > 1) {
         CGFloat columnWidth = (available - (columns - 1) * ZL2HomeGridSpacing) / columns;
