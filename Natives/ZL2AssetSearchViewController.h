@@ -49,6 +49,7 @@ typedef NS_ENUM(NSInteger, ZL2AssetSearchType) {
 //   设置后 viewDidLoad 快照优先取本值（nil/空 = 沿旧口径快照当前选中实例），
 //   防下载写入目标与管理页绑定实例不一致。
 @property (nonatomic, copy, nullable) NSString *targetProfileName;
+@property (nonatomic, copy, nullable) void (^showProfiles)(void);
 
 // 指定初始化器：类型 + 预置标题（标题仅用于 a11y；页面视觉标题由宿主
 // ZL2DownloadViewController 的类别 chips 承担）。类型注入后不可变。

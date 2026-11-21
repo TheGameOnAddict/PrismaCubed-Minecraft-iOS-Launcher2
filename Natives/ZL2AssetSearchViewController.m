@@ -2570,7 +2570,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                                                      stageAtIndex:0
                                                          progress:-1
                                                           message:localize(@"i18n_str_260", nil)];
-            taskItem.autoPresentDetail = YES;
+            taskItem.autoPresentDetail = !strongSelf.showProfiles;
             [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId state:DownloadTaskStateDownloading];
         }
 
@@ -2579,6 +2579,17 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 
     // 启动首次下载尝试
     attemptDownload();
+    if (self.showProfiles) {
+        UIAlertController *notice = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Modpack is installing", nil)
+            message:NSLocalizedString(@"Find it in My Profiles once installation finishes.", nil) preferredStyle:UIAlertControllerStyleAlert];
+        [notice addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Keep Browsing", nil) style:UIAlertActionStyleCancel handler:nil]];
+        [notice addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Go to Profiles", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            if (weakSelf.showProfiles) weakSelf.showProfiles();
+        }]];
+        void (^presentNotice)(void) = ^{ [weakSelf presentViewController:notice animated:YES completion:nil]; };
+        id<UIViewControllerTransitionCoordinator> transition = self.navigationController.transitionCoordinator;
+        if (!transition || ![transition animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) { presentNotice(); }]) presentNotice();
+    }
 }
 
 // 阶段14：整合包导入辅助（旧页 importModpackWithService:info:taskId:tempPath:

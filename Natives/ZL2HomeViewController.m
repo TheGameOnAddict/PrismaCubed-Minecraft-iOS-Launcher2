@@ -355,6 +355,9 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 // 双栏根（Row：内容区 weight 7 + ActionMenu 3/10）
 @property (nonatomic, strong) UIView *contentArea;
 @property (nonatomic, strong) UILabel *sectionHeading;
+@property (nonatomic, strong) UIButton *loginBanner;
+@property (nonatomic, strong) UILabel *emptyMessage;
+@property (nonatomic, strong) UILabel *emptyActionLabel;
 @property (nonatomic, strong) UIButton *profilesTab;
 @property (nonatomic, strong) UIButton *browseTab;
 @property (nonatomic, strong) ZL2AssetSearchViewController *packBrowser;
@@ -857,6 +860,13 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [profiles addTarget:self action:@selector(cubicShowProfiles) forControlEvents:UIControlEventTouchUpInside];
     self.profilesTab = profiles;
     self.browseTab = browse;
+    UIButton *login = [UIButton buttonWithType:UIButtonTypeSystem];
+    [login setTitle:NSLocalizedString(@"Add an account to launch your profiles ›", nil) forState:UIControlStateNormal];
+    login.backgroundColor = [ZL2Theme surfaceContainer];
+    login.tintColor = [ZL2Theme primary];
+    login.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+    [login addTarget:self action:@selector(accountCardTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.loginBanner = login;
     UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[profiles, browse, import, create]];
     actions.alignment = UIStackViewAlignmentCenter;
     for (UIButton *item in actions.arrangedSubviews) {
@@ -873,7 +883,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     actions.spacing = 8;
     actions.tintColor = [ZL2Theme primary];
     actions.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:actions];
+    UIStackView *navigation = [[UIStackView alloc] initWithArrangedSubviews:@[login, actions]];
+    navigation.axis = UILayoutConstraintAxisVertical;
+    navigation.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:navigation];
     UILabel *heading = [[UILabel alloc] init];
     self.sectionHeading = heading;
     [self cubicShowProfiles];
@@ -900,9 +913,9 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [_contentArea addSubview:_gridView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [actions.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
-        [actions.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:12],
-        [actions.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        [navigation.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [navigation.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:12],
+        [navigation.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12],
         [actions.heightAnchor constraintGreaterThanOrEqualToConstant:44],
         [heading.topAnchor constraintEqualToAnchor:actions.bottomAnchor constant:2],
         [heading.leadingAnchor constraintEqualToAnchor:actions.leadingAnchor],
@@ -920,25 +933,27 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 /// 空态：archivebox 68 +「没有安装版本」+「去下载」钮（壳切下载页 index=1；
 /// 与 ZL2VersionsViewController versions_manage_no_versions 同语义）
 - (void)cubicBrowseModpacks {
-    if (self.packBrowser) return;
-    ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
-        initWithType:ZL2AssetSearchTypeModpack title:NSLocalizedString(@"Browse Modpacks", nil)];
-    self.packBrowser = browser;
-    [self addChildViewController:browser];
-    browser.view.frame = self.contentArea.bounds;
-    browser.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.contentArea addSubview:browser.view];
-    [browser didMoveToParentViewController:self];
+    if (!self.packBrowser) {
+        ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
+            initWithType:ZL2AssetSearchTypeModpack title:NSLocalizedString(@"Browse Modpacks", nil)];
+        __weak typeof(self) weakSelf = self;
+        browser.showProfiles = ^{ [weakSelf cubicShowProfiles]; };
+        self.packBrowser = browser;
+        [self addChildViewController:browser];
+        browser.view.frame = self.contentArea.bounds;
+        browser.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self.contentArea addSubview:browser.view];
+        [browser didMoveToParentViewController:self];
+    }
+    self.packBrowser.view.hidden = NO;
+    [self.contentArea bringSubviewToFront:self.packBrowser.view];
     self.sectionHeading.text = NSLocalizedString(@"Browse Modpacks", nil);
     [self.browseTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
     [self.profilesTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
 }
 
 - (void)cubicShowProfiles {
-    [self.packBrowser willMoveToParentViewController:nil];
-    [self.packBrowser.view removeFromSuperview];
-    [self.packBrowser removeFromParentViewController];
-    self.packBrowser = nil;
+    self.packBrowser.view.hidden = YES;
     self.sectionHeading.text = NSLocalizedString(@"Profiles", nil);
     [self.profilesTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
     [self.browseTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
@@ -978,6 +993,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     iconView.userInteractionEnabled = NO;
 
     UILabel *label = [[UILabel alloc] init];
+    self.emptyMessage = label;
     label.text = localize(@"prisma.ui.no.versions.installed", nil);
     label.font = [ZL2Theme fontBodyMedium];
     label.textColor = [ZL2Theme onSurfaceVariant];
@@ -994,6 +1010,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     downloadButton.accessibilityTraits = UIAccessibilityTraitButton;
 
     UILabel *downloadLabel = [[UILabel alloc] init];
+    self.emptyActionLabel = downloadLabel;
     downloadLabel.text = localize(@"resman.common.go_download", nil);
     downloadLabel.font = [ZL2Theme fontLabelLarge];
     downloadLabel.textColor = [ZL2Theme onPrimary];
@@ -1003,10 +1020,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     downloadLabel.userInteractionEnabled = NO;
     [downloadButton addSubview:downloadLabel];
 
+    __weak typeof(self) weakSelf = self;
     downloadButton.ame_action = ^{
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate"
-                                                            object:nil
-                                                          userInfo:@{@"index": @(1)}];
+        if (BaseAuthenticator.current) [weakSelf cubicCreateProfile];
+        else [weakSelf accountCardTapped];
     };
 
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[iconView, label, downloadButton]];
@@ -1245,6 +1262,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 - (void)ame_rebuildGrid {
     [self.gridView reloadData];
     BOOL empty = (self.ame_rows.count == 0);
+    BOOL signedIn = BaseAuthenticator.current != nil;
+    self.loginBanner.hidden = signedIn || empty;
+    self.emptyMessage.text = signedIn ? NSLocalizedString(@"No profiles yet", nil) : NSLocalizedString(@"Add an account to get started", nil);
+    self.emptyActionLabel.text = signedIn ? NSLocalizedString(@"New Profile", nil) : NSLocalizedString(@"Add Account", nil);
     self.emptyStateView.hidden = !empty;
     self.gridView.hidden = empty;
 }

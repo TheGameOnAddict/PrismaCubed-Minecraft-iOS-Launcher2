@@ -639,7 +639,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     // 右簇恒钉右缘（ZL2 ConstraintLayout 同构）
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.font = [ZL2Theme fontTitleMedium];
+    self.titleLabel.font = [UIFont boldSystemFontOfSize:17];
     self.titleLabel.textColor = [ZL2Theme onSurface];
     self.titleLabel.numberOfLines = 1;
     self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -671,7 +671,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     account.accessibilityLabel = NSLocalizedString(@"Launcher menu", nil);
     account.tintColor = [ZL2Theme primary];
     [account setImage:[UIImage systemImageNamed:@"person.crop.circle.fill"] forState:UIControlStateNormal];
-    account.showsMenuAsPrimaryAction = YES;
+    [account addTarget:self action:@selector(cubicOpenAccountMenu) forControlEvents:UIControlEventTouchUpInside];
     [account.widthAnchor constraintEqualToConstant:44].active = YES;
     [account.heightAnchor constraintEqualToConstant:40].active = YES;
     [self.rightCluster addArrangedSubview:account];
@@ -696,6 +696,79 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     ]];
 }
 
+- (void)cubicOpenAccountMenu {
+    UIViewController *drawer = [UIViewController new];
+    drawer.modalPresentationStyle = UIModalPresentationOverFullScreen;
+    UIView *overlay = drawer.view;
+    overlay.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+    UIButton *dismiss = [UIButton buttonWithType:UIButtonTypeCustom];
+    dismiss.accessibilityLabel = NSLocalizedString(@"Close menu", nil);
+    __weak UIViewController *weakDrawer = drawer;
+    [dismiss addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        [weakDrawer dismissViewControllerAnimated:NO completion:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    dismiss.frame = overlay.bounds;
+    dismiss.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [overlay addSubview:dismiss];
+    UIView *panel = [UIView new];
+    panel.backgroundColor = [ZL2Theme surfaceContainerLow];
+    panel.translatesAutoresizingMaskIntoConstraints = NO;
+    [overlay addSubview:panel];
+    UIStackView *items = [UIStackView new];
+    items.axis = UILayoutConstraintAxisVertical;
+    items.spacing = 5;
+    items.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:items];
+    NSLayoutConstraint *width = [panel.widthAnchor constraintEqualToAnchor:overlay.widthAnchor multiplier:0.76];
+    width.priority = 999;
+    [NSLayoutConstraint activateConstraints:@[
+        [panel.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor],
+        [panel.topAnchor constraintEqualToAnchor:overlay.topAnchor],
+        [panel.bottomAnchor constraintEqualToAnchor:overlay.bottomAnchor],
+        width,
+        [panel.widthAnchor constraintLessThanOrEqualToConstant:320],
+        [items.topAnchor constraintEqualToAnchor:panel.safeAreaLayoutGuide.topAnchor constant:12],
+        [items.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:12],
+        [items.trailingAnchor constraintEqualToAnchor:panel.safeAreaLayoutGuide.trailingAnchor constant:-12],
+    ]];
+    BaseAuthenticator *account = BaseAuthenticator.current;
+    NSDictionary *auth = account.authData;
+    NSString *method = auth[@"accountType"];
+    BOOL thirdParty = [method isEqual:@"thirdparty"] || (!method && auth[@"clientToken"]);
+    BOOL local = [method isEqual:@"local"] || (!method && !auth[@"xboxGamertag"]);
+    NSString *type = thirdParty ? localize(@"login.option.3rdparty", nil) : local ? localize(@"login.option.local", nil) : @"Microsoft";
+    NSString *username = [auth[@"username"] isKindOfClass:NSString.class] ? auth[@"username"] : nil;
+    NSString *accountTitle = username.length ? [NSString stringWithFormat:@"%@\n%@ · Manage Accounts ›", username, type] : NSLocalizedString(@"Add Account ›", nil);
+    NSArray *titles = @[accountTitle, NSLocalizedString(@"Directory", nil), NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
+    NSArray *icons = @[@"person.crop.circle", @"folder", @"person.2", @"gearshape"];
+    __weak typeof(self) weakSelf = self;
+    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
+        UIButton *item = [UIButton buttonWithType:UIButtonTypeSystem];
+        [item setTitle:title forState:UIControlStateNormal];
+        UIImage *image = index == 0 ? self.cubicAccountButton.currentImage : [UIImage systemImageNamed:icons[index]];
+        [item setImage:image forState:UIControlStateNormal];
+        item.titleLabel.numberOfLines = index == 0 ? 2 : 1;
+        item.tintColor = [ZL2Theme onSurface];
+        item.backgroundColor = [ZL2Theme surfaceContainer];
+        item.layer.cornerRadius = 8;
+        item.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+        item.contentEdgeInsets = UIEdgeInsetsMake(12, 12, 12, 12);
+        item.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, -8);
+        [item addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            [weakDrawer dismissViewControllerAnimated:NO completion:^{
+                if (index == 1) [weakSelf ame_openFileManagerSheet];
+                else [weakSelf showPageAtIndex:(index == 0 ? 3 : index == 2 ? 5 : 4)];
+            }];
+        }] forControlEvents:UIControlEventTouchUpInside];
+        [items addArrangedSubview:item];
+    }];
+    [self presentViewController:drawer animated:NO completion:^{
+        [overlay layoutIfNeeded];
+        panel.transform = CGAffineTransformMakeTranslation(panel.bounds.size.width, 0);
+        [UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled() ? 0 : 0.2 animations:^{ panel.transform = CGAffineTransformIdentity; }];
+    }];
+}
+
 - (void)cubicRefreshAccountMenu {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self cubicRefreshAccountMenu]; });
@@ -705,22 +778,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     if (!button) return;
     BaseAuthenticator *currentAccount = BaseAuthenticator.current;
     NSDictionary *auth = currentAccount.authData;
-    NSString *name = [auth[@"username"] isKindOfClass:NSString.class] ? auth[@"username"] : nil;
-    NSArray<NSString *> *titles = @[NSLocalizedString(@"Manage Accounts", nil), NSLocalizedString(@"Directory", nil),
-        NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
-    NSArray<NSString *> *icons = @[@"person.crop.circle", @"folder", @"person.2", @"gearshape"];
-    NSArray<NSNumber *> *pages = @[@3, @(-1), @5, @4];
-    NSMutableArray<UIAction *> *actions = [NSMutableArray array];
     __weak typeof(self) weakSelf = self;
-    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
-        [actions addObject:[UIAction actionWithTitle:title image:[UIImage systemImageNamed:icons[index]]
-            identifier:nil handler:^(__kindof UIAction *action) {
-                NSInteger page = pages[index].integerValue;
-                if (page < 0) [weakSelf ame_openFileManagerSheet];
-                else [weakSelf showPageAtIndex:page];
-            }]];
-    }];
-    button.menu = [UIMenu menuWithTitle:name ?: NSLocalizedString(@"Account", nil) children:actions];
     [button setImage:[UIImage systemImageNamed:@"person.crop.circle.fill"] forState:UIControlStateNormal];
     if (auth) {
         [[AvatarManager sharedManager] ame185_fetchAvatarForAuthData:auth completion:^(UIImage *image) {
