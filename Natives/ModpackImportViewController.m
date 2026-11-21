@@ -1,3 +1,4 @@
+#import "CubicForm.h"
 #import "utils.h"
 //
 //  ModpackImportViewController.m
@@ -53,10 +54,102 @@
     self.importService = [[ModpackImportService alloc] init];
     self.importedModpacks = [NSMutableArray array];
 
+    if (self.profileImportForm) { [self cubicBuildImport]; return; }
     [self setupNavigationTab];
     [self setupUI];
     [self loadImportedModpacks];
 
+}
+
+- (void)cubicBuildImport {
+    UIStackView *form = CubicForm(self, @"Import Modpack");
+    [form addArrangedSubview:CubicLabel(@"Link or share code",15)];
+    UITextField *source = [UITextField new];
+    source.borderStyle = UITextBorderStyleRoundedRect;
+    source.placeholder = @"Paste a link or CurseForge code";
+    source.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    source.autocorrectionType = UITextAutocorrectionTypeNo;
+    [form addArrangedSubview:source];
+    UIButton *preview = CubicButton(@"Preview Import",YES);
+    __weak typeof(self) weakSelf = self;
+    [preview addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        [source resignFirstResponder];
+        [weakSelf cubicOpenSource:source.text];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [form addArrangedSubview:preview];
+    [form addArrangedSubview:CubicLabel(@"Modpack file",15)];
+    UIButton *file = CubicButton(@"Choose .mrpack or .zip File",NO);
+    [file addTarget:self action:@selector(selectModpackFile) forControlEvents:UIControlEventTouchUpInside];
+    [form addArrangedSubview:file];
+    [form addArrangedSubview:CubicLabel(@"Existing launcher folder",15)];
+    UIButton *folder = CubicButton(@"Choose Folder",NO);
+    [folder addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFolder]];
+        picker.delegate = weakSelf;
+        [weakSelf presentViewController:picker animated:YES completion:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [form addArrangedSubview:folder];
+}
+
+- (void)cubicOpenSource:(NSString *)source {
+    NSString *input = [source stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSURL *link = [NSURL URLWithString:input];
+    if (!([link.host.lowercaseString isEqual:@"modrinth.com"] || [link.host.lowercaseString isEqual:@"www.modrinth.com"])) {
+        [self downloadCurseForgeSharedProfile:input];
+        return;
+    }
+    NSArray *parts = link.pathComponents;
+    if (parts.count != 3 || ![parts[1] isEqual:@"modpack"] ||
+        [parts[2] rangeOfString:@"^[A-Za-z0-9_-]+$" options:NSRegularExpressionSearch].location == NSNotFound) {
+        [self showAlertWithTitle:@"Import Modpack" message:@"Paste the Modrinth modpack project link."];
+        return;
+    }
+    [self showLoadingHUD:@"Looking up modpack…"];
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"https://api.modrinth.com/v2/project/%@/version",parts[2]]];
+    [[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        id releases = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        NSURL *archive = nil;
+        for (NSDictionary *release in [releases isKindOfClass:NSArray.class] ? releases : @[]) {
+            for (NSDictionary *file in release[@"files"]) {
+                if (![file[@"filename"] hasSuffix:@".mrpack"]) continue;
+                NSURL *candidate = [NSURL URLWithString:file[@"url"]];
+                if ([candidate.scheme isEqual:@"https"] && [candidate.host isEqual:@"cdn.modrinth.com"]) { archive = candidate; break; }
+            }
+            if (archive) break;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self hideLoadingHUD];
+            if (archive) [self cubicDownloadArchive:archive expectedFormat:@"modrinth"];
+            else [self showAlertWithTitle:@"Import Modpack" message:error.localizedDescription ?: @"No downloadable modpack was found."];
+        });
+    }] resume];
+}
+
+- (void)cubicImportFolder:(NSURL *)folder {
+    BOOL scoped = [folder startAccessingSecurityScopedResource];
+    [self showLoadingHUD:@"Reading folder…"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSURL *dir = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:NSUUID.UUID.UUIDString];
+        NSURL *zip = [dir URLByAppendingPathComponent:@"Folder.zip"];
+        __block NSError *failure = nil;
+        __block NSDictionary *info = nil;
+        NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+        NSError *coordinationError = nil;
+        [coordinator coordinateReadingItemAtURL:folder options:NSFileCoordinatorReadingForUploading error:&coordinationError byAccessor:^(NSURL *archive) {
+            NSFileManager *fm = NSFileManager.defaultManager;
+            if ([fm createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:&failure] &&
+                [fm copyItemAtURL:archive toURL:zip error:&failure]) info = [self.importService parseModpackAtURL:zip error:&failure];
+        }];
+        if (scoped) [folder stopAccessingSecurityScopedResource];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self hideLoadingHUD];
+            if (info) [self showModpackPreview:info fileURL:zip temporaryDirectory:dir];
+            else {
+                [NSFileManager.defaultManager removeItemAtURL:dir error:nil];
+                [self showAlertWithTitle:@"Import Folder" message:failure.localizedDescription ?: coordinationError.localizedDescription ?: @"Choose a compatible Minecraft folder."];
+            }
+        });
+    });
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -297,6 +390,10 @@
     }
 
     NSURL *url = [[NSURL URLWithString:@"https://api.curseforge.com/v1/shared-profile/"] URLByAppendingPathComponent:code];
+    [self cubicDownloadArchive:url expectedFormat:@"curseforge"];
+}
+
+- (void)cubicDownloadArchive:(NSURL *)url expectedFormat:(NSString *)format {
     [self showLoadingHUD:localize(@"modpack.import.curseforge.code.downloading", nil)];
     self.tabSegment.enabled = NO;
 
@@ -331,7 +428,7 @@
         }
 
         NSString *message = error.localizedDescription;
-        if (![modpackInfo[@"format"] isEqualToString:@"curseforge"]) {
+        if (![modpackInfo[@"format"] isEqualToString:format]) {
             modpackInfo = nil;
             message = message ?: localize(@"modpack.import.curseforge.code.invalidArchive", nil);
         }
@@ -346,6 +443,9 @@
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (urls.count == 0) return;
     NSURL *fileURL = urls.firstObject;
+    NSNumber *isDirectory = nil;
+    [fileURL getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
+    if (isDirectory.boolValue) { [self cubicImportFolder:fileURL]; return; }
     NSString *fileExtension = fileURL.pathExtension.lowercaseString;
 
     if (![fileExtension isEqualToString:@"mrpack"] && ![fileExtension isEqualToString:@"zip"]) {

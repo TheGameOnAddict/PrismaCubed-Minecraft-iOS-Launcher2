@@ -29,6 +29,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface ZL2GameAddonsViewController : UIViewController
+@property (nonatomic) BOOL profileCreationForm;
 
 /// 目标 Minecraft 版本 id（选版屏传入，只读锚）
 @property (nonatomic, copy, readonly) NSString *gameVersion;

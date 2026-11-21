@@ -1125,13 +1125,8 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     add.layer.cornerRadius = 7;
     add.contentEdgeInsets = UIEdgeInsetsMake(6, 8, 6, 8);
     [add addTarget:self action:@selector(ameV13_openDownloadCenter) forControlEvents:UIControlEventTouchUpInside];
-    UIButton *find = [UIButton buttonWithType:UIButtonTypeSystem];
-    find.accessibilityLabel = NSLocalizedString(@"Search installed mods", nil);
-    [find setImage:[UIImage systemImageNamed:@"magnifyingglass"] forState:UIControlStateNormal];
-    [find addTarget:self action:@selector(cubicToggleSearch:) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *header = [self ameV13_pageHeaderRowWithTitle:NSLocalizedString(@"Installed Mods", nil) trailing:@[find, add]];
-    self.cubicModsHeading = header.arrangedSubviews.firstObject;
-    UIStackView *tools = [[UIStackView alloc] initWithArrangedSubviews:@[countLabel, [self ameV13_spacer], updateButton, importButton]];
+    UIStackView *header = [self ameV13_pageHeaderRowWithTitle:NSLocalizedString(@"Installed Mods", nil) trailing:@[importButton, add]];
+    UIStackView *tools = [[UIStackView alloc] initWithArrangedSubviews:@[countLabel, updateButton]];
     tools.spacing = 8;
     _ameV13_contentStack = [self ameV13_installContentSkeleton];
     [_ameV13_contentStack addArrangedSubview:header];
@@ -1153,8 +1148,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     search.onTextChanged = ^(NSString *text) { [wself ameV13_applyFilter]; };
     search.onReturn = ^(NSString *text) { [wsearch resignFirstResponder]; };
     _ameV13_searchBar = search;
-    [header insertArrangedSubview:search atIndex:0];
-    search.hidden = YES;
+    [tools insertArrangedSubview:search atIndex:1];
     [_ameV13_contentStack addArrangedSubview:tools];
 
     // 选择模式工具条（懒建；计数字 + 全选/启用/禁用/删除/完成）

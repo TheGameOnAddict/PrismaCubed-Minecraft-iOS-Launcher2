@@ -1,3 +1,5 @@
+#import "CubicForm.h"
+#import "ZL2GameAddonsViewController.h"
 //
 // ZL2HomeViewController.m — ZL2 真布局主页实现（7.0-UI-13-H：7:3 双栏）
 //
@@ -99,7 +101,7 @@ static const CGFloat ZL2HomeGridSpacing      = 6;     // 卡片间距（行/列�
 static const CGFloat ZL2HomeGridInsetH       = 12;    // section 左右 inset
 static const CGFloat ZL2HomeGridInsetTop     = 12;    // section 顶 inset
 static const CGFloat ZL2HomeGridInsetBottom  = 16;    // section 底 inset
-static const CGFloat ZL2HomeCardHeight       = 178;   // 实例卡高
+static const CGFloat ZL2HomeCardHeight       = 202;   // 实例卡高
 static const CGFloat ZL2HomeCardMinWidth     = 140;   // 窄屏降列阈值（列宽低于则减列）
 
 // ActionMenu 组件高度
@@ -294,7 +296,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
             [_infoLabel.trailingAnchor constraintEqualToAnchor:_playButton.leadingAnchor constant:-4],
             [_infoLabel.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:2],
             [_playButton.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor constant:-6],
-            [_playButton.bottomAnchor constraintEqualToAnchor:_cardBody.bottomAnchor constant:-5],
+            [_playButton.bottomAnchor constraintEqualToAnchor:_cardBody.bottomAnchor constant:-10],
             [_playButton.widthAnchor constraintEqualToConstant:40],
             [_playButton.heightAnchor constraintEqualToConstant:34],
             [_playIconView.centerXAnchor constraintEqualToAnchor:_playButton.centerXAnchor],
@@ -372,6 +374,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 // 双栏根（Row：内容区 weight 7 + ActionMenu 3/10）
 @property (nonatomic, strong) UIView *contentArea;
 @property (nonatomic, strong) UILabel *sectionHeading;
+@property (nonatomic, strong) UILabel *profileCount;
 @property (nonatomic, strong) UIButton *loginBanner;
 @property (nonatomic, strong) UILabel *emptyMessage;
 @property (nonatomic, strong) UILabel *emptyActionLabel;
@@ -893,6 +896,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         item.layer.cornerRadius = 7;
         item.contentEdgeInsets = UIEdgeInsetsMake(7, 4, 7, 4);
     }
+    [import setTitleColor:ZL2Theme.onSurface forState:UIControlStateNormal];
     import.backgroundColor = [ZL2Theme surfaceContainerHigh];
     create.backgroundColor = [ZL2Theme primary];
     [create setTitleColor:[ZL2Theme onPrimary] forState:UIControlStateNormal];
@@ -902,16 +906,23 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     actions.tintColor = [ZL2Theme primary];
     actions.translatesAutoresizingMaskIntoConstraints = NO;
     UIStackView *navigation = [[UIStackView alloc] initWithArrangedSubviews:@[login, actions]];
+    navigation.backgroundColor = ZL2Theme.surfaceContainer;
     navigation.axis = UILayoutConstraintAxisVertical;
     navigation.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:navigation];
     UILabel *heading = [[UILabel alloc] init];
+    self.profileCount = CubicLabel(@"",12);
+    self.profileCount.textColor = ZL2Theme.onSurfaceVariant;
+    self.profileCount.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.profileCount];
+    [self.profileCount.trailingAnchor constraintEqualToAnchor:actions.trailingAnchor].active = YES;
     self.sectionHeading = heading;
     [self cubicShowProfiles];
     heading.font = [UIFont boldSystemFontOfSize:22];
     heading.textColor = [ZL2Theme onSurface];
     heading.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:heading];
+    [self.profileCount.centerYAnchor constraintEqualToAnchor:heading.centerYAnchor].active = YES;
 
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
     layout.scrollDirection = UICollectionViewScrollDirectionVertical;
@@ -966,6 +977,9 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     self.packBrowser.view.hidden = NO;
     [self.contentArea bringSubviewToFront:self.packBrowser.view];
     self.sectionHeading.text = nil;
+    self.profileCount.hidden = YES;
+    CubicUnderline(self.profilesTab, NO);
+    CubicUnderline(self.browseTab, YES);
     [self.browseTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
     [self.profilesTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
 }
@@ -973,23 +987,25 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 - (void)cubicShowProfiles {
     self.packBrowser.view.hidden = YES;
     self.sectionHeading.text = NSLocalizedString(@"Profiles", nil);
+    self.profileCount.hidden = NO;
+    CubicUnderline(self.profilesTab, YES);
+    CubicUnderline(self.browseTab, NO);
     [self.profilesTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
     [self.browseTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
 }
 
 - (void)cubicImport {
-    UINavigationController *nav = [[UINavigationController alloc]
-        initWithRootViewController:[[ModpackImportViewController alloc] init]];
-    [self presentViewController:nav animated:YES completion:nil];
+    ModpackImportViewController *form = [ModpackImportViewController new];
+    form.profileImportForm = YES;
+    form.modalPresentationStyle = UIModalPresentationOverFullScreen;
+    [self presentViewController:form animated:YES completion:nil];
 }
 
 - (void)cubicCreateProfile {
-    ZL2GameDownloadViewController *versions = [ZL2GameDownloadViewController new];
-    versions.title = NSLocalizedString(@"New Profile", nil);
-    versions.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(cubicDismissCreation)];
-    UINavigationController *wizard = [[UINavigationController alloc] initWithRootViewController:versions];
-    wizard.modalPresentationStyle = UIModalPresentationPageSheet;
-    [self presentViewController:wizard animated:YES completion:nil];
+    ZL2GameAddonsViewController *form = [[ZL2GameAddonsViewController alloc] initWithGameVersion:@""];
+    form.profileCreationForm = YES;
+    form.modalPresentationStyle = UIModalPresentationOverFullScreen;
+    [self presentViewController:form animated:YES completion:nil];
 }
 
 - (void)cubicDismissCreation {
@@ -1275,6 +1291,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         }];
     }
     self.ame_rows = rows;
+    self.profileCount.text = [NSString stringWithFormat:rows.count == 1 ? @"%lu profile" : @"%lu profiles",(unsigned long)rows.count];
 }
 
 - (void)ame_rebuildGrid {

@@ -762,7 +762,11 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         item.titleLabel.numberOfLines = index == 0 ? 3 : 1;
         if (index == 0) item.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
         item.tintColor = [ZL2Theme onSurface];
-        item.backgroundColor = [ZL2Theme surfaceContainer];
+        item.backgroundColor = index == 0 ? ZL2Theme.surfaceContainerHigh : ZL2Theme.surfaceContainer;
+        if (index == 0) {
+            item.layer.borderColor = ZL2Theme.primary.CGColor;
+            item.layer.borderWidth = 1;
+        }
         item.layer.cornerRadius = 8;
         item.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
         item.contentEdgeInsets = UIEdgeInsetsMake(12, 12, 12, 12);

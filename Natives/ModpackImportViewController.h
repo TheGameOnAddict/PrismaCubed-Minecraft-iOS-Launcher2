@@ -10,6 +10,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface ModpackImportViewController : UIViewController
+@property (nonatomic) BOOL profileImportForm;
 
 @property (nonatomic, copy, nullable) NSString *profileName;
 

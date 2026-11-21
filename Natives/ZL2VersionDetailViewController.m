@@ -1,3 +1,4 @@
+#import "CubicForm.h"
 #import "FolderBrowserViewController.h"
 #import "ZL2AssetSearchViewController.h"
 //
@@ -341,25 +342,25 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     [_headerCard addSubview:doneButton];
 
     [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4],
+        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
         [back.leadingAnchor constraintEqualToAnchor:_headerCard.leadingAnchor],
         [assistant.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
         [assistant.trailingAnchor constraintEqualToAnchor:_headerCard.trailingAnchor],
-        [_headerCard.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:4],
+        [_headerCard.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:8],
         [_headerCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:ZL2V13PageMargin],
         [_headerCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-ZL2V13PageMargin],
 
         [_iconBg.leadingAnchor constraintEqualToAnchor:_headerCard.leadingAnchor constant:14],
         [_iconBg.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
-        [_iconBg.widthAnchor constraintEqualToConstant:54],
-        [_iconBg.heightAnchor constraintEqualToConstant:54],
+        [_iconBg.widthAnchor constraintEqualToConstant:72],
+        [_iconBg.heightAnchor constraintEqualToConstant:72],
         [_iconView.centerXAnchor constraintEqualToAnchor:_iconBg.centerXAnchor],
         [_iconView.centerYAnchor constraintEqualToAnchor:_iconBg.centerYAnchor],
         [_iconView.widthAnchor constraintEqualToAnchor:_iconBg.widthAnchor],
         [_iconView.heightAnchor constraintEqualToAnchor:_iconBg.heightAnchor],
 
         [textStack.leadingAnchor constraintEqualToAnchor:_iconBg.trailingAnchor constant:12],
-        [_headerCard.heightAnchor constraintEqualToConstant:88],
+        [_headerCard.heightAnchor constraintEqualToConstant:98],
         [textStack.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
         [textStack.bottomAnchor constraintLessThanOrEqualToAnchor:_headerCard.bottomAnchor constant:-12],
         [doneButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:textStack.trailingAnchor constant:8],
@@ -571,9 +572,9 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     self.ameV13_selectedIndex = index;
     for (UIButton *tab in self.railStack.arrangedSubviews) {
         BOOL selected = tab.tag == index;
-        tab.backgroundColor = selected ? [ZL2Theme primaryContainer] : UIColor.clearColor;
-        tab.tintColor = selected ? [ZL2Theme onPrimaryContainer] : [ZL2Theme primary];
-        tab.layer.cornerRadius = 8;
+        tab.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+        tab.tintColor = selected ? ZL2Theme.primary : ZL2Theme.onSurfaceVariant;
+        CubicUnderline(tab, selected);
         tab.accessibilityTraits = UIAccessibilityTraitButton | (selected ? UIAccessibilityTraitSelected : 0);
     }
 }

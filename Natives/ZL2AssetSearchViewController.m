@@ -244,7 +244,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 @property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, strong) UILabel *authorLabel;
 @property (nonatomic, strong) UILabel *descLabel;
-@property (nonatomic, strong) UILabel *tagsLabel;
+@property (nonatomic, strong) UIStackView *tagsLabel;
 @property (nonatomic, strong) UILabel *downloadsLabel;
 @property (nonatomic, strong) CubicResultTitle *titleViewport;
 @property (nonatomic, strong) UIButton *installButton;
@@ -320,10 +320,9 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         _descLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [_cardView addSubview:_descLabel];
 
-        _tagsLabel = [[UILabel alloc] init];
-        _tagsLabel.font = [ZL2Theme fontLabelMedium];
-        _tagsLabel.textColor = [ZL2Theme onSurfaceVariant];
-        _tagsLabel.numberOfLines = 1;
+        _tagsLabel = [UIStackView new];
+        _tagsLabel.spacing = 4;
+        _tagsLabel.clipsToBounds = YES;
         _tagsLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [_cardView addSubview:_tagsLabel];
 
@@ -353,13 +352,13 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
             [_authorLabel.widthAnchor constraintEqualToConstant:78],
             [_installButton.topAnchor constraintEqualToAnchor:_authorLabel.bottomAnchor constant:4],
             [_installButton.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-8],
-            [_installButton.widthAnchor constraintEqualToConstant:54],
-            [_installButton.heightAnchor constraintEqualToConstant:30],
+            [_installButton.widthAnchor constraintEqualToConstant:74],
+            [_installButton.heightAnchor constraintEqualToConstant:38],
             [_descLabel.topAnchor constraintEqualToAnchor:titleStack.bottomAnchor constant:1],
             [_descLabel.leadingAnchor constraintEqualToAnchor:titleStack.leadingAnchor],
             [_descLabel.trailingAnchor constraintEqualToAnchor:titleStack.trailingAnchor],
             [_tagsLabel.leadingAnchor constraintEqualToAnchor:_iconView.leadingAnchor],
-            [_tagsLabel.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
+            [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_installButton.trailingAnchor],
             [_tagsLabel.bottomAnchor constraintEqualToAnchor:_downloadsLabel.topAnchor constant:-3],
             [_downloadsLabel.leadingAnchor constraintEqualToAnchor:_iconView.leadingAnchor],
             [_downloadsLabel.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
@@ -375,6 +374,12 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     self.cardView.alpha = highlighted ? 0.7 : 1.0;
 }
 
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGSize viewport = self.window.bounds.size;
+    self.tagsLabel.hidden = viewport.width <= viewport.height;
+}
+
 - (void)cubicInstall {
     if (self.onInstall) self.onInstall();
 }
@@ -387,8 +392,6 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     self.authorLabel.hidden = NO;
     self.descLabel.text = nil;
     self.descLabel.hidden = NO;
-    self.tagsLabel.text = nil;
-    self.tagsLabel.hidden = NO;
     // 图标复位为占位形态（IconLoader 加载时会重设占位图，这里复位形态属性）
     self.iconView.contentMode = UIViewContentModeScaleAspectFit;
     self.iconView.tintColor = [ZL2Theme onSurfaceVariant];
@@ -428,17 +431,19 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     self.descLabel.hidden = NO;
 
     // 标签行（categories 空格连接；CF 侧暂无 id→名映射表，空数组整行隐藏）
-    NSMutableString *tags = [NSMutableString string];
-    NSArray *categories = data[@"categories"];
-    if ([categories isKindOfClass:[NSArray class]]) {
-        for (NSString *category in categories) {
-            if (![category isKindOfClass:[NSString class]] || category.length == 0) continue;
-            if (tags.length > 0) [tags appendString:@" "];
-            [tags appendString:category];
-        }
+    for (UIView *tag in self.tagsLabel.arrangedSubviews) [tag removeFromSuperview];
+    for (id value in [data[@"categories"] isKindOfClass:NSArray.class] ? data[@"categories"] : @[]) {
+        if (![value isKindOfClass:NSString.class] || ![value length]) continue;
+        UILabel *tag = [UILabel new];
+        tag.text = [NSString stringWithFormat:@"  %@  ",value];
+        tag.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
+        tag.textColor = ZL2Theme.onSurfaceVariant;
+        tag.layer.borderWidth = 1;
+        tag.layer.borderColor = ZL2Theme.outlineVariant.CGColor;
+        tag.layer.cornerRadius = 4;
+        [self.tagsLabel addArrangedSubview:tag];
     }
-    self.tagsLabel.text = tags.length ? tags : @"–";
-    self.tagsLabel.hidden = NO;
+    [self setNeedsLayout];
     self.downloadsLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
     self.downloadsLabel.textColor = [ZL2Theme onSurfaceVariant];
     self.downloadsLabel.textAlignment = NSTextAlignmentRight;

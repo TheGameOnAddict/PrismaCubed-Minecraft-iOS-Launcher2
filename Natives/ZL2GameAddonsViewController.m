@@ -1,3 +1,5 @@
+#import "CubicForm.h"
+#import "ZL2VersionIndex.h"
 //
 // ZL2GameAddonsViewController.m — ZL2 Addons 加载器选择屏（7.0-UI-14）
 // 结构契约见 .h 头注。安装分发走 legacy 链；本页 UI/选择/互斥全 ZL2 语义。
@@ -69,6 +71,12 @@
 #pragma mark - 页面本体
 
 @interface ZL2GameAddonsViewController () <ZL2AddonCardDelegate, UITextFieldDelegate>
+@property (nonatomic, copy, readwrite) NSString *gameVersion;
+@property (nonatomic, strong) UISegmentedControl *loaderChoice;
+@property (nonatomic, strong) UIButton *buildChoice;
+@property (nonatomic, strong) UIButton *createAction;
+@property (nonatomic, copy) NSString *formBuild;
+@property (nonatomic) NSUInteger formGeneration;
 // 头部
 @property (nonatomic, strong) UILabel *gameVersionLabel;
 @property (nonatomic, strong) UITextField *nameField;
@@ -116,8 +124,126 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [ZL2Theme surface];
+    if (self.profileCreationForm) { [self cubicBuildCreation]; return; }
     [self ame_buildViews];
     [self ame_refreshInstallButton];
+}
+
+- (void)cubicBuildCreation {
+    UIStackView *form = CubicForm(self, @"New Profile");
+    UIImageView *cover = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicProfileCover"]];
+    cover.clipsToBounds = YES;
+    cover.layer.cornerRadius = 8;
+    cover.contentMode = UIViewContentModeScaleAspectFill;
+    [cover.widthAnchor constraintEqualToConstant:72].active = YES;
+    [cover.heightAnchor constraintEqualToConstant:72].active = YES;
+    self.nameField = [UITextField new];
+    self.nameField.placeholder = @"Profile name";
+    self.nameField.borderStyle = UITextBorderStyleRoundedRect;
+    UIStackView *name = [[UIStackView alloc] initWithArrangedSubviews:@[CubicLabel(@"Profile Name",14),self.nameField]];
+    name.axis = UILayoutConstraintAxisVertical;
+    name.spacing = 5;
+    UIStackView *identity = [[UIStackView alloc] initWithArrangedSubviews:@[cover,name]];
+    identity.alignment = UIStackViewAlignmentCenter;
+    identity.spacing = 12;
+    [form addArrangedSubview:identity];
+    [form addArrangedSubview:CubicLabel(@"Minecraft Version",14)];
+    UIButton *version = CubicButton(@"Loading versions…", NO);
+    version.showsMenuAsPrimaryAction = YES;
+    [form addArrangedSubview:version];
+    [form addArrangedSubview:CubicLabel(@"Mod Loader",14)];
+    self.loaderChoice = [[UISegmentedControl alloc] initWithItems:@[@"Vanilla",@"Forge",@"Fabric",@"Quilt",@"NeoForge"]];
+    self.loaderChoice.selectedSegmentIndex = 0;
+    self.loaderChoice.selectedSegmentTintColor = ZL2Theme.primary;
+    [self.loaderChoice addTarget:self action:@selector(cubicRefreshBuilds) forControlEvents:UIControlEventValueChanged];
+    [form addArrangedSubview:self.loaderChoice];
+    self.buildChoice = CubicButton(@"Loader Version",NO);
+    self.buildChoice.showsMenuAsPrimaryAction = YES;
+    [form addArrangedSubview:self.buildChoice];
+    self.createAction = CubicButton(@"Create Profile",YES);
+    [self.createAction addTarget:self action:@selector(cubicSubmit) forControlEvents:UIControlEventTouchUpInside];
+    [self.nameField addTarget:self action:@selector(cubicValidate) forControlEvents:UIControlEventEditingChanged];
+    [form addArrangedSubview:self.createAction];
+    [self cubicRefreshBuilds];
+    __weak typeof(self) weakSelf = self;
+    [[ZL2VersionIndex sharedIndex] remoteVersionsWithCompletion:^(NSArray *versions, BOOL loaded) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSMutableArray *choices = [NSMutableArray array];
+            for (NSDictionary *entry in versions) {
+                NSString *vid = entry[@"id"];
+                if (![entry[@"type"] isEqual:@"release"] || !vid.length) continue;
+                if (!weakSelf.gameVersion.length) {
+                    weakSelf.gameVersion = vid;
+                    [version setTitle:vid forState:UIControlStateNormal];
+                }
+                [choices addObject:[UIAction actionWithTitle:vid image:nil identifier:nil handler:^(__kindof UIAction *action) {
+                    weakSelf.gameVersion = vid;
+                    [version setTitle:vid forState:UIControlStateNormal];
+                    [weakSelf cubicRefreshBuilds];
+                }]];
+            }
+            version.menu = [UIMenu menuWithChildren:choices];
+            if (!choices.count) [version setTitle:@"Version list unavailable" forState:UIControlStateNormal];
+            [weakSelf cubicRefreshBuilds];
+        });
+    }];
+}
+
+- (void)cubicRefreshBuilds {
+    NSUInteger generation = ++self.formGeneration;
+    self.formBuild = nil;
+    self.buildChoice.hidden = self.loaderChoice.selectedSegmentIndex == 0;
+    [self cubicValidate];
+    if (self.buildChoice.hidden || !self.gameVersion.length) return;
+    NSString *game = self.gameVersion;
+    NSString *family = [self.loaderChoice titleForSegmentAtIndex:self.loaderChoice.selectedSegmentIndex].lowercaseString;
+    self.buildChoice.menu = nil;
+    [self.buildChoice setTitle:@"Loading loader versions…" forState:UIControlStateNormal];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSArray *items = [self ame_fetchListForIdentifier:family gameVersion:game];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.formGeneration != generation) return;
+            self.formBuild = items.firstObject;
+            [self.buildChoice setTitle:self.formBuild ?: @"No compatible build available" forState:UIControlStateNormal];
+            NSMutableArray *choices = [NSMutableArray array];
+            __weak typeof(self) weakSelf = self;
+            for (NSString *build in items) {
+                [choices addObject:[UIAction actionWithTitle:build image:nil identifier:nil handler:^(__kindof UIAction *action) {
+                    weakSelf.formBuild = build;
+                    [weakSelf.buildChoice setTitle:build forState:UIControlStateNormal];
+                }]];
+            }
+            self.buildChoice.menu = [UIMenu menuWithChildren:choices];
+            [self cubicValidate];
+        });
+    });
+}
+
+- (void)cubicValidate {
+    NSString *name = [self.nameField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    self.createAction.enabled = name.length && ![name hasPrefix:@"."] && ![name containsString:@"/"] &&
+        ![name containsString:@"\\"] && !PLProfiles.current.profiles[name] && self.gameVersion.length &&
+        (self.buildChoice.hidden || self.formBuild.length) && !self.activeTask && !self.ame336Installing;
+    self.createAction.alpha = self.createAction.enabled ? 1 : 0.55;
+}
+
+- (void)cubicSubmit {
+    [self cubicValidate];
+    if (!self.createAction.enabled) return;
+    self.forgeCard = nil;
+    self.neoforgeCard = nil;
+    self.fabricCard = nil;
+    self.quiltCard = nil;
+    if (self.formBuild.length) {
+        NSString *family = [self.loaderChoice titleForSegmentAtIndex:self.loaderChoice.selectedSegmentIndex].lowercaseString;
+        ZL2AddonCard *card = [self ame_cardWithIdentifier:family title:family iconBundleName:nil fallbackSymbol:@"cube"];
+        card.selectedItem = self.formBuild;
+        if ([family isEqual:@"forge"]) self.forgeCard = card;
+        if ([family isEqual:@"neoforge"]) self.neoforgeCard = card;
+        if ([family isEqual:@"fabric"]) self.fabricCard = card;
+        if ([family isEqual:@"quilt"]) self.quiltCard = card;
+    }
+    [self ame_installTapped];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
