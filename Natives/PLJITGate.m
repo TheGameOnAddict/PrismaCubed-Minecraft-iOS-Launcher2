@@ -11,6 +11,7 @@
 //
 
 #import "PLJITGate.h"
+#import "PrismaJITShortcut.h"
 #import "utils.h"                    // isJITEnabled/getPref*/getEntitlementValue/
                                      // ame169_waitForJITCondition/ame185_dispatchToMainSelfHealing/
                                      // ame302_isLiveContainerGuest/ame322_stikjitBundleId/
@@ -41,6 +42,52 @@ static BOOL gPL355GateInFlight = NO;
 @implementation PLJITGate
 
 + (void)invokeAfterJITEnabledWithHandler:(void (^)(void))handler
+                                  hostVC:(UIViewController *)hostVC
+                               onAbandon:(void (^)(void))onAbandon
+                                 onStage:(void (^)(NSString *))onStage {
+    if (@available(iOS 27.0, *)) {
+        NSString *enabler = getPrefObject(@"debug.jit_enabler") ?: @"auto";
+        if (!gPL355GateInFlight && getPrefBool(@"debug.prisma_jit_shortcut") &&
+            [@[@"auto", @"builtin", @"stikjit"] containsObject:enabler] &&
+            !getPrefBool(@"debug.debug_skip_wait_jit") &&
+            !(getEntitlementValue(@"jb.pmap_cs.custom_trust") && isTrollStoreInstall())) {
+            BOOL txmJIT = DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM);
+            BOOL needsReattach = txmJIT && !JIT26IsLikelyDebuggerKeepAttached() &&
+                ![StikDebugViewController ame294_scriptCompletedThisSession] &&
+                !getPrefBool(@"debug.jit26_script_disable");
+            if (isJITEnabled(NO) && !needsReattach) {
+                [self runJITGateWithHandler:handler hostVC:hostVC onAbandon:onAbandon onStage:onStage];
+                return;
+            }
+            gPL355GateInFlight = YES;
+            if (onStage) onStage(localize(@"prisma.jit.shortcut.preparing", nil));
+            [PrismaJITShortcut prepareWithCompletion:^(BOOL ready) {
+                gPL355GateInFlight = NO;
+                if (!ready) {
+                    [PrismaJITShortcut restoreWithCompletion:^{
+                        showDialog(localize(@"Error", nil), localize(@"prisma.jit.shortcut.failed", nil));
+                        if (onAbandon) onAbandon();
+                    }];
+                    return;
+                }
+                [self runJITGateWithHandler:^{
+                    if (txmJIT && JIT26IsLikelyDebuggerKeepAttached()) {
+                        // The JVM may still need the debugger. Restore when the game exits.
+                        handler();
+                    } else {
+                        [PrismaJITShortcut restoreWithCompletion:handler];
+                    }
+                } hostVC:hostVC onAbandon:^{
+                    [PrismaJITShortcut restoreWithCompletion:onAbandon];
+                } onStage:onStage];
+            }];
+            return;
+        }
+    }
+    [self runJITGateWithHandler:handler hostVC:hostVC onAbandon:onAbandon onStage:onStage];
+}
+
++ (void)runJITGateWithHandler:(void (^)(void))handler
                                   hostVC:(UIViewController *)hostVC
                                onAbandon:(void (^)(void))onAbandon
                                  onStage:(void (^)(NSString *))onStage {

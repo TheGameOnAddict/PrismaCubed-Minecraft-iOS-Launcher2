@@ -109,6 +109,14 @@
                                 <string>amethyst</string>
                         </array>
                 </dict>
+                <dict>
+                        <key>CFBundleURLName</key>
+                        <string>PrismaCubed Shortcuts callback</string>
+                        <key>CFBundleURLSchemes</key>
+                        <array>
+                                <string>prismacubed-jit</string>
+                        </array>
+                </dict>
         </array>
         <key>CFBundleVersion</key>
         <string>1.0.0</string>

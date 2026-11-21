@@ -98,7 +98,6 @@
 //
 
 #import "ZL2SettingPages.h"
-#import "MadeiraJITShortcut.h"
 #import "ZL2SettingCards.h"
 #import "ZL2Theme.h"
 #import "ZL2M3Kit.h"
@@ -2978,26 +2977,16 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [weakSelf ame_presentVC:nav];
     };
     [group1 ame_addRow:stikRow];
-    ZL2SettingRowAction *installShortcutRow = [[ZL2SettingRowAction alloc]
-        initWithTitle:localize(@"prisma.jit.shortcut.install.title", nil)
-             subtitle:localize(@"prisma.jit.shortcut.install.detail", nil)];
-    installShortcutRow.onTap = ^{
-        NSURL *url = MadeiraJITShortcutImportURL();
-        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
-    };
-    ZL2SettingRowAction *prepareShortcutRow = [[ZL2SettingRowAction alloc]
-        initWithTitle:localize(@"prisma.jit.shortcut.prepare.title", nil)
-             subtitle:localize(@"prisma.jit.shortcut.prepare.detail", nil)];
-    prepareShortcutRow.onTap = ^{
-        [weakSelf ame_runMadeiraJITShortcutWithInput:@"start cellular"];
-    };
-    ZL2SettingRowAction *restoreCellularRow = [[ZL2SettingRowAction alloc]
-        initWithTitle:localize(@"prisma.jit.shortcut.restore.title", nil)
-             subtitle:localize(@"prisma.jit.shortcut.restore.detail", nil)];
-    restoreCellularRow.onTap = ^{
-        [weakSelf ame_runMadeiraJITShortcutWithInput:@"cellular"];
-    };
-    [group1 ame_addRows:@[installShortcutRow, prepareShortcutRow, restoreCellularRow]];
+    if (@available(iOS 27.0, *)) {
+        ZL2SettingRowSwitch *shortcutRow = [[ZL2SettingRowSwitch alloc]
+            initWithTitle:localize(@"prisma.jit.shortcut.setup.title", nil)
+                 subtitle:localize(@"prisma.jit.shortcut.setup.detail", nil)];
+        [shortcutRow ame_setOn:getPrefBool(@"debug.prisma_jit_shortcut")];
+        shortcutRow.onToggle = ^(BOOL on) {
+            setPrefBool(@"debug.prisma_jit_shortcut", on);
+        };
+        [group1 ame_addRow:shortcutRow];
+    }
     [self ame_addGroup:group1];
 
     // --- 组 2：JIT 故障面（四开关；后两件有前置条件——旧页 enableCondition 同口径）---
@@ -3090,15 +3079,5 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     [self ame_rebuildGroups];
 }
 
-- (void)ame_runMadeiraJITShortcutWithInput:(NSString *)input {
-    [UIApplication.sharedApplication openURL:MadeiraJITShortcutRunURL(input) options:@{} completionHandler:^(BOOL opened) {
-        if (!opened) {
-            [ZL2M3Dialog showTitle:localize(@"prisma.jit.shortcut.unavailable.title", nil)
-                             body:localize(@"prisma.jit.shortcut.unavailable.detail", nil)
-                     confirmTitle:localize(@"i18n_str_197", nil)
-                       destructive:NO onConfirm:nil onCancel:nil];
-        }
-    }];
-}
 
 @end

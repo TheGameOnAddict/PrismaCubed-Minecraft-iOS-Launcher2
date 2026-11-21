@@ -51,7 +51,6 @@
 #import "BackgroundManager.h"
 #import "AmeTheme.h"   // ★ 7.0-UI-3d：Fluent 设计令牌（颜色/字体单一事实源）
 #import "WelcomeViewController.h"
-#import "MadeiraJITShortcut.h"
 #import "AboutViewController.h"
 #import "LauncherPreferences.h"
 #import "PLMirrorCenter.h"
@@ -1354,12 +1353,14 @@ static const NSInteger ame218_welcomeStepCount = 8;  // Task246：+1 界面风�
         [self.jitRows addObject:ame224_row];
     }
 
-    UIButton *cellularJITRow = [self ame224_selectionRowWithIcon:@"antenna.radiowaves.left.and.right"
-                                                          title:localize(@"prisma.jit.shortcut.setup.title", nil)
-                                                       subtitle:localize(@"prisma.jit.shortcut.setup.subtitle", nil)];
-    [cellularJITRow addTarget:self action:@selector(showCellularJITSetup)
-            forControlEvents:UIControlEventTouchUpInside];
-    [ame219_jitRows addArrangedSubview:cellularJITRow];
+    if (@available(iOS 27.0, *)) {
+        UIButton *cellularJITRow = [self ame224_selectionRowWithIcon:@"antenna.radiowaves.left.and.right"
+                                                              title:localize(@"prisma.jit.shortcut.setup.title", nil)
+                                                           subtitle:localize(@"prisma.jit.shortcut.setup.subtitle", nil)];
+        [cellularJITRow addTarget:self action:@selector(showCellularJITSetup)
+                forControlEvents:UIControlEventTouchUpInside];
+        [ame219_jitRows addArrangedSubview:cellularJITRow];
+    }
 
     // JIT 说明（LiveContainer 下的包名识别口径）
     UILabel *ame219_jitHint = [[UILabel alloc] init];
@@ -1447,19 +1448,10 @@ static const NSInteger ame218_welcomeStepCount = 8;  // Task246：+1 界面风�
         alertControllerWithTitle:localize(@"prisma.jit.shortcut.setup.title", nil)
                          message:localize(@"prisma.jit.shortcut.setup.detail", nil)
                   preferredStyle:UIAlertControllerStyleAlert];
-    [setup addAction:[UIAlertAction actionWithTitle:localize(@"prisma.jit.shortcut.install.title", nil)
+    BOOL enabled = getPrefBool(@"debug.prisma_jit_shortcut");
+    [setup addAction:[UIAlertAction actionWithTitle:localize(enabled ? @"prisma.jit.shortcut.disable" : @"prisma.jit.shortcut.enable", nil)
                                              style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [UIApplication.sharedApplication openURL:MadeiraJITShortcutImportURL() options:@{} completionHandler:nil];
-    }]];
-    [setup addAction:[UIAlertAction actionWithTitle:localize(@"prisma.jit.shortcut.prepare.title", nil)
-                                             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [UIApplication.sharedApplication openURL:MadeiraJITShortcutRunURL(@"start cellular")
-                                         options:@{} completionHandler:nil];
-    }]];
-    [setup addAction:[UIAlertAction actionWithTitle:localize(@"prisma.jit.shortcut.restore.title", nil)
-                                             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [UIApplication.sharedApplication openURL:MadeiraJITShortcutRunURL(@"cellular")
-                                         options:@{} completionHandler:nil];
+        setPrefBool(@"debug.prisma_jit_shortcut", !enabled);
     }]];
     [setup addAction:[UIAlertAction actionWithTitle:localize(@"welcome.jit.shortcut.done", nil)
                                              style:UIAlertActionStyleCancel handler:nil]];

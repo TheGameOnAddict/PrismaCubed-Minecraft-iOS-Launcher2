@@ -1,4 +1,5 @@
 #import "SceneDelegate.h"
+#import "PrismaJITShortcut.h"
 #import "ios_uikit_bridge.h"
 #import "utils.h"
 #import "LauncherPreferences.h"
@@ -334,7 +335,14 @@ static void AmeFGLogSwapStats(NSString *phase) {
     NSLog(@"[FG-Lifecycle] %@: swapOK=%lu swapFail=%lu", phase, ok, fail);
 }
 
+- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
+    for (UIOpenURLContext *context in URLContexts) {
+        [PrismaJITShortcut handleCallbackURL:context.URL];
+    }
+}
+
 - (void)sceneDidBecomeActive:(UIScene *)scene {
+    [PrismaJITShortcut recoverOnFirstActivation];
     // Task 62（窗口模式平反）：Task 56 曾以 UIRequiresFullScreen 灭小窗来断
     // "几何失控→表面转置→画面分裂"链条，但后续取证（Task 58-61）证明真凶
     // 另有其人——EGL 查询常量对调（58）、输入 px÷2（59）、1x 钉扎模糊（60）、
