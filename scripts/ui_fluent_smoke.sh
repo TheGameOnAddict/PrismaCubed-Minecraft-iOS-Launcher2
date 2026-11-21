@@ -33,7 +33,7 @@ fi
 
 SDK_SIM="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 ARCH="$(uname -m)"   # arm64（Apple Silicon runner）/ x86_64
-COMMON=(-fobjc-arc -I"$NATIVES" -isysroot "$SDK_SIM" -target "${ARCH}-apple-ios14.0-simulator")
+COMMON=(-I"$NATIVES/external/UnzipKit" -fobjc-arc -I"$NATIVES" -isysroot "$SDK_SIM" -target "${ARCH}-apple-ios14.0-simulator")
 mkdir -p "$OUT"
 
 # ─────────────────────────────────────────────────────────────
@@ -104,6 +104,7 @@ preview_mode() {
     ZL2DownloadViewController ZL2VersionsViewController
     ZL2AccountsViewController ZL2SettingsViewController
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
+    ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
     ZL2M3Kit                       # 7.0-UI-12：MD3 功能组件库（搜索/chip/开关/对话框/弹层）
     ZL2GameDownloadViewController  # 7.0-UI-12：游戏 M3 下载页（旧 DownloadViewController 退场）
     ZL2GameAddonsViewController    # 7.0-UI-14：Addons 加载器选择屏（选版后加载器组合+安装分发）
@@ -148,7 +149,7 @@ preview_mode() {
   # 无自动链接
   if ! xcrun clang -isysroot "$SDK_SIM" -target "${ARCH}-apple-ios14.0-simulator" \
       -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore \
-      -framework AuthenticationServices -framework UniformTypeIdentifiers \
+      -lz -framework ImageIO -framework AuthenticationServices -framework UniformTypeIdentifiers \
       -o "$OUT/AmeFluentPreview" \
       "${objs[@]}" "$OUT/AmeFluentPreviewMain.o" "$OUT/ZL2PagesStub.o" 2>"$OUT/link.log"; then
     echo "  ✗ 链接失败:"
@@ -160,6 +161,11 @@ preview_mode() {
   local app="$OUT/AmeFluentPreview.app"
   mkdir -p "$app"
   cp "$OUT/AmeFluentPreview" "$app/AmeFluentPreview"
+  mkdir -p "$app/en.lproj"
+  cp "$NATIVES/resources/en.lproj/Localizable.strings" "$app/en.lproj/"
+  for cover in "$NATIVES"/Assets.xcassets/CubicProfileCover*.imageset; do
+    cp "$cover/cover.png" "$app/$(basename "$cover" .imageset).png"
+  done
   cat > "$app/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -202,6 +208,32 @@ PLIST
   xcrun simctl bootstatus "$device" -b >/dev/null 2>&1 || true
   xcrun simctl install "$device" "$app" || { echo "✗ 安装失败"; FAIL=1; return; }
 
+  if [[ "$MODE" == "screens" ]]; then
+    local bundle="com.prisma-devs.ame-fluent-preview" docs route orientation pid png
+    docs="$(xcrun simctl get_app_container "$device" "$bundle" data)/Documents"
+    for orientation in portrait landscape; do
+      for route in home browse profile mods menu accounts create import; do
+        png="cubic-$route-$orientation.png"
+        rm -f "$docs/$png"
+        xcrun simctl launch --console "$device" "$bundle" -cubicScreens -route "$route" -orientation "$orientation" > "$OUT/$route-$orientation.log" 2>&1 &
+        pid=$!
+        for attempt in {1..24}; do
+          [[ -s "$docs/$png" ]] && break
+          kill -0 "$pid" 2>/dev/null || break
+          sleep 1
+        done
+        xcrun simctl terminate "$device" "$bundle" 2>/dev/null || true
+        wait "$pid" || true
+        if [[ ! -s "$docs/$png" ]]; then
+          cat "$OUT/$route-$orientation.log"
+          FAIL=1
+          return
+        fi
+        cp "$docs/$png" "$OUT/"
+      done
+    done
+    return
+  fi
   if [[ "$MODE" == "cubic" ]]; then
     local bundle="com.prisma-devs.ame-fluent-preview"
     local docs="$(xcrun simctl get_app_container "$device" "$bundle" data)/Documents"
@@ -216,7 +248,7 @@ PLIST
       FAIL=1
       return
     fi
-    cp "$docs"/cubic-results-*.png "$docs/cubic-check.log" "$OUT/"
+    cp "$docs"/cubic-*.png "$docs/cubic-check.log" "$OUT/"
     return
   fi
 
@@ -292,7 +324,7 @@ PLIST
 
 case "$MODE" in
   syntax)  syntax_mode ;;
-  preview|cubic) preview_mode ;;
+  preview|cubic|screens) preview_mode ;;
   all)     syntax_mode; preview_mode ;;
   *) echo "用法: $0 [syntax|preview|all]"; exit 2 ;;
 esac

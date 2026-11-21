@@ -83,6 +83,7 @@ id getPrefObject(NSString *key) {
     return manager;
 }
 
+- (void)applyEffectToView:(UIView *)view {}
 - (void)makeViewControllerTransparent:(UIViewController *)viewController {
     viewController.view.backgroundColor = [UIColor clearColor];
 }
@@ -101,6 +102,8 @@ id getPrefObject(NSString *key) {
 // 预览桩：优先映射启动三态既有键，未命中回退 comment——本仓 localize 约定
 // 第二参即中文译文（7.0-UI-9 起），一处覆盖四页全部键，截图不再出现键名
 NSString *localize(NSString *key, NSString *comment) {
+    NSString *translated = [NSBundle.mainBundle localizedStringForKey:key value:comment table:nil];
+    if (![translated isEqual:key]) return translated;
     NSDictionary *table = @{@"i18n_str_412": @"启动游戏",
                             @"i18n_str_434": @"下载中",
                             @"i18n_str_435": @"登录并启动"};
@@ -124,7 +127,8 @@ NSString *localize(NSString *key, NSString *comment) {
 @end
 
 @implementation BaseAuthenticator
-+ (id)current { return nil; }
++ (id)current { return [NSProcessInfo.processInfo.arguments containsObject:@"-cubicScreens"] ? [self new] : nil; }
+- (NSDictionary *)authData { return @{@"username": @"Alex", @"accountType": @"microsoft", @"accountId": @"preview-alex"}; }
 + (void)setCurrent:(id)auth {}
 + (id)loadSavedName:(NSString *)accountId { return nil; }
 - (id)initWithInput:(NSString *)string { return self; }
@@ -149,8 +153,26 @@ NSString *localize(NSString *key, NSString *comment) {
     return p;
 }
 
-- (NSString *)selectedProfileName { return nil; }
-- (NSMutableDictionary *)profiles { return [NSMutableDictionary dictionary]; }
+- (NSString *)selectedProfileName { return [self profiles][@"The Gang"] ? @"The Gang" : nil; }
+- (NSMutableDictionary *)profiles {
+    static NSMutableDictionary *profiles;
+    if (!profiles) {
+        profiles = [NSMutableDictionary dictionary];
+        if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicScreens"]) {
+            NSArray *names = @[@"The Gang", @"Vanilla Trails", @"Sky Factory", @"Frostfall"];
+            NSArray *summaries = @[@"Our modded survival world.", @"A fresh start in the overworld.", @"Automation above the clouds.", @"Explore the snowy wilderness."];
+            for (NSUInteger i = 0; i < names.count; ++i) {
+                NSString *version = i == 1 ? @"1.21.1" : @"1.20.1-forge-47.4.28";
+                NSString *folder = [NSTemporaryDirectory() stringByAppendingPathComponent:names[i]];
+                NSString *dir = [[folder stringByAppendingPathComponent:@"versions"] stringByAppendingPathComponent:version];
+                [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+                [@"{}" writeToFile:[dir stringByAppendingPathComponent:[version stringByAppendingPathExtension:@"json"]] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                profiles[names[i]] = [@{@"name":names[i], @"gameDir":folder, @"lastVersionId":version, @"versionSummary":summaries[i]} mutableCopy];
+            }
+        }
+    }
+    return profiles;
+}
 - (void)save {}
 
 // 7.0-UI-9-e：版本页缺口方法补齐（viewWillAppear 先 updateCurrent 重拉
@@ -680,6 +702,69 @@ static void CubicCheckResults(UIView *host) {
     [@"OK" writeToFile:[directory stringByAppendingPathComponent:@"cubic-check.log"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+#import "ZL2ShellViewController.h"
+#import "ZL2VersionDetailViewController.h"
+#import "ZL2VersionPages.h"
+#import "ModpackImportViewController.h"
+#import "ZL2GameDownloadViewController.h"
+
+@interface ZL2HomeViewController (PreviewRoutes)
+- (void)cubicBrowseModpacks;
+- (void)cubicCreateProfile;
+- (void)cubicImport;
+@end
+@interface ZL2ShellViewController (PreviewRoutes)
+- (void)cubicOpenAccountMenu;
+- (UINavigationController *)ame_currentNav;
+@end
+@interface ZL2VersionModsPage (PreviewRoutes)
+- (void)ameV13_openDownloadCenter;
+@end
+
+static UIInterfaceOrientationMask PreviewOrientation(void) {
+    return [NSProcessInfo.processInfo.arguments containsObject:@"portrait"] ? UIInterfaceOrientationMaskPortrait : UIInterfaceOrientationMaskLandscapeRight;
+}
+
+static void PreviewScreens(UIWindow *window) {
+    NSString *route = [NSUserDefaults.standardUserDefaults stringForKey:@"route"];
+    ZL2ShellViewController *shell = (id)window.rootViewController;
+    UINavigationController *nav = [shell ame_currentNav];
+    ZL2HomeViewController *home = (id)nav.topViewController;
+    NSCAssert([home isKindOfClass:ZL2HomeViewController.class], @"Home route unavailable");
+    if ([route isEqual:@"browse"]) [home cubicBrowseModpacks];
+    if ([route isEqual:@"profile"] || [route isEqual:@"mods"]) {
+        [NSNotificationCenter.defaultCenter postNotificationName:@"ZL2OpenVersionDetail" object:nil userInfo:@{@"profile":@"The Gang"}];
+        ZL2VersionDetailViewController *detail = (id)nav.topViewController;
+        NSCAssert([detail isKindOfClass:ZL2VersionDetailViewController.class], @"Profile route unavailable");
+        if ([route isEqual:@"mods"]) {
+            ZL2VersionModsPage *mods = (id)detail.childViewControllers.firstObject;
+            NSCAssert([mods isKindOfClass:ZL2VersionModsPage.class], @"Missing Mods page");
+            [mods ameV13_openDownloadCenter];
+        }
+    }
+    if ([route isEqual:@"menu"]) [shell cubicOpenAccountMenu];
+    if ([route isEqual:@"accounts"]) [shell showPageAtIndex:3];
+    if ([route isEqual:@"create"]) [home cubicCreateProfile];
+    if ([route isEqual:@"import"]) [home cubicImport];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        UIViewController *modal = shell.presentedViewController ?: nav.presentedViewController ?: home.presentedViewController;
+        if ([route isEqual:@"menu"] || [route isEqual:@"import"] || [route isEqual:@"create"]) NSCAssert(modal, @"Missing modal");
+        if ([route isEqual:@"accounts"]) NSCAssert([[shell ame_currentNav].topViewController isKindOfClass:ZL2AccountsViewController.class], @"Missing accounts");
+        if ([route isEqual:@"mods"]) NSCAssert([nav.topViewController isKindOfClass:ZL2AssetSearchViewController.class], @"Missing add mods");
+        if ([route isEqual:@"browse"]) NSCAssert([home valueForKey:@"packBrowser"], @"Missing catalog");
+        NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";
+        CGSize size = window.bounds.size;
+        NSCAssert((size.width < size.height) == [orientation isEqual:@"portrait"], @"Unexpected viewport %@", NSStringFromCGSize(size));
+        NSString *directory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+        NSString *name = [NSString stringWithFormat:@"cubic-%@-%@.png",route,orientation];
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:window.bounds];
+        NSData *png = [renderer PNGDataWithActions:^(UIGraphicsImageRendererContext *context) {
+            [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:YES];
+        }];
+        NSCAssert([png writeToFile:[directory stringByAppendingPathComponent:name] atomically:YES], @"Could not save %@",name);
+    });
+}
+
 #pragma mark - AppDelegate + main
 
 @interface AmePreviewAppDelegate : UIResponder <UIApplicationDelegate>
@@ -695,13 +780,26 @@ static void CubicCheckResults(UIView *host) {
 // 的 AppDelegate 不在本文件，零影响。
 - (UIInterfaceOrientationMask)application:(UIApplication *)application
         supportedInterfaceOrientationsForWindow:(UIWindow *)window {
-    return UIInterfaceOrientationMaskLandscape;
+    return PreviewOrientation();
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.backgroundColor = [ZL2Theme surface];
 
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicScreens"]) {
+        NSString *root = NSTemporaryDirectory();
+        setenv("POJAV_HOME", root.fileSystemRepresentation, 1);
+        setenv("POJAV_GAME_DIR", root.fileSystemRepresentation, 1);
+        NSString *dir = [root stringByAppendingPathComponent:@"accounts"];
+        [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        [[NSJSONSerialization dataWithJSONObject:[[BaseAuthenticator current] authData] options:0 error:nil] writeToFile:[dir stringByAppendingPathComponent:@"preview-alex.json"] atomically:YES];
+        self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        self.window.rootViewController = [ZL2ShellViewController new];
+        [self.window makeKeyAndVisible];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ PreviewScreens(self.window); });
+        return YES;
+    }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicCheck"]) {
         self.window.rootViewController = [UIViewController new];
         [self.window makeKeyAndVisible];
@@ -730,7 +828,7 @@ static void CubicCheckResults(UIView *host) {
         if ([scene isKindOfClass:[UIWindowScene class]]) {
             UIWindowSceneGeometryPreferencesIOS *prefs =
                 [[UIWindowSceneGeometryPreferencesIOS alloc]
-                    initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape];
+                    initWithInterfaceOrientations:PreviewOrientation()];
             [scene requestGeometryUpdateWithPreferences:prefs errorHandler:nil];
             [self.window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
         }

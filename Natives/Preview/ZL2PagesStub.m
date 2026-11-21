@@ -67,12 +67,6 @@
 @implementation DownloadViewController
 @end
 
-@interface ModpackImportViewController : UIViewController
-@end
-
-@implementation ModpackImportViewController
-@end
-
 @interface ModsManagerViewController : UIViewController
 @end
 
@@ -124,7 +118,7 @@
 @implementation ModLoaderIconHelper
 
 + (nullable NSString *)detectLoaderFromVersionId:(NSString *)versionId {
-    return nil;
+    return [versionId containsString:@"forge"] ? @"Forge" : nil;
 }
 
 + (nullable NSString *)displayNameForLoader:(NSString *)loader {
@@ -152,7 +146,7 @@
 @implementation ModpackExportService
 
 + (nullable NSDictionary *)parseVersionId:(NSString *)versionId {
-    return nil;
+    return versionId.length ? @{@"minecraft":[versionId componentsSeparatedByString:@"-"].firstObject, @"loader":[ModLoaderIconHelper detectLoaderFromVersionId:versionId] ?: @""} : nil;
 }
 
 @end
@@ -363,7 +357,8 @@ void setPrefBool(NSString *key, BOOL value) {
 // 预览沙盒无账户文件：恒 nil——消费方对 nil / @{@"NSErrorObject":...} 双态
 // 都有守卫（Task180 读侧兜底），nil → 空账户列表
 NSMutableDictionary* parseJSONFromFile(NSString *path) {
-    return nil;
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    return data ? [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:nil] : nil;
 }
 
 // utils.h: NSError* saveJSONToFile(NSDictionary *dict, NSString *path);
@@ -606,6 +601,9 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
 //（结果卡点击→版本页配置 + 下载前 selectedVersionDownloadURL/fileName/fileSHA1 回填）
 
 @interface ModItem : NSObject
+@property (nonatomic, copy) NSString *filePath;
+@property (nonatomic, copy) NSString *basename;
+@property (nonatomic) BOOL disabled, isForge, isNeoForge, isFabric;
 @property (nonatomic, copy, nullable) NSString *onlineID;
 @property (nonatomic, copy, nullable) NSString *author;
 @property (nonatomic, strong, nullable) NSNumber *downloads;
@@ -782,6 +780,21 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
     return service;
 }
 
+ + (NSInteger)ame219_isolationStateForProfile:(NSString *)profile { return 1; }
+- (NSString *)ame264_effectiveModsFolderForProfile:(NSString *)profile { return [NSString stringWithFormat:@"instances/%@/mods",profile]; }
+- (void)scanModsForProfile:(NSString *)profile completion:(void (^)(NSArray *))completion {
+    NSMutableArray *mods = [NSMutableArray array];
+    for (NSString *name in @[@"AppleSkin", @"Jade", @"AmbientSounds", @"Controlling"]) {
+        ModItem *item = [ModItem new];
+        item.basename = item.displayName = name;
+        item.fileName = [NSString stringWithFormat:@"%@-forge-1.20.1.jar",name.lowercaseString];
+        item.filePath = [NSTemporaryDirectory() stringByAppendingPathComponent:item.fileName];
+        item.isForge = YES;
+        [mods addObject:item];
+    }
+    completion(mods);
+}
+- (void)fetchMetadataForMod:(ModItem *)item completion:(void (^)(ModItem *, NSError *))completion { completion(item,nil); }
 // ★ Task324：隔离骨架桩（ZL2GameAddons 安装成功分支消费；预览态空转）
 + (void)ame324_ensureIsolationSkeletonForVersionId:(NSString *)vid { (void)vid; }
 + (void)ame324_ensureIsolationSkeletonsAll { }
@@ -1044,6 +1057,7 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
 @end
 
 @implementation ModpackImportService
+- (NSArray *)getImportedModpacks { return @[]; }
 
 // 预览无真实包：解析 nil → 消费方 setTaskWithId:completedWithError: 收口（桩
 // manager no-op）+ InlineMessageView 提示（本桩静默）
@@ -1415,16 +1429,6 @@ NSString * const DownloadTaskResourceTypeModpack = @"modpack";
 @implementation ZL2AboutSettingsPage
 @end
 
-@interface ZL2VersionDetailViewController : UIViewController
-- (instancetype)initWithProfileName:(NSString *)profileName;
-@end
-@implementation ZL2VersionDetailViewController
-- (instancetype)initWithProfileName:(NSString *)profileName {
-    self = [super init];
-    return self;
-}
-@end
-
 #pragma mark - Task323 仓库三件桩（ZL2DownloadViewController 左轨 9/10/11 链接期依赖）
 
 // ControlRepoViewController.h 最小桩（真头在 Natives 根，ZL2Download.m 编译期
@@ -1511,4 +1515,51 @@ NSString * const DownloadTaskResourceTypeModpack = @"modpack";
 @implementation AmePluginRuntime
 + (NSArray<NSDictionary *> *)allContributedRows { return @[]; }
 + (void)invokeRowTap:(NSString *)rowId { (void)rowId; }
+@end
+
+// Link-only services for secondary actions outside the screenshot routes.
+@interface FolderBrowserViewController : NSObject
+@end
+@implementation FolderBrowserViewController
+@end
+@interface ModUpdateService : NSObject
+@end
+@implementation ModUpdateService
+@end
+@interface PLDownloadRequest : NSObject
+@end
+@implementation PLDownloadRequest
+@end
+@interface PLDownloadClient : NSObject
+@end
+@implementation PLDownloadClient
+@end
+@interface UZKArchive : NSObject
+@end
+@implementation UZKArchive
+@end
+int ame173_safeHeapCeilingMB(void) { return 2048; }
+NSArray *getRendererKeys(BOOL defaults) { return @[]; }
+NSArray *getRendererNames(BOOL defaults) { return @[]; }
+
+void ame230_setViewTreeStrokeExempt(UIView *view, BOOL exempt) {}
+@interface AiSessionStore : NSObject
+@end
+@implementation AiSessionStore
+@end
+@interface AmeNativeMenu : NSObject
+@end
+@implementation AmeNativeMenu
+@end
+@interface ModpackExportViewController : NSObject
+@end
+@implementation ModpackExportViewController
+@end
+@interface MultiplayerViewController : NSObject
+@end
+@implementation MultiplayerViewController
+@end
+@interface AIViewController : NSObject
+@end
+@implementation AIViewController
 @end
