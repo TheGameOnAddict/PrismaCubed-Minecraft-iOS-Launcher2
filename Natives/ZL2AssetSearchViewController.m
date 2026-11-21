@@ -246,9 +246,9 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
 
         // 标题行（HorizontalStack：名称压缩截断优先，作者行隐藏自收）
         UIStackView *titleStack = [[UIStackView alloc] init];
-        titleStack.axis = UILayoutConstraintAxisHorizontal;
-        titleStack.alignment = UIStackViewAlignmentCenter;
-        titleStack.spacing = 6;
+        titleStack.axis = UILayoutConstraintAxisVertical;
+        titleStack.alignment = UIStackViewAlignmentLeading;
+        titleStack.spacing = 1;
         titleStack.translatesAutoresizingMaskIntoConstraints = NO;
         [_cardView addSubview:titleStack];
 
@@ -355,16 +355,19 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
 
             [titleStack.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:12],
             [titleStack.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:12],
-            [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsLabel.leadingAnchor constant:-10],
+            [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:_sourceBadgeView.leadingAnchor constant:-8],
+            [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsIconView.leadingAnchor constant:-8],
+            [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:_favoriteControl.leadingAnchor constant:-8],
 
             [_downloadsIconView.centerYAnchor constraintEqualToAnchor:_downloadsLabel.centerYAnchor],
             [_downloadsIconView.trailingAnchor constraintEqualToAnchor:_downloadsLabel.leadingAnchor constant:-4],
             [_downloadsIconView.widthAnchor constraintEqualToConstant:13],
             [_downloadsIconView.heightAnchor constraintEqualToConstant:13],
-            [_downloadsLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:14],
+            [_downloadsLabel.topAnchor constraintEqualToAnchor:_sourceBadgeView.bottomAnchor constant:4],
             [_downloadsLabel.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-12],
 
-            [_favoriteControl.topAnchor constraintEqualToAnchor:_downloadsLabel.bottomAnchor constant:12],
+            [_favoriteControl.topAnchor constraintEqualToAnchor:_downloadsLabel.bottomAnchor constant:4],
+            [_favoriteControl.heightAnchor constraintEqualToConstant:28],
             [_favoriteControl.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-12],
 
             [_favoriteIconView.leadingAnchor constraintEqualToAnchor:_favoriteControl.leadingAnchor],
@@ -378,11 +381,15 @@ static UIColor *ZL2AssetSourceBadgeColor(NSInteger apiSource) {
 
             [_descLabel.topAnchor constraintEqualToAnchor:titleStack.bottomAnchor constant:5],
             [_descLabel.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:12],
-            [_descLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsLabel.leadingAnchor constant:-12],
+            [_descLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_sourceBadgeView.leadingAnchor constant:-8],
+            [_descLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsIconView.leadingAnchor constant:-8],
+            [_descLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_favoriteControl.leadingAnchor constant:-8],
 
             [_tagsLabel.topAnchor constraintEqualToAnchor:_descLabel.bottomAnchor constant:5],
             [_tagsLabel.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:12],
-            [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsLabel.leadingAnchor constant:-12],
+            [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_sourceBadgeView.leadingAnchor constant:-8],
+            [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsIconView.leadingAnchor constant:-8],
+            [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_favoriteControl.leadingAnchor constant:-8],
             [_tagsLabel.bottomAnchor constraintLessThanOrEqualToAnchor:_cardView.bottomAnchor constant:-10],
         ]];
     }

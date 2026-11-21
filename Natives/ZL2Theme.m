@@ -386,32 +386,32 @@ static void ame346_requestRootRebuild(void) {
 
 + (UIColor *)primary {
     // embermire：浅 = 锈橙 0xA63A17；深 = 桃色 0xFFB59F（截图"启动游戏"钮）
-    return AME317_PLUGIN_COLOR(primary, 0xA63A17, 0xFFB59F);
+    return AME317_PLUGIN_COLOR(primary, 0xFF8E52, 0xFF8E52);
 }
 + (UIColor *)onPrimary {
-    return AME317_PLUGIN_COLOR(onPrimary, 0xFFFFFF, 0x5F1600);
+    return AME317_PLUGIN_COLOR(onPrimary, 0x25150F, 0x25150F);
 }
 + (UIColor *)primaryContainer {
-    return AME317_PLUGIN_COLOR(primaryContainer, 0xFE7A52, 0xC4502B);
+    return AME317_PLUGIN_COLOR(primaryContainer, 0xFF8E52, 0xFF8E52);
 }
 + (UIColor *)onPrimaryContainer {
-    return AME317_PLUGIN_COLOR(onPrimaryContainer, 0x2F0700, 0xFFFFFF);
+    return AME317_PLUGIN_COLOR(onPrimaryContainer, 0x25150F, 0x25150F);
 }
 
 #pragma mark - 次色系
 
 + (UIColor *)secondary {
-    return AME317_PLUGIN_COLOR(secondary, 0x894F3D, 0xFFB59F);
+    return AME317_PLUGIN_COLOR(secondary, 0xFFAC80, 0xFFAC80);
 }
 + (UIColor *)onSecondary {
-    return AME317_PLUGIN_COLOR(onSecondary, 0xFFFFFF, 0x512214);
+    return AME317_PLUGIN_COLOR(onSecondary, 0x25150F, 0x25150F);
 }
 + (UIColor *)secondaryContainer {
     // 深 = 0x643122（截图顶栏"下载"选中 pill 底）
-    return AME317_PLUGIN_COLOR(secondaryContainer, 0xFFBBA7, 0x643122);
+    return AME317_PLUGIN_COLOR(secondaryContainer, 0x423128, 0x423128);
 }
 + (UIColor *)onSecondaryContainer {
-    return AME317_PLUGIN_COLOR(onSecondaryContainer, 0x5C2B1C, 0xFFC8B9);
+    return AME317_PLUGIN_COLOR(onSecondaryContainer, 0xFFD9C4, 0xFFD9C4);
 }
 
 #pragma mark - 三色系
@@ -434,44 +434,44 @@ static void ame346_requestRootRebuild(void) {
 
 + (UIColor *)surface {
     // 深 = 0x1C110E（截图页面底暖深棕）
-    return AME317_PLUGIN_COLOR(surface, 0xFFF8F6, 0x1C110E);
+    return AME317_PLUGIN_COLOR(surface, 0x19191B, 0x19191B);
 }
 + (UIColor *)onSurface {
-    return AME317_PLUGIN_COLOR(onSurface, 0x241916, 0xF4DED8);
+    return AME317_PLUGIN_COLOR(onSurface, 0xF3F0EB, 0xF3F0EB);
 }
 + (UIColor *)onSurfaceVariant {
-    return AME317_PLUGIN_COLOR(onSurfaceVariant, 0x58423B, 0xDFC0B7);
+    return AME317_PLUGIN_COLOR(onSurfaceVariant, 0xAEAAAB, 0xAEAAAB);
 }
 + (UIColor *)surfaceVariant {
-    return AME317_PLUGIN_COLOR(surfaceVariant, 0xFCDBD3, 0x58423B);
+    return AME317_PLUGIN_COLOR(surfaceVariant, 0x383739, 0x383739);
 }
 + (UIColor *)surfaceContainerLowest {
-    return AME317_PLUGIN_COLOR(surfaceContainerLowest, 0xFFFFFF, 0x160C09);
+    return AME317_PLUGIN_COLOR(surfaceContainerLowest, 0x101011, 0x101011);
 }
 + (UIColor *)surfaceContainerLow {
-    return AME317_PLUGIN_COLOR(surfaceContainerLow, 0xFFF1ED, 0x241916);
+    return AME317_PLUGIN_COLOR(surfaceContainerLow, 0x19191B, 0x19191B);
 }
 + (UIColor *)surfaceContainer {
-    return AME317_PLUGIN_COLOR(surfaceContainer, 0xFFE9E4, 0x291D19);
+    return AME317_PLUGIN_COLOR(surfaceContainer, 0x232325, 0x232325);
 }
 + (UIColor *)surfaceContainerHigh {
-    return AME317_PLUGIN_COLOR(surfaceContainerHigh, 0xFAE3DD, 0x342723);
+    return AME317_PLUGIN_COLOR(surfaceContainerHigh, 0x2D2D30, 0x2D2D30);
 }
 + (UIColor *)surfaceContainerHighest {
-    return AME317_PLUGIN_COLOR(surfaceContainerHighest, 0xF4DED8, 0x3B2C27);
+    return AME317_PLUGIN_COLOR(surfaceContainerHighest, 0x383739, 0x383739);
 }
 + (UIColor *)surfaceBright {
     // ZL2 cardColor() 真实卡底：深 = 0x443632（截图文件/版本卡底色）
-    return AME317_PLUGIN_COLOR(surfaceBright, 0xFFF8F6, 0x443632);
+    return AME317_PLUGIN_COLOR(surfaceBright, 0x2D2D30, 0x2D2D30);
 }
 
 #pragma mark - 描边系
 
 + (UIColor *)outline {
-    return AME317_PLUGIN_COLOR(outline, 0x8B716A, 0xA68B83);
+    return AME317_PLUGIN_COLOR(outline, 0x817F81, 0x817F81);
 }
 + (UIColor *)outlineVariant {
-    return AME317_PLUGIN_COLOR(outlineVariant, 0xDFC0B7, 0x58423B);
+    return AME317_PLUGIN_COLOR(outlineVariant, 0x383739, 0x383739);
 }
 
 #pragma mark - 状态系

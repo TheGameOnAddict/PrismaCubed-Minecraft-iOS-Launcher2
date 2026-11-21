@@ -29,6 +29,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface ZL2VersionDetailViewController : UIViewController
+@property (nonatomic, copy) void (^playProfile)(NSString *name);
 
 /// profileName = PLProfiles 注册表字典键（ZL2VersionsViewController 卡片同源）
 - (instancetype)initWithProfileName:(NSString *)profileName;

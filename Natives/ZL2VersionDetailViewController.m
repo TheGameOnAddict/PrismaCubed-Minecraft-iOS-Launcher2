@@ -27,6 +27,7 @@
 #import "ZL2VersionPages.h"
 #import "PLProfiles.h"
 #import "ModLoaderIconHelper.h"
+#import "CubicProfileArtwork.h"
 #import "ModpackExportService.h"
 #import "ModService.h"
 #import "utils.h"   // localize()
@@ -305,28 +306,67 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
         image:[UIImage systemImageNamed:@"sparkles"] identifier:nil handler:^(__kindof UIAction *action) {
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate" object:nil userInfo:@{@"index": @6}];
         }];
-    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, worlds, logs, ai]];
+    UIAction *overview = [UIAction actionWithTitle:NSLocalizedString(@"Overview", nil) image:nil identifier:nil handler:^(__kindof UIAction *action) {
+        [weakSelf ameV13_selectPage:0];
+    }];
+    UIAction *servers = [UIAction actionWithTitle:NSLocalizedString(@"Servers", nil) image:nil identifier:nil handler:^(__kindof UIAction *action) {
+        [weakSelf ameV13_selectPage:6];
+    }];
+    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, worlds, logs, overview, servers]];
+    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
+    [back setTitle:NSLocalizedString(@"‹ Profiles", nil) forState:UIControlStateNormal];
+    back.tintColor = [ZL2Theme onPrimary];
+    back.backgroundColor = [ZL2Theme primary];
+    back.layer.cornerRadius = 7;
+    back.contentEdgeInsets = UIEdgeInsetsMake(5, 10, 5, 10);
+    back.translatesAutoresizingMaskIntoConstraints = NO;
+    [back addTarget:self action:@selector(ameV13_finish) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:back];
+    UIButton *assistant = [UIButton buttonWithType:UIButtonTypeSystem primaryAction:ai];
+    [assistant setTitle:@"" forState:UIControlStateNormal];
+    assistant.accessibilityLabel = ai.title;
+    assistant.tintColor = [ZL2Theme primary];
+    assistant.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:assistant];
+    UIButton *play = [UIButton buttonWithType:UIButtonTypeSystem];
+    play.accessibilityLabel = NSLocalizedString(@"Play", nil);
+    [play setImage:[UIImage systemImageNamed:@"play.fill"] forState:UIControlStateNormal];
+    play.backgroundColor = [ZL2Theme primary];
+    play.tintColor = [ZL2Theme onPrimary];
+    play.layer.cornerRadius = 8;
+    play.translatesAutoresizingMaskIntoConstraints = NO;
+    [play addTarget:self action:@selector(cubicPlay) forControlEvents:UIControlEventTouchUpInside];
+    [_headerCard addSubview:play];
     [_headerCard addSubview:doneButton];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_headerCard.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4],
+        [back.leadingAnchor constraintEqualToAnchor:_headerCard.leadingAnchor],
+        [assistant.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
+        [assistant.trailingAnchor constraintEqualToAnchor:_headerCard.trailingAnchor],
+        [_headerCard.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:4],
         [_headerCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:ZL2V13PageMargin],
         [_headerCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-ZL2V13PageMargin],
 
         [_iconBg.leadingAnchor constraintEqualToAnchor:_headerCard.leadingAnchor constant:14],
         [_iconBg.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
-        [_iconBg.widthAnchor constraintEqualToConstant:34],
-        [_iconBg.heightAnchor constraintEqualToConstant:34],
+        [_iconBg.widthAnchor constraintEqualToConstant:54],
+        [_iconBg.heightAnchor constraintEqualToConstant:54],
         [_iconView.centerXAnchor constraintEqualToAnchor:_iconBg.centerXAnchor],
         [_iconView.centerYAnchor constraintEqualToAnchor:_iconBg.centerYAnchor],
-        [_iconView.widthAnchor constraintEqualToConstant:26],
-        [_iconView.heightAnchor constraintEqualToConstant:26],
+        [_iconView.widthAnchor constraintEqualToAnchor:_iconBg.widthAnchor],
+        [_iconView.heightAnchor constraintEqualToAnchor:_iconBg.heightAnchor],
 
         [textStack.leadingAnchor constraintEqualToAnchor:_iconBg.trailingAnchor constant:12],
-        [textStack.topAnchor constraintEqualToAnchor:_headerCard.topAnchor constant:12],
+        [_headerCard.heightAnchor constraintEqualToConstant:88],
+        [textStack.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
         [textStack.bottomAnchor constraintLessThanOrEqualToAnchor:_headerCard.bottomAnchor constant:-12],
         [doneButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:textStack.trailingAnchor constant:8],
-        [doneButton.trailingAnchor constraintEqualToAnchor:_headerCard.trailingAnchor constant:-6],
+        [doneButton.trailingAnchor constraintEqualToAnchor:play.leadingAnchor],
+        [play.trailingAnchor constraintEqualToAnchor:_headerCard.trailingAnchor constant:-8],
+        [play.centerYAnchor constraintEqualToAnchor:doneButton.centerYAnchor],
+        [play.widthAnchor constraintEqualToConstant:36],
+        [play.heightAnchor constraintEqualToConstant:36],
         [doneButton.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
     ]];
 }
@@ -372,15 +412,9 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
         self.tagLabel.text = @" ";
     }
 
-    if (loader.length > 0) {
-        [ModLoaderIconHelper configureImageView:self.iconView forLoader:loader traitCollection:self.traitCollection];
-        self.iconBg.backgroundColor = [UIColor clearColor];
-    } else {
-        UIImage *fallbackIcon = ZL2V13SystemImage(@"gamecontroller", @"cube.box.fill");
-        self.iconView.image = [fallbackIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        self.iconView.tintColor = [ZL2Theme onSurfaceVariant];
-        self.iconBg.backgroundColor = [ZL2Theme surfaceVariant];
-    }
+    self.iconView.image = CubicProfileArtwork(profile);
+    self.iconView.contentMode = UIViewContentModeScaleAspectFill;
+    self.iconBg.clipsToBounds = YES;
 }
 
 /// lastPlayed 时间戳 → 「最后游玩：xxx」（ZL2VersionsViewController 1:1）
@@ -423,7 +457,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     _railStack.spacing = 8;
     _railStack.translatesAutoresizingMaskIntoConstraints = NO;
     [tabs addSubview:_railStack];
-    for (NSNumber *index in @[@1, @8, @3, @4, @0, @6]) {
+    for (NSNumber *index in @[@1, @8, @3, @4]) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
         [button setTitle:titles[index.integerValue] forState:UIControlStateNormal];
         button.tintColor = [ZL2Theme primary];
@@ -550,6 +584,10 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 }
 
 #pragma mark - 完成
+
+- (void)cubicPlay {
+    if (self.playProfile) self.playProfile(self.ameV13_profileName);
+}
 
 - (void)ameV13_finish {
     if (self.navigationController && self.navigationController.viewControllers.count > 1) {

@@ -67,7 +67,8 @@
 #import "authenticator/BaseAuthenticator.h"
 #import "PLProfiles.h"
 #import "AvatarManager.h"            // ame185 头像三层回退链（账户页同款）
-#import "ModLoaderIconHelper.h"      // 加载器识别 + 图标（版本页同款契约）
+#import "ModLoaderIconHelper.h"
+#import "CubicProfileArtwork.h"      // 加载器识别 + 图标（版本页同款契约）
 #import "ModpackExportService.h"     // +parseVersionId:（lastVersionId 反解 MC 版本）
 #import "MinecraftResourceDownloadTask.h"
 #import "DownloadTaskManager.h"
@@ -97,7 +98,7 @@ static const CGFloat ZL2HomeGridSpacing      = 6;     // 卡片间距（行/列�
 static const CGFloat ZL2HomeGridInsetH       = 12;    // section 左右 inset
 static const CGFloat ZL2HomeGridInsetTop     = 12;    // section 顶 inset
 static const CGFloat ZL2HomeGridInsetBottom  = 16;    // section 底 inset
-static const CGFloat ZL2HomeCardHeight       = 132;   // 实例卡高
+static const CGFloat ZL2HomeCardHeight       = 178;   // 实例卡高
 static const CGFloat ZL2HomeCardMinWidth     = 140;   // 窄屏降列阈值（列宽低于则减列）
 
 // ActionMenu 组件高度
@@ -170,7 +171,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 @property (nonatomic, strong) UILabel *infoLabel;
 @property (nonatomic, strong) ZL2HomeTapControl *playButton;
 @property (nonatomic, strong) UIImageView *playIconView;
-@property (nonatomic, strong) UILabel *playLabel;
+
 
 // 点击载荷（cellForItem 时注入；prepareForReuse 清空防旧实例残留）
 @property (nonatomic, copy, nullable) void (^ame_onCard)(void);
@@ -191,7 +192,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         _cardBody = [[ZL2HomeTapControl alloc] init];
         _cardBody.backgroundColor = [ZL2Theme surfaceContainer];
         _cardBody.layer.cornerRadius = [ZL2Theme radiusM];
-        _cardBody.layer.borderWidth = 0;
+        _cardBody.clipsToBounds = YES;
         _cardBody.translatesAutoresizingMaskIntoConstraints = NO;
         _cardBody.isAccessibilityElement = YES;
         _cardBody.accessibilityTraits = UIAccessibilityTraitButton;
@@ -199,13 +200,13 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
         // —— 实例图标 40（加载器品牌图标优先，兜底 gamecontroller 模板）——
         _iconBg = [[UIView alloc] init];
-        _iconBg.layer.cornerRadius = [ZL2Theme radiusS];
+        _iconBg.userInteractionEnabled = NO;
         _iconBg.layer.masksToBounds = YES;
         _iconBg.translatesAutoresizingMaskIntoConstraints = NO;
         [_cardBody addSubview:_iconBg];
 
         _iconView = [[UIImageView alloc] init];
-        _iconView.contentMode = UIViewContentModeScaleAspectFit;
+        _iconView.contentMode = UIViewContentModeScaleAspectFill;
         _iconView.translatesAutoresizingMaskIntoConstraints = NO;
         _iconView.userInteractionEnabled = NO;
         [_iconBg addSubview:_iconView];
@@ -223,7 +224,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         _infoLabel = [[UILabel alloc] init];
         _infoLabel.font = [ZL2Theme fontLabelMedium];
         _infoLabel.textColor = [ZL2Theme onSurfaceVariant];
-        _infoLabel.numberOfLines = 1;
+        _infoLabel.numberOfLines = 2;
         _infoLabel.lineBreakMode = NSLineBreakByTruncatingTail;
         _infoLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _infoLabel.userInteractionEnabled = NO;
@@ -239,26 +240,12 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
         UIImage *playImage = ZL2HomeSizedImage(@"play.fill", @"play", 16);
         _playIconView = [[UIImageView alloc] initWithImage:[playImage imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
-        _playIconView.tintColor = [ZL2Theme primary];
+        _playIconView.tintColor = [ZL2Theme onPrimary];
+        _playButton.backgroundColor = [ZL2Theme primary];
         _playIconView.contentMode = UIViewContentModeScaleAspectFit;
         _playIconView.translatesAutoresizingMaskIntoConstraints = NO;
         _playIconView.userInteractionEnabled = NO;
         [_playButton addSubview:_playIconView];
-
-        _playLabel = [[UILabel alloc] init];
-        // 常量文案先落位再测宽（小钮宽度 = 内容宽的测量依据）
-        _playLabel.text = localize(@"coachmarks.launch.title", nil);
-        _playLabel.font = [ZL2Theme fontLabelMedium];
-        _playLabel.textColor = [ZL2Theme primary];
-        _playLabel.numberOfLines = 1;
-        _playLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _playLabel.userInteractionEnabled = NO;
-        [_playButton addSubview:_playLabel];
-
-        // 小钮宽度 = 内容宽（10 + 16 + 5 + 文字 + 10），文字恒为「启动」常量，
-        // 构建期一次测量定宽（自绘尺寸控件无 intrinsic，等式收敛唯一解）
-        CGSize playTextSize = [_playLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 18)];
-        CGFloat playWidth = 10 + 16 + 5 + ceil(playTextSize.width) + 10;
 
         __weak typeof(self) weakSelf = self;
         _cardBody.ame_action = ^{
@@ -276,37 +263,28 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
             [_cardBody.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
             [_cardBody.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
 
-            // 图标 40：左上锚定（12, 12）
-            [_iconBg.leadingAnchor constraintEqualToAnchor:_cardBody.leadingAnchor constant:12],
-            [_iconBg.topAnchor constraintEqualToAnchor:_cardBody.topAnchor constant:12],
-            [_iconBg.widthAnchor constraintEqualToConstant:40],
-            [_iconBg.heightAnchor constraintEqualToConstant:40],
+            [_iconBg.leadingAnchor constraintEqualToAnchor:_cardBody.leadingAnchor],
+            [_iconBg.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor],
+            [_iconBg.topAnchor constraintEqualToAnchor:_cardBody.topAnchor],
+            [_iconBg.bottomAnchor constraintEqualToAnchor:_cardBody.bottomAnchor constant:-74],
+            [_iconView.widthAnchor constraintEqualToAnchor:_iconBg.widthAnchor],
+            [_iconView.heightAnchor constraintEqualToAnchor:_iconBg.heightAnchor],
             [_iconView.centerXAnchor constraintEqualToAnchor:_iconBg.centerXAnchor],
             [_iconView.centerYAnchor constraintEqualToAnchor:_iconBg.centerYAnchor],
-            [_iconView.widthAnchor constraintEqualToConstant:26],
-            [_iconView.heightAnchor constraintEqualToConstant:26],
-
-            // 名称/信息行：图标右侧两行，底不低于小启动钮顶
-            [_nameLabel.leadingAnchor constraintEqualToAnchor:_iconBg.trailingAnchor constant:10],
-            [_nameLabel.topAnchor constraintEqualToAnchor:_cardBody.topAnchor constant:16],
-            [_nameLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_cardBody.trailingAnchor constant:-12],
+            [_nameLabel.leadingAnchor constraintEqualToAnchor:_cardBody.leadingAnchor constant:9],
+            [_nameLabel.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor constant:-9],
+            [_nameLabel.topAnchor constraintEqualToAnchor:_iconBg.bottomAnchor constant:6],
             [_infoLabel.leadingAnchor constraintEqualToAnchor:_nameLabel.leadingAnchor],
-            [_infoLabel.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:3],
-            [_infoLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_cardBody.trailingAnchor constant:-12],
-            [_infoLabel.bottomAnchor constraintLessThanOrEqualToAnchor:_playButton.topAnchor constant:-6],
-
-            // 右下小启动钮
-            [_playButton.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor constant:-10],
-            [_playButton.bottomAnchor constraintEqualToAnchor:_cardBody.bottomAnchor constant:-10],
-            [_playButton.widthAnchor constraintEqualToConstant:playWidth],
-            [_playButton.heightAnchor constraintEqualToConstant:28],
-            [_playIconView.leadingAnchor constraintEqualToAnchor:_playButton.leadingAnchor constant:10],
+            [_infoLabel.trailingAnchor constraintEqualToAnchor:_playButton.leadingAnchor constant:-4],
+            [_infoLabel.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:2],
+            [_playButton.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor constant:-6],
+            [_playButton.bottomAnchor constraintEqualToAnchor:_cardBody.bottomAnchor constant:-5],
+            [_playButton.widthAnchor constraintEqualToConstant:40],
+            [_playButton.heightAnchor constraintEqualToConstant:34],
+            [_playIconView.centerXAnchor constraintEqualToAnchor:_playButton.centerXAnchor],
             [_playIconView.centerYAnchor constraintEqualToAnchor:_playButton.centerYAnchor],
-            [_playIconView.widthAnchor constraintEqualToConstant:16],
-            [_playIconView.heightAnchor constraintEqualToConstant:16],
-            [_playLabel.leadingAnchor constraintEqualToAnchor:_playIconView.trailingAnchor constant:5],
-            [_playLabel.centerYAnchor constraintEqualToAnchor:_playButton.centerYAnchor],
-            [_playLabel.trailingAnchor constraintEqualToAnchor:_playButton.trailingAnchor constant:-10],
+            [_playIconView.widthAnchor constraintEqualToConstant:15],
+            [_playIconView.heightAnchor constraintEqualToConstant:15],
         ]];
     }
     return self;
@@ -354,23 +332,12 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         self.infoLabel.textColor = [ZL2Theme onSurfaceVariant];
     }
 
-    // 实例图标：加载器图标（PNG 原色 / SF 品牌色，版本页同款）；取不到 →
-    // gamecontroller 兜底装进 surfaceVariant 容器
-    if (loader.length > 0) {
-        [ModLoaderIconHelper configureImageView:self.iconView
-                                      forLoader:loader
-                                 traitCollection:self.traitCollection];
-        self.iconBg.backgroundColor = [UIColor clearColor];
-    } else {
-        UIImage *fallbackIcon = ZL2HomeSystemImage(@"gamecontroller.fill", @"gamecontroller");
-        self.iconView.image = [fallbackIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        self.iconView.tintColor = [ZL2Theme onSurfaceVariant];
-        self.iconBg.backgroundColor = [ZL2Theme surfaceVariant];
-    }
-
-    // 选中态：primaryContainer 2pt 描边（复用残留防护：未选中恒清零）
-    self.cardBody.layer.borderWidth = isSelected ? 2 : 0;
-    self.cardBody.layer.borderColor = [ZL2Theme primaryContainer].CGColor;
+    NSDictionary *profile = PLProfiles.current.profiles[profileName];
+    self.iconView.image = CubicProfileArtwork(profile);
+    NSString *summary = profile[@"versionSummary"];
+    if (valid && [summary isKindOfClass:NSString.class] && summary.length) self.infoLabel.text = summary;
+    self.cardBody.layer.borderWidth = 1;
+    self.cardBody.layer.borderColor = (isSelected ? [ZL2Theme primary] : [ZL2Theme outlineVariant]).CGColor;
 
     self.cardBody.accessibilityLabel = [NSString stringWithFormat:localize(@"prisma.ui.instance", nil),
                                         profileName, isSelected ? localize(@"prisma.ui.current.instance", nil) : localize(@"prisma.ui.tap.to.select", nil)];
@@ -386,6 +353,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
 // 双栏根（Row：内容区 weight 7 + ActionMenu 3/10）
 @property (nonatomic, strong) UIView *contentArea;
+@property (nonatomic, strong) UILabel *sectionHeading;
+@property (nonatomic, strong) UIButton *profilesTab;
+@property (nonatomic, strong) UIButton *browseTab;
+@property (nonatomic, strong) ZL2AssetSearchViewController *packBrowser;
 @property (nonatomic, strong) UICollectionView *gridView;
 @property (nonatomic, strong) UIView *emptyStateView;
 @property (nonatomic, strong) UIView *actionMenu;
@@ -445,6 +416,11 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [super viewDidLoad];
 
     self.view.backgroundColor = [ZL2Theme surface];
+    UIView *backdrop = [[UIView alloc] initWithFrame:self.view.bounds];
+    backdrop.backgroundColor = [ZL2Theme surface];
+    backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    backdrop.userInteractionEnabled = NO;
+    [self.view addSubview:backdrop];
     [self buildViews];
     // ★Task343：控件自动检查更新挂载点（Task255 链 1:1——旧 Root 壳物理退役，
     // 开关门控 + 静态一次性守卫在 autoCheckControlUpdatesOnce 实现内，主页
@@ -875,15 +851,32 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     UIButton *create = [UIButton buttonWithType:UIButtonTypeSystem];
     [create setTitle:NSLocalizedString(@"New Profile", nil) forState:UIControlStateNormal];
     [create addTarget:self action:@selector(cubicCreateProfile) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[browse, import, create]];
+    UIButton *profiles = [UIButton buttonWithType:UIButtonTypeSystem];
+    [profiles setTitle:NSLocalizedString(@"My Profiles", nil) forState:UIControlStateNormal];
+    [profiles addTarget:self action:@selector(cubicShowProfiles) forControlEvents:UIControlEventTouchUpInside];
+    self.profilesTab = profiles;
+    self.browseTab = browse;
+    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[profiles, browse, import, create]];
+    actions.alignment = UIStackViewAlignmentCenter;
+    for (UIButton *item in actions.arrangedSubviews) {
+        item.titleLabel.font = [UIFont boldSystemFontOfSize:12];
+        item.titleLabel.adjustsFontSizeToFitWidth = YES;
+        item.titleLabel.minimumScaleFactor = 0.8;
+        item.layer.cornerRadius = 7;
+        item.contentEdgeInsets = UIEdgeInsetsMake(7, 4, 7, 4);
+    }
+    import.backgroundColor = [ZL2Theme surfaceContainerHigh];
+    create.backgroundColor = [ZL2Theme primary];
+    [create setTitleColor:[ZL2Theme onPrimary] forState:UIControlStateNormal];
     actions.distribution = UIStackViewDistributionFillProportionally;
     actions.spacing = 8;
     actions.tintColor = [ZL2Theme primary];
     actions.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:actions];
     UILabel *heading = [[UILabel alloc] init];
-    heading.text = NSLocalizedString(@"My Profiles", nil);
-    heading.font = [ZL2Theme fontTitleMedium];
+    self.sectionHeading = heading;
+    [self cubicShowProfiles];
+    heading.font = [UIFont boldSystemFontOfSize:22];
     heading.textColor = [ZL2Theme onSurface];
     heading.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:heading];
@@ -926,9 +919,28 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 /// 空态：archivebox 68 +「没有安装版本」+「去下载」钮（壳切下载页 index=1；
 /// 与 ZL2VersionsViewController versions_manage_no_versions 同语义）
 - (void)cubicBrowseModpacks {
+    if (self.packBrowser) return;
     ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
         initWithType:ZL2AssetSearchTypeModpack title:NSLocalizedString(@"Browse Modpacks", nil)];
-    [self.navigationController pushViewController:browser animated:YES];
+    self.packBrowser = browser;
+    [self addChildViewController:browser];
+    browser.view.frame = self.contentArea.bounds;
+    browser.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.contentArea addSubview:browser.view];
+    [browser didMoveToParentViewController:self];
+    self.sectionHeading.text = NSLocalizedString(@"Browse Modpacks", nil);
+    [self.browseTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
+    [self.profilesTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
+}
+
+- (void)cubicShowProfiles {
+    [self.packBrowser willMoveToParentViewController:nil];
+    [self.packBrowser.view removeFromSuperview];
+    [self.packBrowser removeFromParentViewController];
+    self.packBrowser = nil;
+    self.sectionHeading.text = NSLocalizedString(@"Profiles", nil);
+    [self.profilesTab setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
+    [self.browseTab setTitleColor:[ZL2Theme onSurfaceVariant] forState:UIControlStateNormal];
 }
 
 - (void)cubicImport {

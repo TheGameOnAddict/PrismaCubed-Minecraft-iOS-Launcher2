@@ -1130,6 +1130,15 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     if (!nav) return;
     ZL2VersionDetailViewController *vc =
         [[ZL2VersionDetailViewController alloc] initWithProfileName:profile];
+    __weak typeof(self) weakSelf = self;
+    vc.playProfile = ^(NSString *name) {
+        ZL2ShellViewController *shell = weakSelf;
+        [shell ame_showHome];
+        UIViewController *home = [shell ame_currentNav].viewControllers.firstObject;
+        if ([home isKindOfClass:ZL2HomeViewController.class]) {
+            [(ZL2HomeViewController *)home ame_playProfileNamed:name];
+        }
+    };
     [nav pushViewController:vc animated:YES];
 }
 
