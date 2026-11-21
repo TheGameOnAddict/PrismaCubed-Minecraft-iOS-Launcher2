@@ -2085,7 +2085,12 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [weakSelf ame_push:[[ZL2PluginRepoViewController alloc] init]
                    titled:localize(@"ame318.repo.title", nil)];
     };
-    [group3 ame_addRows:@[backgroundRow, galleryRow, gameDirRow, importRow, pluginRow, repoRow, moreRow]];
+    ZL2SettingRowAction *aiRow = [[ZL2SettingRowAction alloc]
+        initWithTitle:NSLocalizedString(@"Prisma AI", nil) subtitle:nil];
+    aiRow.onTap = ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate" object:nil userInfo:@{@"index": @6}];
+    };
+    [group3 ame_addRows:@[backgroundRow, galleryRow, gameDirRow, importRow, aiRow, pluginRow, repoRow, moreRow]];
     [self ame_addGroup:group3];
     // ★ Task327：插件贡献行动态组（Task318 ame.addLauncherRow 的消费端）
     //   ★ Task328：构建点已上移至外观组之后（首屏可视域），见彼处注释

@@ -60,6 +60,8 @@
 
 #import "ZL2HomeViewController.h"
 #import "ZL2Theme.h"
+#import "ZL2AssetSearchViewController.h"
+#import "ModpackImportViewController.h"
 #import "ControlRepoViewController.h"   // ★Task343：控件自动检查更新挂载（旧 Root 壳退役后移防主页）
 #import "ZL2M3Kit.h"                 // ZL2M3BottomSheet（长按卡菜单）
 #import "authenticator/BaseAuthenticator.h"
@@ -451,8 +453,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     // 复用注册（经典 dataSource 路径；cell 类自带 configure，无 iOS15+ registration）
     [self.gridView registerClass:[ZL2HomeVersionCardCell class]
       forCellWithReuseIdentifier:@"zl2_home_version_card"];
-    [self ame_restoreMenuSide];
-    [self ame_applySideConstraintsAnimated:NO];
+    self.actionMenu.hidden = YES;
     [self refreshLaunchState];
 
     // 通知监听：账号信息变化 / 壳切回主页 → 刷新三态（旧契约 1:1）；
@@ -865,6 +866,28 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     _contentArea.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:_contentArea];
 
+    UIButton *browse = [UIButton buttonWithType:UIButtonTypeSystem];
+    [browse setTitle:NSLocalizedString(@"Browse Modpacks", nil) forState:UIControlStateNormal];
+    [browse addTarget:self action:@selector(cubicBrowseModpacks) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *import = [UIButton buttonWithType:UIButtonTypeSystem];
+    [import setTitle:NSLocalizedString(@"Import", nil) forState:UIControlStateNormal];
+    [import addTarget:self action:@selector(cubicImport) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *create = [UIButton buttonWithType:UIButtonTypeSystem];
+    [create setTitle:NSLocalizedString(@"New Profile", nil) forState:UIControlStateNormal];
+    [create addTarget:self action:@selector(cubicCreateProfile) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[browse, import, create]];
+    actions.distribution = UIStackViewDistributionFillProportionally;
+    actions.spacing = 8;
+    actions.tintColor = [ZL2Theme primary];
+    actions.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:actions];
+    UILabel *heading = [[UILabel alloc] init];
+    heading.text = NSLocalizedString(@"My Profiles", nil);
+    heading.font = [ZL2Theme fontTitleMedium];
+    heading.textColor = [ZL2Theme onSurface];
+    heading.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:heading];
+
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
     layout.scrollDirection = UICollectionViewScrollDirectionVertical;
     layout.minimumInteritemSpacing = ZL2HomeGridSpacing;
@@ -883,7 +906,15 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [_contentArea addSubview:_gridView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_contentArea.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [actions.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [actions.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:12],
+        [actions.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        [actions.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        [heading.topAnchor constraintEqualToAnchor:actions.bottomAnchor constant:2],
+        [heading.leadingAnchor constraintEqualToAnchor:actions.leadingAnchor],
+        [_contentArea.topAnchor constraintEqualToAnchor:heading.bottomAnchor],
+        [_contentArea.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],
+        [_contentArea.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor],
         [_contentArea.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
         [_gridView.topAnchor constraintEqualToAnchor:_contentArea.topAnchor],
         [_gridView.bottomAnchor constraintEqualToAnchor:_contentArea.bottomAnchor],
@@ -894,6 +925,23 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
 /// 空态：archivebox 68 +「没有安装版本」+「去下载」钮（壳切下载页 index=1；
 /// 与 ZL2VersionsViewController versions_manage_no_versions 同语义）
+- (void)cubicBrowseModpacks {
+    ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
+        initWithType:ZL2AssetSearchTypeModpack title:NSLocalizedString(@"Browse Modpacks", nil)];
+    [self.navigationController pushViewController:browser animated:YES];
+}
+
+- (void)cubicImport {
+    UINavigationController *nav = [[UINavigationController alloc]
+        initWithRootViewController:[[ModpackImportViewController alloc] init]];
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)cubicCreateProfile {
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate"
+                                                        object:nil userInfo:@{@"index": @1}];
+}
+
 - (void)ame_buildEmptyState {
     _emptyStateView = [[UIView alloc] init];
     _emptyStateView.backgroundColor = [UIColor clearColor];
@@ -1080,7 +1128,8 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [cell ame_configureWithRow:row];
     __weak ZL2HomeViewController *weakSelf = self;
     cell.ame_onCard = ^{
-        [weakSelf ame_selectProfileNamed:profileName];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2OpenVersionDetail"
+                                                            object:nil userInfo:@{@"profile": profileName}];
     };
     cell.ame_onPlay = ^{
         [weakSelf ame_playProfileNamed:profileName];

@@ -5,6 +5,8 @@ name: Development build (7.0 test repo - auto-release disabled)
 # 重发 nightly release），只保留手动 workflow_dispatch。
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/prismacubic-ui]
 
 # 并发控制：同一分支/PR 新的推送会取消仍在排队或运行的旧构建。
 # 这能显著缓解 runner 供应紧张导致的"一直卡在队列中"问题：

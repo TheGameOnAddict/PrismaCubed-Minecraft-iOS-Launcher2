@@ -1,3 +1,5 @@
+#import "authenticator/BaseAuthenticator.h"
+#import "AvatarManager.h"
 //
 // ZL2ShellViewController.m — ZL2 真形态顶栏壳实现（7.0-UI-10-b）
 //
@@ -502,6 +504,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 @property(nonatomic, assign) BOOL ame347_widthClassApplied;           // ★ Task349：首轮宽窄态必派发哨兵
 @property(nonatomic, strong) NSLayoutConstraint *ame350_headerWrapLeading; // ★ Task350：内容区头前导（宽屏 = 窗格宽，头不再横穿窗格）
 @property(nonatomic, assign) BOOL ame350_layoutLogged;                // ★ Task350：首帧布局自证哨兵
+@property(nonatomic, strong) UIButton *cubicAccountButton;
 @end
 
 @implementation ZL2ShellViewController
@@ -626,7 +629,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     self.homeButton = [[ZL2ShellIconButton alloc] initWithSymbol:@"house.fill" fallback:nil];
     self.homeButton.accessibilityLabel = localize(@"i18n_str_349", nil);
     self.homeButton.ame_action = ^{
-        [weakSelf showPageAtIndex:0];
+        [weakSelf ame_showHome];
     };
     [self.leftCluster addArrangedSubview:self.homeButton];
 
@@ -664,42 +667,18 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     };
     [self.rightCluster addArrangedSubview:self.taskPill];
 
-    // b) RailItem×5（7.0-UI-14 真机对齐：文件/多人联机/下载/设置，ZL2 MainScreen
-    //    endButtons 顺序；版本/账户入口收进主页 ActionMenu，非顶栏项。
-    //    Task318：第 5 项 = AI 助手（7.0-UI-8 旧壳退役后入口恢复，页面 6））
-    //    pageIndex = -1 表示瞬时动作（文件夹 = 打开文件浏览器，非页面）
-    NSArray<NSString *> *titles = @[localize(@"i18n_str_72", nil), localize(@"prisma.ui.multiplayer.2", nil), localize(@"resman.mods.download", nil), localize(@"Settings", nil),
-                                    localize(@"ame192.ai.title", nil)];
-    NSArray<NSString *> *symbols = @[@"folder.fill",
-                                     @"person.2.fill",
-                                     @"arrow.down.circle.fill",
-                                     @"gearshape.fill",
-                                     @"sparkles"];
-    NSArray<NSString *> *fallbacks = @[@"folder", @"person.2", @"arrow.down", @"gear",
-                                       @"sparkles"];
-    NSArray<NSNumber *> *pageIndexNumbers = @[@(-1), @5, @1, @4, @6];
-    NSMutableArray<ZL2ShellRailItem *> *items = [NSMutableArray array];
-    [titles enumerateObjectsUsingBlock:^(NSString *itemTitle, NSUInteger idx, BOOL *stop) {
-        NSString *fallback = fallbacks[idx];
-        ZL2ShellRailItem *item = [[ZL2ShellRailItem alloc]
-                                     initWithTitle:itemTitle
-                                             symbol:symbols[idx]
-                                           fallback:(fallback.length > 0 ? fallback : nil)
-                                         pageIndex:pageIndexNumbers[idx].integerValue];
-        NSInteger target = pageIndexNumbers[idx].integerValue;
-        item.ame_action = ^{
-            if (target < 0) {
-                // ZL2 文件夹钮 = OpenFileManager 事件（独立文件管理器）；iOS 对应
-                // FolderBrowserViewController（PageSheet，游戏根目录）
-                [weakSelf ame_openFileManagerSheet];
-                return;
-            }
-            [weakSelf showPageAtIndex:target];
-        };
-        [self.rightCluster addArrangedSubview:item];
-        [items addObject:item];
-    }];
-    self.railItems = [items copy];
+    UIButton *account = [UIButton buttonWithType:UIButtonTypeSystem];
+    account.accessibilityLabel = NSLocalizedString(@"Launcher menu", nil);
+    account.tintColor = [ZL2Theme primary];
+    [account setImage:[UIImage systemImageNamed:@"person.crop.circle.fill"] forState:UIControlStateNormal];
+    account.showsMenuAsPrimaryAction = YES;
+    [account.widthAnchor constraintEqualToConstant:44].active = YES;
+    [account.heightAnchor constraintEqualToConstant:40].active = YES;
+    [self.rightCluster addArrangedSubview:account];
+    self.cubicAccountButton = account;
+    [self cubicRefreshAccountMenu];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(cubicRefreshAccountMenu)
+                                                 name:@"UpdateAccountInfo" object:nil];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.topBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -715,6 +694,47 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         [self.barRow.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
         [self.barRow.heightAnchor constraintEqualToConstant:ZL2ShellBarContentHeight],
     ]];
+}
+
+- (void)cubicRefreshAccountMenu {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self cubicRefreshAccountMenu]; });
+        return;
+    }
+    UIButton *button = self.cubicAccountButton;
+    if (!button) return;
+    NSDictionary *auth = BaseAuthenticator.current.authData;
+    NSString *name = [auth[@"username"] isKindOfClass:NSString.class] ? auth[@"username"] : nil;
+    NSArray<NSString *> *titles = @[NSLocalizedString(@"Manage Accounts", nil), NSLocalizedString(@"Directory", nil),
+        NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
+    NSArray<NSString *> *icons = @[@"person.crop.circle", @"folder", @"person.2", @"gearshape"];
+    NSArray<NSNumber *> *pages = @[@3, @(-1), @5, @4];
+    NSMutableArray<UIAction *> *actions = [NSMutableArray array];
+    __weak typeof(self) weakSelf = self;
+    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
+        [actions addObject:[UIAction actionWithTitle:title image:[UIImage systemImageNamed:icons[index]]
+            identifier:nil handler:^(__kindof UIAction *action) {
+                NSInteger page = pages[index].integerValue;
+                if (page < 0) [weakSelf ame_openFileManagerSheet];
+                else [weakSelf showPageAtIndex:page];
+            }]];
+    }];
+    button.menu = [UIMenu menuWithTitle:name ?: NSLocalizedString(@"Account", nil) children:actions];
+    [button setImage:[UIImage systemImageNamed:@"person.crop.circle.fill"] forState:UIControlStateNormal];
+    if (auth) {
+        [[AvatarManager sharedManager] ame185_fetchAvatarForAuthData:auth completion:^(UIImage *image) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!image || ![BaseAuthenticator.current.authData isEqualToDictionary:auth]) return;
+                UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(32, 32)];
+                UIImage *avatar = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+                    CGRect rect = CGRectMake(0, 0, 32, 32);
+                    [[UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:8] addClip];
+                    [image drawInRect:rect];
+                }];
+                [weakSelf.cubicAccountButton setImage:[avatar imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
+            });
+        }];
+    }
 }
 
 - (void)ame_buildContainer {
@@ -1097,6 +1117,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 
 - (void)ame_showHome {
     [self showPageAtIndex:0];
+    [[self ame_currentNav] popToRootViewControllerAnimated:NO];
 }
 
 // 7.0-UI-13：版本详情打开（userInfo[@"profile"] = 实例名；当前活动 nav 上 push）
@@ -1180,7 +1201,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 - (NSString *)ame_titleForIndex:(NSInteger)index {
     if (index == 0) {
         // 主页标题 = ZL2 LAUNCHER_IDENTIFIER（"ZalithLauncher"，真机截图实证）
-        return @"ZalithLauncher";
+        return @"PrismaCubic";
     }
     // 功能页文案（ZL2 顶栏标题映射表，7.0-UI-14 对齐）
     switch (index) {
@@ -1218,7 +1239,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     NSInteger index = self.currentIndex;
 
     UINavigationController *nav = [self ame_currentNav];
-    BOOL clusterVisible = (index != 0);                  // 左簇仅非主页显示
+    BOOL clusterVisible = (index != 0 || nav.viewControllers.count > 1);                  // 左簇仅非主页显示
     BOOL backVisible = (nav.viewControllers.count > 1);  // 可 pop 才有返回钮
 
     NSString *title = [self ame_titleForIndex:index];
@@ -1330,7 +1351,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 }
 
 - (UINavigationController *)ame_currentNav {
-    if (self.currentIndex <= 0) return nil;  // 主页不包 nav
+    if (self.currentIndex < 0) return nil;
     UIViewController *child = self.childCache[@(self.currentIndex)];
     if ([child isKindOfClass:[UINavigationController class]]) {
         return (UINavigationController *)child;
@@ -1360,7 +1381,9 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     switch (index) {
         case 0: {
             // 主页：ZL2 新写，单页无 push 需求（切页走通知契约），不包 nav
-            vc = [[ZL2HomeViewController alloc] init];
+            UINavigationController *home = [[UINavigationController alloc] initWithRootViewController:[[ZL2HomeViewController alloc] init]];
+            home.navigationBarHidden = YES;
+            vc = home;
             break;
         }
         case 1: {

@@ -1,3 +1,4 @@
+#import "ZL2AssetSearchViewController.h"
 //
 // ZL2VersionPages.m — ZL2 版本详情八子页实现（7.0-UI-13-V）
 //
@@ -1972,10 +1973,10 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 #pragma mark 去下载（Task265/324：ZL2 下载中心模组轨直达）
 
 - (void)ameV13_openDownloadCenter {
-    ZL2DownloadViewController *dvc = [[ZL2DownloadViewController alloc] init];
-    dvc.selectedIndex = 2;   // 模组轨
-    dvc.targetProfileName = self.ameV13_profileName;
-    [self.navigationController pushViewController:dvc animated:YES];
+    ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
+        initWithType:ZL2AssetSearchTypeMod title:NSLocalizedString(@"Add Mods", nil)];
+    browser.targetProfileName = self.ameV13_profileName;
+    [self.navigationController pushViewController:browser animated:YES];
 }
 
 #pragma mark 加载器识别（旧页 ame288 同语义：实例名启发式推断 + 错配判定）

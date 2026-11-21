@@ -521,6 +521,16 @@ void UIKit_launchMinecraftSurfaceVC(UIWindow* window, NSDictionary* metadata) {
             tmpRootVC = window.rootViewController;
         }
         window.rootViewController = [[SurfaceViewController alloc] initWithMetadata:metadata];
+        if (@available(iOS 16.0, *)) {
+            [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+            UIWindowSceneGeometryPreferencesIOS *geometry = [[UIWindowSceneGeometryPreferencesIOS alloc]
+                initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape];
+            [window.windowScene requestGeometryUpdateWithPreferences:geometry errorHandler:^(NSError *error) {
+                NSLog(@"Gameplay orientation update: %@", error.localizedDescription);
+            }];
+        } else {
+            [UIViewController attemptRotationToDeviceOrientation];
+        }
         [window makeKeyAndVisible];
         // 视觉淡入 fire-and-forget（无 completion 依赖）
         window.alpha = 0;
@@ -558,6 +568,11 @@ void UIKit_returnToSplitView() {
             // LauncherSplitViewController = "退游戏回旧界面"病灶，tmpRootVC
             // 失效场景（JVM 崩后异常链 / 分代换根丢失）即触达）
             window.rootViewController = [[ZL2ShellViewController alloc] init];
+        }
+        if (@available(iOS 16.0, *)) {
+            [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+        } else {
+            [UIViewController attemptRotationToDeviceOrientation];
         }
         [window makeKeyAndVisible];
         window.alpha = 0;

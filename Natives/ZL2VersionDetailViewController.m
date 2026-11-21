@@ -1,3 +1,5 @@
+#import "FolderBrowserViewController.h"
+#import "ZL2AssetSearchViewController.h"
 //
 // ZL2VersionDetailViewController.m — ZL2 版本详情容器实现（7.0-UI-13-V）
 //
@@ -189,7 +191,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     [self ameV13_buildHeaderCard];
     [self ameV13_buildBody];
     [self ameV13_refreshHeader];
-    [self ameV13_selectPage:0];
+    [self ameV13_selectPage:1];
 }
 
 - (void)dealloc {
@@ -269,16 +271,39 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     [_headerCard addSubview:textStack];
 
     // 「完成」（dismiss 语义：pop 优先，无 nav 时 dismiss 兜底）
-    NSString *doneTitle = localize(@"resman.common.done", nil);
-    UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    doneButton.titleLabel.font = [ZL2Theme fontLabelLarge];
-    [doneButton setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
-    [doneButton setTitle:doneTitle forState:UIControlStateNormal];
-    doneButton.contentEdgeInsets = UIEdgeInsetsMake(8, 12, 8, 12);
     doneButton.translatesAutoresizingMaskIntoConstraints = NO;
-    doneButton.isAccessibilityElement = YES;
-    doneButton.accessibilityLabel = doneTitle;
-    [doneButton addTarget:self action:@selector(ameV13_finish) forControlEvents:UIControlEventTouchUpInside];
+    doneButton.accessibilityLabel = NSLocalizedString(@"Profile menu", nil);
+    [doneButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
+    doneButton.contentEdgeInsets = UIEdgeInsetsMake(8, 12, 8, 12);
+    doneButton.showsMenuAsPrimaryAction = YES;
+    __weak typeof(self) weakSelf = self;
+    UIAction *folder = [UIAction actionWithTitle:NSLocalizedString(@"Open Folder", nil)
+        image:[UIImage systemImageNamed:@"folder"] identifier:nil handler:^(__kindof UIAction *action) {
+            ZL2VersionDetailViewController *owner = weakSelf;
+            if (!owner) return;
+            NSString *path = [ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:owner.ameV13_profileName];
+            [owner presentViewController:[FolderBrowserViewController wrappedControllerForPath:path] animated:YES completion:nil];
+        }];
+    UIAction *options = [UIAction actionWithTitle:NSLocalizedString(@"Profile Options", nil)
+        image:[UIImage systemImageNamed:@"gearshape"] identifier:nil handler:^(__kindof UIAction *action) {
+            [weakSelf ameV13_selectPage:7];
+        }];
+    UIAction *worlds = [UIAction actionWithTitle:NSLocalizedString(@"Worlds", nil)
+        image:[UIImage systemImageNamed:@"globe"] identifier:nil handler:^(__kindof UIAction *action) {
+            [weakSelf ameV13_selectPage:2];
+        }];
+    UIAction *logs = [UIAction actionWithTitle:NSLocalizedString(@"Logs", nil)
+        image:[UIImage systemImageNamed:@"doc.text"] identifier:nil handler:^(__kindof UIAction *action) {
+            ZL2VersionDetailViewController *owner = weakSelf;
+            if (!owner) return;
+            NSString *root = [ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:owner.ameV13_profileName];
+            [owner presentViewController:[FolderBrowserViewController wrappedControllerForPath:[root stringByAppendingPathComponent:@"logs"]] animated:YES completion:nil];
+        }];
+    UIAction *ai = [UIAction actionWithTitle:NSLocalizedString(@"Prisma AI", nil)
+        image:[UIImage systemImageNamed:@"sparkles"] identifier:nil handler:^(__kindof UIAction *action) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate" object:nil userInfo:@{@"index": @6}];
+        }];
+    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, worlds, logs, ai]];
     [_headerCard addSubview:doneButton];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -380,61 +405,41 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 #pragma mark - 左子导航轨 + 内容容器
 
 - (void)ameV13_buildBody {
-    // 左轨（160pt，顶部起排；division 分隔线同 ZL2 settingItems：模组前 / 服务器前）
-    _railStack = [[UIStackView alloc] init];
-    _railStack.axis = UILayoutConstraintAxisVertical;
-    _railStack.alignment = UIStackViewAlignmentCenter;
-    _railStack.spacing = 2;
-    _railStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:_railStack];
-
-    _railItems = [NSMutableArray array];
-    // (标题, SF 主名, SF 兜底)：ZL2 settingItems 图标语义映射 SF1.x 可用族
-    NSArray<NSArray<NSString *> *> *defs = @[
-        @[localize(@"prisma.ui.overview", nil),   @"square.grid.2x2",         @"circle.grid.2x2"],
-        @[localize(@"i18n_str_1283", nil),   @"puzzlepiece.extension",   @"puzzlepiece"],
-        @[localize(@"prisma.ui.worlds", nil),   @"globe",                   @"circle"],
-        @[localize(@"i18n_str_116", nil), @"paintbrush",              @"circle"],
-        @[localize(@"i18n_str_1284", nil),   @"lightbulb",               @"circle"],
-        @[localize(@"prisma.ui.screenshots", nil),   @"photo.on.rectangle",      @"photo"],
-        @[localize(@"i18n_str_880", nil), @"dns",                     @"network"],
-        @[localize(@"prisma.ui.configuration", nil),   @"slider.horizontal.3",     @"gearshape"],
+    UIScrollView *tabs = [[UIScrollView alloc] init];
+    tabs.showsHorizontalScrollIndicator = NO;
+    tabs.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:tabs];
+    NSArray<NSString *> *titles = @[
+        NSLocalizedString(@"Overview", nil), NSLocalizedString(@"Mods", nil),
+        NSLocalizedString(@"Worlds", nil), NSLocalizedString(@"Resource Packs", nil),
+        NSLocalizedString(@"Shaders", nil), NSLocalizedString(@"Screenshots", nil),
+        NSLocalizedString(@"Servers", nil), NSLocalizedString(@"Profile Options", nil),
+        NSLocalizedString(@"Data Packs", nil)
     ];
-    // division 位（ZL2 VersionSettingsScreen.kt L159-168：模组 / 服务器前）
-    NSArray<NSNumber *> *divisionMarks = @[@1, @6];
-
-    for (NSUInteger i = 0; i < defs.count; i++) {
-        if ([divisionMarks containsObject:@((NSInteger)i)]) {
-            UIView *divider = [[UIView alloc] init];
-            divider.backgroundColor = [ZL2Theme onSurface];
-            divider.alpha = 0.4;
-            divider.translatesAutoresizingMaskIntoConstraints = NO;
-            divider.userInteractionEnabled = NO;
-            [_railStack addArrangedSubview:divider];
-            [divider.widthAnchor constraintEqualToConstant:64].active = YES;
-            [divider.heightAnchor constraintEqualToConstant:1].active = YES;
-            [_railStack setCustomSpacing:12 afterView:divider];
-        }
-
-        NSArray<NSString *> *def = defs[i];
-        ZL2VersionDetailNavItem *item = [[ZL2VersionDetailNavItem alloc] initWithFrame:CGRectZero];
-        item.pageIndex = (NSInteger)i;
-        item.label.text = def[0];
-        item.icon.image = [ZL2V13SystemImage(def[1], def[2]) imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        item.isAccessibilityElement = YES;
-        item.accessibilityLabel = def[0];
-        [item addTarget:self action:@selector(ameV13_railItemTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [item.widthAnchor constraintEqualToConstant:ZL2V13RailWidth - 8].active = YES;
-        [item.heightAnchor constraintEqualToConstant:ZL2V13RailItemSize].active = YES;
-        [_railStack addArrangedSubview:item];
-        [_railItems addObject:item];
+    _railItems = [NSMutableArray array];
+    _railStack = [[UIStackView alloc] init];
+    _railStack.spacing = 8;
+    _railStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [tabs addSubview:_railStack];
+    for (NSNumber *index in @[@1, @8, @3, @4, @0, @6]) {
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        [button setTitle:titles[index.integerValue] forState:UIControlStateNormal];
+        button.tintColor = [ZL2Theme primary];
+        button.contentEdgeInsets = UIEdgeInsetsMake(0, 8, 0, 8);
+        button.tag = index.integerValue;
+        [button addTarget:self action:@selector(cubicTabTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [_railStack addArrangedSubview:button];
     }
-
     [NSLayoutConstraint activateConstraints:@[
-        [_railStack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8],
-        [_railStack.trailingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8 + ZL2V13RailWidth],
-        [_railStack.topAnchor constraintEqualToAnchor:_headerCard.bottomAnchor constant:12],
-        [_railStack.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-8],
+        [tabs.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:8],
+        [tabs.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-8],
+        [tabs.topAnchor constraintEqualToAnchor:_headerCard.bottomAnchor constant:4],
+        [tabs.heightAnchor constraintEqualToConstant:44],
+        [_railStack.leadingAnchor constraintEqualToAnchor:tabs.contentLayoutGuide.leadingAnchor],
+        [_railStack.trailingAnchor constraintEqualToAnchor:tabs.contentLayoutGuide.trailingAnchor],
+        [_railStack.topAnchor constraintEqualToAnchor:tabs.contentLayoutGuide.topAnchor],
+        [_railStack.bottomAnchor constraintEqualToAnchor:tabs.contentLayoutGuide.bottomAnchor],
+        [_railStack.heightAnchor constraintEqualToAnchor:tabs.frameLayoutGuide.heightAnchor],
     ]];
 
     // 内容容器 = 轨右到页尾的整块填充；子页内部自持 999 等式宽度收敛
@@ -446,8 +451,8 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [_contentContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8 + ZL2V13RailWidth + 4],
-        [_contentContainer.topAnchor constraintEqualToAnchor:_headerCard.bottomAnchor constant:12],
+        [_contentContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:ZL2V13PageMargin],
+        [_contentContainer.topAnchor constraintEqualToAnchor:tabs.bottomAnchor],
         [_contentContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-ZL2V13PageMargin],
         [_contentContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
     ]];
@@ -455,8 +460,8 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 
 #pragma mark - 子页切换（ZL2Shell 手法：懒建缓存 + addChild + crossDissolve）
 
-- (void)ameV13_railItemTapped:(ZL2VersionDetailNavItem *)sender {
-    [self ameV13_selectPage:sender.pageIndex];
+- (void)cubicTabTapped:(UIButton *)sender {
+    [self ameV13_selectPage:sender.tag];
 }
 
 - (UIViewController *)ameV13_childForIndex:(NSInteger)index {
@@ -476,6 +481,13 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
         case 5: vc = [[ZL2VersionScreenshotsPage alloc]    initWithProfileName:profileName gameDir:gameDir]; break;
         case 6: vc = [[ZL2VersionServersPage alloc]        initWithProfileName:profileName gameDir:gameDir]; break;
         case 7: vc = [[ZL2VersionConfigPage alloc]         initWithProfileName:profileName gameDir:gameDir]; break;
+        case 8: {
+            ZL2AssetSearchViewController *packs = [[ZL2AssetSearchViewController alloc]
+                initWithType:ZL2AssetSearchTypeDataPack title:NSLocalizedString(@"Data Packs", nil)];
+            packs.targetProfileName = profileName;
+            vc = packs;
+            break;
+        }
         default: break;
     }
     if (!vc) return nil;
@@ -498,7 +510,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 }
 
 - (void)ameV13_selectPage:(NSInteger)index {
-    if (index < 0 || index >= (NSInteger)self.railItems.count) return;
+    if (index < 0 || index >= 9) return;
     if (index == self.ameV13_selectedIndex) return;
 
     UIViewController *next = [self ameV13_childForIndex:index];
@@ -526,9 +538,13 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     }
 
     self.ameV13_selectedIndex = index;
-    [self.railItems enumerateObjectsUsingBlock:^(ZL2VersionDetailNavItem *item, NSUInteger idx, BOOL *stop) {
-        [item ameV13_setSelected:((NSInteger)idx == index)];
-    }];
+    for (UIButton *tab in self.railStack.arrangedSubviews) {
+        BOOL selected = tab.tag == index;
+        tab.backgroundColor = selected ? [ZL2Theme primaryContainer] : UIColor.clearColor;
+        tab.tintColor = selected ? [ZL2Theme onPrimaryContainer] : [ZL2Theme primary];
+        tab.layer.cornerRadius = 8;
+        tab.accessibilityTraits = UIAccessibilityTraitButton | (selected ? UIAccessibilityTraitSelected : 0);
+    }
 }
 
 #pragma mark - 完成

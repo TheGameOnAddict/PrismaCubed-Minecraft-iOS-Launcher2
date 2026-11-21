@@ -88,23 +88,6 @@ extern BOOL Amethyst_EnforceSDL3Presentation(void);
         }
     }
 
-    // 强制横屏 (iOS 16+)
-    // Task188：窗口模式（iPadOS 26+ 多窗口/LiveContainer 宿主）下系统持有
-    // 几何、本请求预期被拒（Code=101）——Info.plist 的 UIRequiresFullScreen=true
-    // 才是主修复；此请求仅在全屏模式下作纵深防御，失败为预期态降级为单次
-    // 提示（不再每次启动刷一条 Failed 日志）。
-    if (@available(iOS 16.0, *)) {
-        UIWindowSceneGeometryPreferencesIOS *geometryPreferences = [[UIWindowSceneGeometryPreferencesIOS alloc] init];
-        geometryPreferences.interfaceOrientations = UIInterfaceOrientationMaskLandscape;
-        [windowScene requestGeometryUpdateWithPreferences:geometryPreferences errorHandler:^(NSError *error) {
-            static BOOL s_task188_logged = NO;
-            if (!s_task188_logged) {
-                s_task188_logged = YES;
-                NSLog(@"[SceneDelegate] Task188: geometry request declined (expected in window mode; Info.plist UIRequiresFullScreen is the primary fix): %@", error.localizedDescription);
-            }
-        }];
-    }
-    
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
     self.window.frame = windowScene.coordinateSpace.bounds;
     // Task137：窗口底色回归系统底色语义（深浅色由语义色自动适配）；
@@ -349,7 +332,8 @@ static void AmeFGLogSwapStats(NSString *phase) {
         // ★ [FG] Task222 移植注意：原实现横屏时直接 return——但这会连带跳过
         //   本方法尾部的回前台自愈逻辑（游戏恒为横屏 = FG 修复永远不执行）。
         //   改为仅跳过几何重试本身，FG 自愈链路无条件走到底。
-        if (!UIInterfaceOrientationIsLandscape(orient)) {
+        if ([self.window.rootViewController isKindOfClass:NSClassFromString(@"SurfaceViewController")] &&
+            !UIInterfaceOrientationIsLandscape(orient)) {
             UIWindowSceneGeometryPreferencesIOS *geometryPreferences = [[UIWindowSceneGeometryPreferencesIOS alloc] init];
             geometryPreferences.interfaceOrientations = UIInterfaceOrientationMaskLandscape;
             [windowScene requestGeometryUpdateWithPreferences:geometryPreferences errorHandler:^(NSError *error) {
@@ -423,7 +407,8 @@ static void AmeFGLogSwapStats(NSString *phase) {
 #pragma mark - Orientation Support (iOS 16+)
 
 - (UIInterfaceOrientationMask)scene:(UIScene *)scene supportedInterfaceOrientationsForWindowScene:(UIWindowScene *)windowScene API_AVAILABLE(ios(16.0)) {
-    return UIInterfaceOrientationMaskLandscape;
+    return [self.window.rootViewController isKindOfClass:NSClassFromString(@"SurfaceViewController")]
+        ? UIInterfaceOrientationMaskLandscape : UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 // ============================================================================
@@ -458,6 +443,14 @@ static void AmeFGLogSwapStats(NSString *phase) {
     UIWindowScene *scene = self.window.windowScene;
     if (!scene || !self.window) return;
 
+    if (![self.window.rootViewController isKindOfClass:NSClassFromString(@"SurfaceViewController")]) {
+        if (!CGAffineTransformIsIdentity(self.window.transform)) {
+            CGRect frame = self.window.frame;
+            self.window.transform = CGAffineTransformIdentity;
+            self.window.frame = frame;
+        }
+        return;
+    }
     CGRect sb = scene.coordinateSpace.bounds;
     if (sb.size.width <= 0 || sb.size.height <= 0) return;
 
