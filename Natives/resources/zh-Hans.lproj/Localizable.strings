@@ -3652,7 +3652,6 @@
 "prisma.ui.edit.summary" = "编辑摘要";
 "prisma.ui.edit.the.current.button.to.key.mapping.file" = "编辑当前映射文件（按键 → 键位）";
 "prisma.ui.education" = "教育";
-"prisma.ui.enable.the.extended.memory.entitlement.with.getmoreram.n" = "·扩展内存限制权限，使用GetMoreRAM开启\n";
 "prisma.ui.enter.a.project.id.or.slug.choose.a.platform.then.tap.look.up" = "输入项目 ID 或 slug，选择平台后查询";
 "prisma.ui.equipment" = "装备";
 "prisma.ui.exploration" = "探索";

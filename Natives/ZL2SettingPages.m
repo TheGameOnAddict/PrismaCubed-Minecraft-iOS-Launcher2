@@ -757,12 +757,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     memHelpRow.onTap = ^{
         UIAlertController *alert = [UIAlertController
             alertControllerWithTitle:localize(@"mem_help.title", @"关于内存限制")
-                             message:localize(@"mem_help.message",
-                                 localize(@"prisma.ui.enable.the.extended.memory.entitlement.with.getmoreram.n", nil)
-                                  "让iOS为启动器分配更多内存空间，通常能分配6GB内存\n\n"
-                                  "·扩展虚拟内存权限，开启方式见下\n"
-                                  "让iOS为启动器分配更多内存寻址，通常能分配7GB内存并提升稳定性\n\n"
-                                  "推荐使用付费开发者证书，安装软件自动开启上述权限且支持开启JIT")
+                             message:localize(@"mem_help.message", nil)
                       preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:localize(@"mem_help.button", @"付费开发者证书")
                                                   style:UIAlertActionStyleDefault
