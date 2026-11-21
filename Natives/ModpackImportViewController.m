@@ -411,7 +411,7 @@
 
         NSURL *directory = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
                             URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
-        NSURL *fileURL = [directory URLByAppendingPathComponent:@"CurseForge.zip"];
+        NSURL *fileURL = [directory URLByAppendingPathComponent:[format isEqual:@"modrinth"] ? @"Modrinth.mrpack" : @"CurseForge.zip"];
         NSFileManager *files = NSFileManager.defaultManager;
         NSError *error = nil;
         NSDictionary *modpackInfo = nil;
@@ -562,7 +562,7 @@
 
     self.currentImportingModpack = modpackInfo;
     [self showModpackPreview:modpackInfo
-                        fileURL:[temporaryDirectory URLByAppendingPathComponent:@"CurseForge.zip"]
+                        fileURL:[NSURL fileURLWithPath:modpackInfo[@"filePath"]]
              temporaryDirectory:temporaryDirectory];
 }
 

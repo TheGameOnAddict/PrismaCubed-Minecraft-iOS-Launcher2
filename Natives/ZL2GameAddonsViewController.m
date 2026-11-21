@@ -70,12 +70,14 @@
 
 #pragma mark - 页面本体
 
-@interface ZL2GameAddonsViewController () <ZL2AddonCardDelegate, UITextFieldDelegate>
+@interface ZL2GameAddonsViewController () <ZL2AddonCardDelegate, UITextFieldDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, copy, readwrite) NSString *gameVersion;
 @property (nonatomic, strong) UISegmentedControl *loaderChoice;
 @property (nonatomic, strong) UIButton *buildChoice;
 @property (nonatomic, strong) UIButton *createAction;
 @property (nonatomic, copy) NSString *formBuild;
+@property (nonatomic, strong) UIImageView *formCover;
+@property (nonatomic, copy) NSString *formIcon;
 @property (nonatomic) NSUInteger formGeneration;
 // 头部
 @property (nonatomic, strong) UILabel *gameVersionLabel;
@@ -132,6 +134,12 @@
 - (void)cubicBuildCreation {
     UIStackView *form = CubicForm(self, @"New Profile");
     UIImageView *cover = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicProfileCover"]];
+    self.formCover = cover;
+    cover.userInteractionEnabled = YES;
+    cover.isAccessibilityElement = YES;
+    cover.accessibilityTraits = UIAccessibilityTraitButton;
+    cover.accessibilityLabel = @"Choose profile picture";
+    [cover addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(cubicPickCover)]];
     cover.clipsToBounds = YES;
     cover.layer.cornerRadius = 8;
     cover.contentMode = UIViewContentModeScaleAspectFill;
@@ -187,6 +195,45 @@
             [weakSelf cubicRefreshBuilds];
         });
     }];
+}
+
+- (void)cubicPickCover {
+    UIImagePickerController *picker = [UIImagePickerController new];
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info {
+    UIImage *image = info[UIImagePickerControllerOriginalImage];
+    if (image.size.width > 0 && image.size.height > 0) {
+        CGFloat scale = 256 / MAX(image.size.width, image.size.height);
+        CGSize size = CGSizeMake(MAX(1,image.size.width*scale),MAX(1,image.size.height*scale));
+        UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+        format.scale = 1;
+        UIImage *thumb = [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format] imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+            [image drawInRect:(CGRect){CGPointZero,size}];
+        }];
+        self.formCover.image = thumb;
+        self.formIcon = [UIImagePNGRepresentation(thumb) base64EncodedStringWithOptions:0];
+    }
+    [picker dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)cubicRegisterInstalledVersion:(NSString *)version profileName:(NSString *)name {
+    if (!self.profileCreationForm || !version.length || !name.length) return;
+    PLProfiles *registry = PLProfiles.current;
+    NSMutableDictionary *entry = [registry.profiles[version] mutableCopy];
+    if (!entry || (![name isEqual:version] && registry.profiles[name])) return;
+    entry[@"name"] = name;
+    entry[@"lastVersionId"] = version;
+    if (![name isEqual:version]) entry[@"gameDir"] = [@"versions" stringByAppendingPathComponent:name];
+    if (self.formIcon) entry[@"icon"] = self.formIcon;
+    [registry saveProfile:entry withName:name];
+    registry.selectedProfileName = name;
 }
 
 - (void)cubicRefreshBuilds {
@@ -1122,6 +1169,7 @@
                 st.ame336Installing = NO;
                 [st ame_refreshInstallButton];
                 if (success) {
+                    [st cubicRegisterInstalledVersion:profileId profileName:versionId];
                     [[NSNotificationCenter defaultCenter]
                         postNotificationName:@"ReloadProfileList" object:nil];
                     // Task324：安装成功即时补齐隔离骨架（注册表已隔离 → 六目录可见可即用）
@@ -1187,6 +1235,7 @@
                 }
                 [[NSNotificationCenter defaultCenter]
                     postNotificationName:@"ReloadProfileList" object:nil];
+                [st cubicRegisterInstalledVersion:profileId profileName:versionId];
                 // Task324：forge/neoforge 安装成功即时补齐隔离骨架（全量扫描幂等）
                 [ModService ame324_ensureIsolationSkeletonsAll];
                 NSString *optiPayload = (st.optifineCard.selectedItem.length > 0
@@ -1239,6 +1288,7 @@
     // 启动必报「未能打开文件 <名>.json」（启动链按 lastVersionId 找版本 JSON）。
     NSMutableDictionary *profile = [NSMutableDictionary dictionary];
     profile[@"name"] = versionId;
+    if (self.formIcon) profile[@"icon"] = self.formIcon;
     profile[@"lastVersionId"] = self.gameVersion;
     // ★ Task322：game/ 分居层退役 —— versions/<id> 混居通例（Task242 口径五键）
     profile[@"gameDir"] = [NSString stringWithFormat:@"versions/%@", versionId];
