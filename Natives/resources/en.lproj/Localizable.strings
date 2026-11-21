@@ -3850,3 +3850,7 @@
 "prisma.jit.shortcut.restore.detail" = "Runs the shortcut to turn cellular data back on after JIT attaches.";
 "prisma.jit.shortcut.unavailable.title" = "Could Not Open Shortcuts";
 "prisma.jit.shortcut.unavailable.detail" = "Add Madeira JIT in the Shortcuts app and try again.";
+"prisma.jit.shortcut.setup.title" = "PrismaCubed Cellular JIT";
+"prisma.jit.shortcut.setup.subtitle" = "Optional • Uses Madeira JIT and LocalDevVPN";
+"prisma.jit.shortcut.setup.detail" = "First set up LocalDevVPN and add the original Madeira JIT shortcut in Shortcuts. Keep its name so PrismaCubed can find it.\n\nWithout Wi-Fi, prepare JIT here, then return and tap Enable JIT. Preparation turns off cellular data and may replace your active VPN. Restore cellular data here after JIT attaches.";
+"welcome.jit.shortcut.done" = "Done";

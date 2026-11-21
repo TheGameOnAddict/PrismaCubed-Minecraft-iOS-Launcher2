@@ -3846,3 +3846,7 @@
 "prisma.jit.shortcut.restore.detail" = "在 JIT 附加后运行快捷指令，重新开启蜂窝数据。";
 "prisma.jit.shortcut.unavailable.title" = "无法打开快捷指令";
 "prisma.jit.shortcut.unavailable.detail" = "请在「快捷指令」中添加 Madeira JIT 后重试。";
+"prisma.jit.shortcut.setup.title" = "PrismaCubed 蜂窝网络 JIT";
+"prisma.jit.shortcut.setup.subtitle" = "可选 · 使用 Madeira JIT 和 LocalDevVPN";
+"prisma.jit.shortcut.setup.detail" = "请先设置 LocalDevVPN，再在「快捷指令」中添加原版 Madeira JIT，并保留其名称。\n\n没有 Wi-Fi 时，请先在此准备 JIT，再返回并轻点「启用 JIT」。准备过程会关闭蜂窝数据，并可能替换当前 VPN。JIT 附加后在此恢复蜂窝数据。";
+"welcome.jit.shortcut.done" = "完成";

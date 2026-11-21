@@ -98,6 +98,7 @@
 //
 
 #import "ZL2SettingPages.h"
+#import "MadeiraJITShortcut.h"
 #import "ZL2SettingCards.h"
 #import "ZL2Theme.h"
 #import "ZL2M3Kit.h"
@@ -2986,7 +2987,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         initWithTitle:localize(@"prisma.jit.shortcut.install.title", nil)
              subtitle:localize(@"prisma.jit.shortcut.install.detail", nil)];
     installShortcutRow.onTap = ^{
-        NSURL *url = [NSURL URLWithString:@"https://www.icloud.com/shortcuts/878629f2925e45daa75301fbada5c892"];
+        NSURL *url = MadeiraJITShortcutImportURL();
         [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
     };
     ZL2SettingRowAction *prepareShortcutRow = [[ZL2SettingRowAction alloc]
@@ -3095,13 +3096,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 }
 
 - (void)ame_runMadeiraJITShortcutWithInput:(NSString *)input {
-    NSURLComponents *url = [NSURLComponents componentsWithString:@"shortcuts://run-shortcut"];
-    url.queryItems = @[
-        [NSURLQueryItem queryItemWithName:@"name" value:@"Madeira JIT"],
-        [NSURLQueryItem queryItemWithName:@"input" value:@"text"],
-        [NSURLQueryItem queryItemWithName:@"text" value:input],
-    ];
-    [UIApplication.sharedApplication openURL:url.URL options:@{} completionHandler:^(BOOL opened) {
+    [UIApplication.sharedApplication openURL:MadeiraJITShortcutRunURL(input) options:@{} completionHandler:^(BOOL opened) {
         if (!opened) {
             [ZL2M3Dialog showTitle:localize(@"prisma.jit.shortcut.unavailable.title", nil)
                              body:localize(@"prisma.jit.shortcut.unavailable.detail", nil)
