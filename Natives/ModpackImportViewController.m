@@ -61,34 +61,51 @@
 
 }
 
+- (UIStackView *)cubicImportSection:(NSString *)title detail:(NSString *)detail {
+    UILabel *note = CubicLabel(detail,12);
+    note.font = [UIFont systemFontOfSize:12];
+    note.textColor = ZL2Theme.onSurfaceVariant;
+    UIStackView *section = [[UIStackView alloc] initWithArrangedSubviews:@[CubicLabel(title,15),note]];
+    section.axis = UILayoutConstraintAxisVertical;
+    section.spacing = 6;
+    section.layoutMarginsRelativeArrangement = YES;
+    section.layoutMargins = UIEdgeInsetsMake(10,12,10,12);
+    section.backgroundColor = ZL2Theme.surfaceContainerLow;
+    section.layer.cornerRadius = 9;
+    return section;
+}
+
 - (void)cubicBuildImport {
     UIStackView *form = CubicForm(self, @"Import Modpack");
-    [form addArrangedSubview:CubicLabel(@"Link or share code",15)];
+    UIStackView *links = [self cubicImportSection:@"Link or share code" detail:@"CurseForge share link or code, or a Modrinth modpack link."];
+    [form addArrangedSubview:links];
     UITextField *source = [UITextField new];
     source.borderStyle = UITextBorderStyleRoundedRect;
     source.placeholder = @"Paste a link or CurseForge code";
     source.autocapitalizationType = UITextAutocapitalizationTypeNone;
     source.autocorrectionType = UITextAutocorrectionTypeNo;
-    [form addArrangedSubview:source];
+    [links addArrangedSubview:source];
     UIButton *preview = CubicButton(@"Preview Import",YES);
     __weak typeof(self) weakSelf = self;
     [preview addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         [source resignFirstResponder];
         [weakSelf cubicOpenSource:source.text];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [form addArrangedSubview:preview];
-    [form addArrangedSubview:CubicLabel(@"Modpack file",15)];
+    [links addArrangedSubview:preview];
+    UIStackView *archive = [self cubicImportSection:@"Modpack file" detail:@"Modrinth .mrpack and compatible launcher .zip archives."];
+    [form addArrangedSubview:archive];
     UIButton *file = CubicButton(@"Choose .mrpack or .zip File",NO);
     [file addTarget:self action:@selector(selectModpackFile) forControlEvents:UIControlEventTouchUpInside];
-    [form addArrangedSubview:file];
-    [form addArrangedSubview:CubicLabel(@"Existing launcher folder",15)];
+    [archive addArrangedSubview:file];
+    UIStackView *directory = [self cubicImportSection:@"Existing launcher folder" detail:@"Select a folder containing your Minecraft profile files."];
+    [form addArrangedSubview:directory];
     UIButton *folder = CubicButton(@"Choose Folder",NO);
     [folder addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFolder]];
         picker.delegate = weakSelf;
         [weakSelf presentViewController:picker animated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [form addArrangedSubview:folder];
+    [directory addArrangedSubview:folder];
 }
 
 - (void)cubicOpenSource:(NSString *)source {

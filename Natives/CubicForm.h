@@ -48,6 +48,7 @@ static inline UIStackView *CubicForm(UIViewController *owner, NSString *title) {
         [stack.topAnchor constraintEqualToAnchor:panel.contentLayoutGuide.topAnchor constant:18],
         [stack.bottomAnchor constraintEqualToAnchor:panel.contentLayoutGuide.bottomAnchor constant:-18]]];
     UIButton *close = CubicButton(@"×", NO);
+    [close.widthAnchor constraintEqualToConstant:36].active = YES;
     close.accessibilityLabel = @"Close";
     __weak UIViewController *weakOwner = owner;
     [close addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {

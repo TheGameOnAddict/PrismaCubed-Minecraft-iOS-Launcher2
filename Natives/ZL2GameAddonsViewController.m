@@ -132,7 +132,7 @@
 }
 
 - (void)cubicBuildCreation {
-    UIStackView *form = CubicForm(self, @"New Profile");
+    UIStackView *form = CubicForm(self, @"Create Profile");
     UIImageView *cover = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicProfileCover"]];
     self.formCover = cover;
     cover.userInteractionEnabled = YES;
@@ -143,10 +143,17 @@
     cover.clipsToBounds = YES;
     cover.layer.cornerRadius = 8;
     cover.contentMode = UIViewContentModeScaleAspectFill;
+    UIImageView *edit = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"pencil.circle.fill"]];
+    edit.tintColor = UIColor.whiteColor;
+    edit.backgroundColor = ZL2Theme.surfaceContainer;
+    edit.layer.cornerRadius = 9;
+    edit.clipsToBounds = YES;
+    edit.frame = CGRectMake(49,49,19,19);
+    [cover addSubview:edit];
     [cover.widthAnchor constraintEqualToConstant:72].active = YES;
     [cover.heightAnchor constraintEqualToConstant:72].active = YES;
     self.nameField = [UITextField new];
-    self.nameField.placeholder = @"Profile name";
+    self.nameField.placeholder = @"Name your profile";
     self.nameField.borderStyle = UITextBorderStyleRoundedRect;
     UIStackView *name = [[UIStackView alloc] initWithArrangedSubviews:@[CubicLabel(@"Profile Name",14),self.nameField]];
     name.axis = UILayoutConstraintAxisVertical;
@@ -168,10 +175,17 @@
     self.buildChoice = CubicButton(@"Loader Version",NO);
     self.buildChoice.showsMenuAsPrimaryAction = YES;
     [form addArrangedSubview:self.buildChoice];
-    self.createAction = CubicButton(@"Create Profile",YES);
+    self.createAction = CubicButton(@"Create",YES);
     [self.createAction addTarget:self action:@selector(cubicSubmit) forControlEvents:UIControlEventTouchUpInside];
     [self.nameField addTarget:self action:@selector(cubicValidate) forControlEvents:UIControlEventEditingChanged];
-    [form addArrangedSubview:self.createAction];
+    UIButton *cancel = CubicButton(@"Cancel",NO);
+    __weak typeof(self) weakForm = self;
+    [cancel addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        [weakForm dismissViewControllerAnimated:YES completion:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *footer = [[UIStackView alloc] initWithArrangedSubviews:@[[UIView new],cancel,self.createAction]];
+    footer.spacing = 8;
+    [form addArrangedSubview:footer];
     [self cubicRefreshBuilds];
     __weak typeof(self) weakSelf = self;
     [[ZL2VersionIndex sharedIndex] remoteVersionsWithCompletion:^(NSArray *versions, BOOL loaded) {
