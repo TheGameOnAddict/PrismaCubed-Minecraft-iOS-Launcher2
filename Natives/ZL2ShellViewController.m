@@ -703,7 +703,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     }
     UIButton *button = self.cubicAccountButton;
     if (!button) return;
-    NSDictionary *auth = BaseAuthenticator.current.authData;
+    BaseAuthenticator *currentAccount = BaseAuthenticator.current;
+    NSDictionary *auth = currentAccount.authData;
     NSString *name = [auth[@"username"] isKindOfClass:NSString.class] ? auth[@"username"] : nil;
     NSArray<NSString *> *titles = @[NSLocalizedString(@"Manage Accounts", nil), NSLocalizedString(@"Directory", nil),
         NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
@@ -724,7 +725,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     if (auth) {
         [[AvatarManager sharedManager] ame185_fetchAvatarForAuthData:auth completion:^(UIImage *image) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (!image || ![BaseAuthenticator.current.authData isEqualToDictionary:auth]) return;
+                BaseAuthenticator *activeAccount = BaseAuthenticator.current;
+                if (!image || ![activeAccount.authData isEqualToDictionary:auth]) return;
                 UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(32, 32)];
                 UIImage *avatar = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
                     CGRect rect = CGRectMake(0, 0, 32, 32);
