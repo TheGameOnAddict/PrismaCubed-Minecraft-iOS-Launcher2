@@ -51,6 +51,7 @@
 #import "BackgroundManager.h"
 #import "AmeTheme.h"   // ★ 7.0-UI-3d：Fluent 设计令牌（颜色/字体单一事实源）
 #import "WelcomeViewController.h"
+#import "PrismaJITShortcut.h"
 #import "AboutViewController.h"
 #import "LauncherPreferences.h"
 #import "PLMirrorCenter.h"
@@ -1448,6 +1449,10 @@ static const NSInteger ame218_welcomeStepCount = 8;  // Task246：+1 界面风�
         alertControllerWithTitle:localize(@"prisma.jit.shortcut.setup.title", nil)
                          message:localize(@"prisma.jit.shortcut.setup.detail", nil)
                   preferredStyle:UIAlertControllerStyleAlert];
+    [setup addAction:[UIAlertAction actionWithTitle:localize(@"prisma.jit.shortcut.instructions", nil)
+                                             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [UIApplication.sharedApplication openURL:PrismaJITShortcutSetupURL() options:@{} completionHandler:nil];
+    }]];
     BOOL enabled = getPrefBool(@"debug.prisma_jit_shortcut");
     [setup addAction:[UIAlertAction actionWithTitle:localize(enabled ? @"prisma.jit.shortcut.disable" : @"prisma.jit.shortcut.enable", nil)
                                              style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {

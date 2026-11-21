@@ -3845,3 +3845,4 @@
 "prisma.jit.shortcut.disable" = "关闭 JIT 快捷指令";
 "prisma.jit.shortcut.preparing" = "正在为 JIT 准备 LocalDevVPN…";
 "prisma.jit.shortcut.failed" = "PrismaCubed JIT 无法准备网络连接。请确认快捷指令名称正确，并已设置 LocalDevVPN。若蜂窝数据仍处于关闭状态，请在系统设置中开启。";
+"prisma.jit.shortcut.instructions" = "快捷指令设置说明";

@@ -98,6 +98,7 @@
 //
 
 #import "ZL2SettingPages.h"
+#import "PrismaJITShortcut.h"
 #import "ZL2SettingCards.h"
 #import "ZL2Theme.h"
 #import "ZL2M3Kit.h"
@@ -2985,7 +2986,12 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         shortcutRow.onToggle = ^(BOOL on) {
             setPrefBool(@"debug.prisma_jit_shortcut", on);
         };
-        [group1 ame_addRow:shortcutRow];
+        ZL2SettingRowAction *instructionsRow = [[ZL2SettingRowAction alloc]
+            initWithTitle:localize(@"prisma.jit.shortcut.instructions", nil) subtitle:nil];
+        instructionsRow.onTap = ^{
+            [UIApplication.sharedApplication openURL:PrismaJITShortcutSetupURL() options:@{} completionHandler:nil];
+        };
+        [group1 ame_addRows:@[instructionsRow, shortcutRow]];
     }
     [self ame_addGroup:group1];
 
