@@ -46,6 +46,7 @@
 #import "AmeTheme.h"   // accentColor 桩消费（main TU 唯一残留 AmeTheme 引用）
 #import "ZL2Theme.h"
 #import "ZL2HomeViewController.h"
+#import "ZL2AssetSearchViewController.h"
 #import "ZL2DownloadViewController.h"
 #import "ZL2VersionsViewController.h"
 #import "ZL2AccountsViewController.h"
@@ -635,6 +636,50 @@ static NSInteger AmePreviewRailSlotForItem(NSUInteger itemIndex) {
 
 @end
 
+// Exercise the production result cell with missing metadata and an overflowing title.
+// Fixed viewports let a single simulator render the same fixtures at phone and tablet widths.
+static void CubicCheckResults(UIView *host) {
+    NSString *directory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSArray *fixtures = @[
+        @{@"title":@"Jade", @"author":@"Snownee", @"description":@"Block and entity information.", @"downloads":@128000, @"browseVersion":@"1.20.1", @"browseLoader":@"Forge", @"categories":@[@"HUD", @"Utility"], @"apiSource":@2},
+        @{@"title":@"An exceptionally long modpack name that should scroll while every neighbouring result stays the same height", @"apiSource":@1},
+        @{@"title":@"Explorer", @"description":@"A long description which should never force a taller result. More details are available on the project page.", @"apiSource":@2},
+    ];
+    for (NSNumber *size in @[@320, @390, @760]) {
+        CGFloat width = size.doubleValue;
+        ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc] initWithFavorites];
+        UIView *page = browser.view;
+        page.frame = CGRectMake(0, 0, width, 390);
+        [host addSubview:page];
+        [browser setValue:[fixtures mutableCopy] forKey:@"results"];
+        [[browser valueForKey:@"emptyContainer"] setHidden:YES];
+        UITableView *table = [browser valueForKey:@"tableView"];
+        [table reloadData];
+        [page layoutIfNeeded];
+        [table layoutIfNeeded];
+        for (NSUInteger i = 0; i < fixtures.count; i++) {
+            NSIndexPath *index = [NSIndexPath indexPathForRow:i inSection:0];
+            UITableViewCell *cell = [table cellForRowAtIndexPath:index];
+            NSCAssert(cell && CGRectGetHeight([table rectForRowAtIndexPath:index]) == 118, @"Inconsistent result height");
+            [cell layoutIfNeeded];
+            UIView *title = [cell valueForKey:@"titleViewport"];
+            [title layoutIfNeeded];
+            UIView *install = [cell valueForKey:@"installButton"];
+            CGRect titleRect = [title convertRect:title.bounds toView:cell];
+            CGRect installRect = [install convertRect:install.bounds toView:cell];
+            NSCAssert(titleRect.size.width > 0 && CGRectGetMaxX(titleRect) <= CGRectGetMinX(installRect), @"Title overlaps Install");
+            UILabel *stats = [cell valueForKey:@"downloadsLabel"];
+            NSCAssert([stats.text containsString:@"–"], @"Missing metadata has no placeholder");
+        }
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:page.bounds];
+        NSData *png = [renderer PNGDataWithActions:^(UIGraphicsImageRendererContext *context) { [page.layer renderInContext:context.CGContext]; }];
+        NSString *path = [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"cubic-results-%@.png", size]];
+        NSCAssert([png writeToFile:path atomically:YES], @"Could not write preview");
+        [page removeFromSuperview];
+    }
+    [@"OK" writeToFile:[directory stringByAppendingPathComponent:@"cubic-check.log"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
 #pragma mark - AppDelegate + main
 
 @interface AmePreviewAppDelegate : UIResponder <UIApplicationDelegate>
@@ -657,6 +702,12 @@ static NSInteger AmePreviewRailSlotForItem(NSUInteger itemIndex) {
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.backgroundColor = [ZL2Theme surface];
 
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicCheck"]) {
+        self.window.rootViewController = [UIViewController new];
+        [self.window makeKeyAndVisible];
+        dispatch_async(dispatch_get_main_queue(), ^{ CubicCheckResults(self.window.rootViewController.view); });
+        return YES;
+    }
     // 7.0-UI-10-c：根 = ZL2 壳真形态镜像（40pt 顶栏 + 五槽内容区，无 rail；
     // -zl2page 选页 home/download/versions/accounts/settings）
     UIViewController *root = [[AmePreviewShellController alloc] init];

@@ -202,6 +202,24 @@ PLIST
   xcrun simctl bootstatus "$device" -b >/dev/null 2>&1 || true
   xcrun simctl install "$device" "$app" || { echo "✗ 安装失败"; FAIL=1; return; }
 
+  if [[ "$MODE" == "cubic" ]]; then
+    local bundle="com.prisma-devs.ame-fluent-preview"
+    local docs="$(xcrun simctl get_app_container "$device" "$bundle" data)/Documents"
+    rm -f "$docs/cubic-check.log"
+    xcrun simctl launch "$device" "$bundle" -cubicCheck || { FAIL=1; return; }
+    for attempt in {1..30}; do
+      [[ -s "$docs/cubic-check.log" ]] && break
+      sleep 1
+    done
+    if [[ ! -s "$docs/cubic-check.log" ]]; then
+      echo "PrismaCubic result layout check did not finish."
+      FAIL=1
+      return
+    fi
+    cp "$docs"/cubic-results-*.png "$docs/cubic-check.log" "$OUT/"
+    return
+  fi
+
   # ── 逐页截图（7.0-UI-9-e；7.0-UI-10-c 去组件页收敛五页）：每页冷启动
   #    （-zl2page 预选顶栏镜像页）→ 浅色截 → 深色截 → 还原浅色；
   #    5 页 × 2 态共 10 张，命名 ame-zl2-<page>-<mode>.png。harness 恒横屏
@@ -274,7 +292,7 @@ PLIST
 
 case "$MODE" in
   syntax)  syntax_mode ;;
-  preview) preview_mode ;;
+  preview|cubic) preview_mode ;;
   all)     syntax_mode; preview_mode ;;
   *) echo "用法: $0 [syntax|preview|all]"; exit 2 ;;
 esac
