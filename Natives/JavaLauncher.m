@@ -505,18 +505,18 @@ void init_loadCustomJvmFlags(int* argc, const char** argv) {
 
     void (^ame255_pushFlag)(NSString *) = ^(NSString *jvmarg) {
         if (jvmarg.length == 0) return;
-        NSArray *argsToPurge = @[@"Xms", @"Xmx", @"d32", @"d64"];
+        NSString *flagStr = [jvmarg hasPrefix:@"-"] ? jvmarg : [@"-" stringByAppendingString:jvmarg];
+        NSArray *argsToPurge = @[@"-Xms", @"-Xmx", @"-d32", @"-d64"];
         for (NSString *argToPurge in argsToPurge) {
-            if ([jvmarg hasPrefix:argToPurge]) {
-                NSLog(@"[JavaLauncher] Ignored JVM flag: -%@", jvmarg);
+            if ([flagStr hasPrefix:argToPurge]) {
+                NSLog(@"[JavaLauncher] Ignored JVM flag: %@", flagStr);
                 return;
             }
         }
         if (*argc + 1 >= 1000) {
-            NSLog(@"[JavaLauncher] Warning: margv reached limit (1000), discarding custom JVM flag: -%@", jvmarg);
+            NSLog(@"[JavaLauncher] Warning: margv reached limit (1000), discarding custom JVM flag: %@", flagStr);
             return;
         }
-        NSString *flagStr = [@"-" stringByAppendingString:jvmarg];
         [retainedCustomFlags addObject:flagStr];
         ++*argc;
         argv[*argc] = flagStr.UTF8String;
@@ -560,10 +560,12 @@ void init_loadCustomJvmFlags(int* argc, const char** argv) {
     // 保证字符串在 pJLI_Launch 调用期间有效。
 
     NSLog(@"[JavaLauncher] Reading custom JVM flags");
-    for (NSString *arg in [jvmargs componentsSeparatedByString:@" -"]) {
-        NSString *jvmarg = [arg stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-        if (jvmarg.length == 0) continue;
-        ame255_pushFlag(jvmarg);
+    NSArray<NSString *> *flags = [jvmargs componentsSeparatedByString:@" -"];
+    for (NSUInteger index = 0; index < flags.count; index++) {
+        NSString *argument = [flags[index] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if (argument.length == 0) continue;
+        // The separator consumes a dash. Put it back before normalizing the flag.
+        ame255_pushFlag(index == 0 ? argument : [@"-" stringByAppendingString:argument]);
     }
 }
 
