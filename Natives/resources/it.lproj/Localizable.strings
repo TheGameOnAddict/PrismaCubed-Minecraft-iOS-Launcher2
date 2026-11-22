@@ -1629,7 +1629,7 @@
 "i18n_str_581" = "Loader: %@";
 "i18n_str_582" = "Mod da scaricare: %ld\n";
 "i18n_str_583" = "File da estrarre: %ld\n";
-"i18n_str_584" = "\n⚠️ Nota: il loader %@ %@ deve essere installato manualmente tramite la pagina di download, altrimenti il gioco non si avvierà.";
+"i18n_str_584" = "\nPrismaCubic installa %@ %@ durante l’importazione.";
 "i18n_str_585" = "Importa modpack";
 "i18n_str_586" = "Eccezione di importazione: %@";
 "i18n_str_587" = "\n\nFile non riusciti (%lu in totale):";

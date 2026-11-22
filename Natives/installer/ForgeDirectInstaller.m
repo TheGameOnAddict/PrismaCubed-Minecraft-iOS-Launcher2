@@ -18,6 +18,7 @@
 //
 
 #import "ForgeDirectInstaller.h"
+#import "ModpackLayout.h"
 #import "PLProfiles.h"
 #import "PLMirrorCenter.h"
 #import "utils.h"
@@ -737,6 +738,16 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
         return NO;
     }
 
+    // Forge discovers these processor products dynamically; its version JSON cannot redownload them.
+    NSDictionary *data = installProfile[@"data"];
+    for (NSString *key in @[@"MC_SRG", @"MC_EXTRA", @"PATCHED"]) {
+        NSString *value = data[key][@"client"];
+        if (![value isKindOfClass:NSString.class] || ![value hasPrefix:@"["] || ![value hasSuffix:@"]"]) continue;
+        NSString *descriptor = [value substringWithRange:NSMakeRange(1, value.length - 2)];
+        NSString *relative = [ForgeProcessorExecutor libraryPathFromDescriptor:descriptor error:error];
+        if (!relative || !ModpackPrepareForgeJar(librariesDir, gameDir, relative, error)) return NO;
+    }
+
     // Step E (Task188)：后置产物验证 —— 与 NeoForgeDirectInstaller 同款。
     // 病历（15fddc2 latestlog.old.2）：forge:client classifier 在 BMCLAPI 与
     // 官方源均 404（新版安装器格式的预打补丁 client jar 本就是 processor
@@ -801,6 +812,16 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
     NSLog(@"[ForgeDirect] Writing version JSON to: %@", versionJsonPath);
     reportProgress(0.9, localize(@"i18n_str_1263", nil));
     NSError *writeError = saveJSONToFile(versionJson, versionJsonPath);
+    if (!writeError && ![gameDir.stringByResolvingSymlinksInPath isEqual:[self gameDirectory].stringByResolvingSymlinksInPath]) {
+        // The launch root may switch to this instance, including after a staged reimport.
+        NSString *localVersion = [[gameDir stringByAppendingPathComponent:@"versions"] stringByAppendingPathComponent:versionId];
+        NSString *localJson = [localVersion stringByAppendingPathComponent:versionJsonPath.lastPathComponent];
+        if (![localJson.stringByResolvingSymlinksInPath hasPrefix:[gameDir.stringByResolvingSymlinksInPath stringByAppendingString:@"/"]]) {
+            writeError = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteInvalidFileNameError userInfo:nil];
+        } else if ([NSFileManager.defaultManager createDirectoryAtPath:localVersion withIntermediateDirectories:YES attributes:nil error:&writeError]) {
+            writeError = saveJSONToFile(versionJson, localJson);
+        }
+    }
     if (writeError) {
         if (error) {
             *error = [NSError errorWithDomain:ForgeDirectInstallerErrorDomain

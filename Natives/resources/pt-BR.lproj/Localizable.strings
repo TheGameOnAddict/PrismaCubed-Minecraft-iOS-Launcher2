@@ -1632,7 +1632,7 @@
 "i18n_str_581" = "Carregador: %@";
 "i18n_str_582" = "Mods a baixar: %ld\n";
 "i18n_str_583" = "Arquivos a extrair: %ld\n";
-"i18n_str_584" = "\n⚠️ Observação: o carregador %@ %@ precisa ser instalado manualmente pela página de downloads; caso contrário, o jogo não vai abrir.";
+"i18n_str_584" = "\nO PrismaCubic instala %@ %@ durante a importação.";
 "i18n_str_585" = "Importar modpack";
 "i18n_str_586" = "Exceção na importação: %@";
 "i18n_str_587" = "\n\nArquivos com falha (%lu no total):";

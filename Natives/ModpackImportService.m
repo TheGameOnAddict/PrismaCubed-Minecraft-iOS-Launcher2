@@ -16,6 +16,7 @@
 //
 
 #import "ModpackImportService.h"
+#import "ModpackLayout.h"
 #import <UIKit/UIKit.h>
 #import "installer/FabricUtils.h"
 #import "installer/modpack/ModpackUtils.h"
@@ -219,15 +220,6 @@ static NSURL *CurseForgeProjectDownload(long long projectID, long long fileID) {
         }
     }
     return [self.customGameDir stringByAppendingPathComponent:modpackId];
-}
-
-/// 给定 modpack id，返回 gameDir 的相对路径 (写入 profile 的 gameDir 字段)
-- (NSString *)relativeGameDirForModpackId:(NSString *)modpackId {
-    // ★ Task316：profile gameDir 改写绝对路径（方法名保留兼容调用点）——
-    // instances/<id> 顶层实例目录，Task275 F5 绝对路径全链直通（JavaLauncher
-    // chdir/ModService 五处 resolve/DataPackService 均 isAbsolutePath 原样用）。
-    // 旧值 "./custom_gamedir/<id>" 依赖当前实例且双层嵌套，由 ame316 迁移重写。
-    return [self absoluteGameDirForModpackId:modpackId];
 }
 
 /// 把 Modrinth dependencies 解析成 loader 信息
@@ -884,8 +876,9 @@ static BOOL ame269_sMigrationRunning = NO;
     {
         NSString *ame269_existingProfile = [ModpackImportService ame269_findExistingModpackProfileForDisplayName:modpackInfo[@"name"]];
         if (ame269_existingProfile.length > 0) {
-            NSString *ame269_existingId = [ModpackImportService ame269_instanceIdFromGameDir:
-                                               PLProfiles.current.profiles[ame269_existingProfile][@"gameDir"]];
+            NSString *existingDir = PLProfiles.current.profiles[ame269_existingProfile][@"gameDir"];
+            NSString *ame269_existingId = ModpackInstanceID(existingDir, self.customGameDir)
+                ?: [ModpackImportService ame269_instanceIdFromGameDir:existingDir];
             if (ame269_existingId.length > 0) {
                 NSMutableDictionary *ame269_info = [modpackInfo mutableCopy];
                 ame269_info[@"id"] = ame269_existingId;
@@ -930,8 +923,9 @@ static BOOL ame269_sMigrationRunning = NO;
 
     if (progress) progress(0.05, localize(@"i18n_str_1290", nil));
 
-    NSString *gameDirAbsolute = [self absoluteGameDirForModpackId:modpackId];
-    NSString *gameDirRelative = [self relativeGameDirForModpackId:modpackId];
+    NSString *gameDirAbsolute = [self.customGameDir stringByAppendingPathComponent:modpackId];
+    NSString *gameDirRelative = gameDirAbsolute;
+    NSString *previousContentDir = ame269_isReuse ? PLProfiles.current.profiles[modpackInfo[@"ame269_reuseProfileName"]][@"gameDir"] : nil;
 
     // Task269-r3：复用路径 staging 重定向——解压/下载/装载全部落 staging，
     // 活实例文件夹在换装点（写 profile 前）之前分毫不动。
@@ -1074,10 +1068,14 @@ static BOOL ame269_sMigrationRunning = NO;
                                    gameDirAbsolute:gameDirAbsolute
                                           error:&loaderError];
     if (!loaderSuccess) {
-        // 加载器安装失败不阻断 (用户可能已经手动安装)
-        NSLog(@"[ModpackImport] Loader installation failed (user may have already installed): %@", loaderError.localizedDescription);
+        NSLog(@"[ModpackImport] Loader installation failed: %@", loaderError.localizedDescription);
         [manager updateTaskWithId:taskId stageAtIndex:3 status:PLTaskStageStatusFailed];
         [manager updateTaskWithId:taskId stageAtIndex:3 progress:0.0 message:loaderError.localizedDescription];
+        if ([loader isEqual:@"Forge"] || [loader isEqual:@"NeoForge"]) {
+            if (error) *error = loaderError;
+            [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES];
+            return NO;
+        }
     } else {
         [manager updateTaskWithId:taskId stageAtIndex:3 status:PLTaskStageStatusCompleted];
     }
@@ -1132,6 +1130,23 @@ static BOOL ame269_sMigrationRunning = NO;
     if (ame269_isReuse) {
         NSString *ame269_backupDir = [self.customGameDir stringByAppendingPathComponent:
             [NSString stringWithFormat:@"%@-backup-%ld", modpackId, (long)[[NSDate date] timeIntervalSince1970]]];
+        NSString *oldContent = ModpackInstanceID(previousContentDir, self.customGameDir) ? previousContentDir : ame269_realDir;
+        for (NSString *item in @[@"saves", @"screenshots", @"config", @"servers.dat", @"options.txt"]) {
+            NSString *source = [oldContent stringByAppendingPathComponent:item];
+            NSString *target = [ame269_stageDir stringByAppendingPathComponent:item];
+            if (![fm fileExistsAtPath:source]) continue;
+            if ([fm fileExistsAtPath:target]) {
+                if ([item isEqual:@"config"]) continue;  // Pack defaults take precedence; original remains in backup.
+                if (![fm removeItemAtPath:target error:error]) {
+                    [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
+                    return NO;
+                }
+            }
+            if (![fm copyItemAtPath:source toPath:target error:error]) {
+                [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
+                return NO;
+            }
+        }
         if ([fm fileExistsAtPath:ame269_realDir]) {
             NSError *ame269_bkErr = nil;
             if (![fm moveItemAtPath:ame269_realDir toPath:ame269_backupDir error:&ame269_bkErr]) {
@@ -1150,14 +1165,6 @@ static BOOL ame269_sMigrationRunning = NO;
             }
             [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
             return NO;
-        }
-        NSArray<NSString *> *ame269_restore = @[@"saves", @"screenshots", @"config", @"servers.dat", @"options.txt"];
-        for (NSString *ame269_item in ame269_restore) {
-            NSString *ame269_src = [ame269_backupDir stringByAppendingPathComponent:ame269_item];
-            NSString *ame269_dst = [ame269_realDir stringByAppendingPathComponent:ame269_item];
-            if ([fm fileExistsAtPath:ame269_src] && ![fm fileExistsAtPath:ame269_dst]) {
-                [fm moveItemAtPath:ame269_src toPath:ame269_dst error:nil];
-            }
         }
         NSLog(@"[ModpackImport] Task269-r3: staged re-import promoted into live instance %@ (old copy kept at %@)",
               ame269_realDir.lastPathComponent, ame269_backupDir.lastPathComponent);
@@ -2386,8 +2393,7 @@ if (hasRealFileName) {
 
 /// 安装模组加载器
 /// Fabric/Quilt: 拉取 profile json 并写入 versions/<id>/<id>.json
-/// Forge/NeoForge: 写一个最小的版本 JSON 占位 (依赖用户后续手动安装)
-///                或者引导用户安装。这里先写占位，避免 profile 引用不存在的版本时崩溃
+/// Forge/NeoForge: run the loader installer before registering the pack.
 - (BOOL)installModLoader:(NSString *)loader
           loaderVersion:(NSString *)loaderVersion
          minecraftVersion:(NSString *)minecraftVersion
@@ -2540,27 +2546,9 @@ if (hasRealFileName) {
               ame175_candidate, ame175_candError.localizedDescription ?: @"unknown");
     }
     if (!installerDownloaded) {
-        // installer.jar 下载失败：写显式失败的占位 JSON（mainClass 指向不存在的类，启动时会显式报错，
-        // 避免误装作 vanilla MC 让用户以为 mods 生效）
-        NSLog(@"[ModpackImport] %@ installer.jar download failed (all %lu candidates), falling back to placeholder JSON: %@",
-              loader, (unsigned long)installerURLCandidates.count,
-              installerURLCandidates.lastObject);
-        NSInteger javaMajor = [self javaMajorVersionForMC:minecraftVersion];
-        NSDictionary *placeholderJSON = @{
-            @"_comment_": [NSString stringWithFormat:localize(@"i18n_str_555", nil), loader, loaderVersion],
-            @"id": versionId,
-            @"inheritsFrom": minecraftVersion,
-            @"type": @"release",
-            @"mainClass": @"net.angelaura.installer.MissingLoader",  // 故意指向不存在的类，启动时显式报错
-            @"javaVersion": @{@"component": @"java-runtime", @"majorVersion": @(javaMajor)}
-        };
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:placeholderJSON options:NSJSONWritingPrettyPrinted error:nil];
-        [jsonData writeToFile:versionJsonPath options:NSDataWritingAtomic error:nil];
-        if (error) {
-            *error = [NSError errorWithDomain:@"ModpackImportService" code:1001
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_556", nil), loader]}];
-        }
-        return NO;  // 让调用方感知失败并打印警告
+        if (error) *error = dlError ?: [NSError errorWithDomain:@"ModpackImportService" code:1001
+            userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_556", nil), loader]}];
+        return NO;
     }
 
     NSLog(@"[ModpackInstall] %@ installer.jar download completed: %@ (via %@)", loader, tmpInstallerPath, installerURL);
@@ -2589,29 +2577,10 @@ if (hasRealFileName) {
     [[NSFileManager defaultManager] removeItemAtPath:tmpInstallerPath error:nil];
 
     if (!installSuccess) {
-        NSLog(@"[ModpackImport] %@ direct install failed, falling back to placeholder JSON: %@", loader, installError.localizedDescription);
-        // 使用外层作用域的 installerTaskId（installerItem 仅在 floatingBallEnabled 块内声明）
-        if (installerTaskId) {
-            [[DownloadTaskManager sharedManager] setTaskWithId:installerTaskId completedWithError:installError];
-        }
-        // 直装失败：写显式失败的占位 JSON（mainClass 指向不存在的类，启动时会显式报错，
-        // 避免误装作 vanilla MC 让用户以为 mods 生效）
-        NSInteger javaMajor = [self javaMajorVersionForMC:minecraftVersion];
-        NSDictionary *placeholderJSON = @{
-            @"_comment_": [NSString stringWithFormat:localize(@"i18n_str_557", nil), loader, loaderVersion, installError.localizedDescription ?: localize(@"i18n_str_97", nil)],
-            @"id": versionId,
-            @"inheritsFrom": minecraftVersion,
-            @"type": @"release",
-            @"mainClass": @"net.angelaura.installer.MissingLoader",  // 故意指向不存在的类，启动时显式报错
-            @"javaVersion": @{@"component": @"java-runtime", @"majorVersion": @(javaMajor)}
-        };
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:placeholderJSON options:NSJSONWritingPrettyPrinted error:nil];
-        [jsonData writeToFile:versionJsonPath options:NSDataWritingAtomic error:nil];
-        if (error) {
-            *error = [NSError errorWithDomain:@"ModpackImportService" code:1002
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_558", nil), loader, installError.localizedDescription ?: localize(@"i18n_str_97", nil)]}];
-        }
-        return NO;  // 让调用方感知失败并打印警告
+        if (installerTaskId) [[DownloadTaskManager sharedManager] setTaskWithId:installerTaskId completedWithError:installError];
+        if (error) *error = installError ?: [NSError errorWithDomain:@"ModpackImportService" code:1002
+            userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_558", nil), loader, @"unknown error"]}];
+        return NO;
     }
 
     NSLog(@"[ModpackImport] %@ direct install succeeded, version.json written to: %@", loader, versionJsonPath);
@@ -2993,25 +2962,19 @@ if (hasRealFileName) {
     if (displayName.length == 0) return nil;
     NSDictionary *profiles = PLProfiles.current.profiles;
     if (profiles.count == 0) return nil;
-    // 1) 精确键名命中优先（最常见的重下场景：profile "X" 已存在，又下了一次 "X"）
-    NSDictionary *exact = profiles[displayName];
-    if ([exact isKindOfClass:[NSDictionary class]]) {
-        NSString *gd = exact[@"gameDir"];
-        if ([gd isKindOfClass:[NSString class]] && [gd containsString:@"custom_gamedir/"]) {
-            return displayName;
-        }
-    }
-    // 2) 规范名匹配（覆盖历史遗留的 "X"/"X (2)"/"X (3)" 家族与改名重下的情况）
+    NSString *instances = [@(getenv("POJAV_HOME") ?: "") stringByAppendingPathComponent:@"instances"];
     NSString *want = [self ame269_normalizedInstanceName:displayName];
-    if (want.length == 0) return nil;
-    for (NSString *key in profiles) {
-        NSDictionary *prof = profiles[key];
-        if (![prof isKindOfClass:[NSDictionary class]]) continue;
-        NSString *gd = prof[@"gameDir"];
-        if (![gd isKindOfClass:[NSString class]] || ![gd containsString:@"custom_gamedir/"]) continue;
-        if ([[self ame269_normalizedInstanceName:key] isEqualToString:want]) return key;
+    NSString *fallback = nil;
+    for (NSString *key in [profiles.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+        NSDictionary *profile = profiles[key];
+        NSString *dir = profile[@"gameDir"];
+        if (![dir isKindOfClass:NSString.class]) continue;
+        BOOL modernPack = [profile[@"type"] isEqual:@"modpack"] && ModpackInstanceID(dir, instances) != nil;
+        if (!modernPack && ![self ame269_instanceIdFromGameDir:dir]) continue;
+        if ([key isEqual:displayName]) return key;
+        if (!fallback && [[self ame269_normalizedInstanceName:key] isEqual:want]) fallback = key;
     }
-    return nil;
+    return fallback;
 }
 
 /// 递归收集 root 下的文件相对路径（先快照后处理，避免边枚举边搬移的失效问题）

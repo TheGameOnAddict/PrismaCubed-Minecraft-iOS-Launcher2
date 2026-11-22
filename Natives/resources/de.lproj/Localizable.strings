@@ -1642,7 +1642,7 @@
 "i18n_str_581" = "Loader: %@";
 "i18n_str_582" = "Zu herunterladende Mods: %ld\n";
 "i18n_str_583" = "Zu entpackende Dateien: %ld\n";
-"i18n_str_584" = "\n⚠️ Hinweis: Der Loader %@ %@ muss manuell über die Download-Seite installiert werden, sonst schlägt der Spielstart fehl.";
+"i18n_str_584" = "\nPrismaCubic installiert %@ %@ beim Import.";
 "i18n_str_585" = "Modpack importieren";
 "i18n_str_586" = "Importfehler: %@";
 "i18n_str_587" = "\n\nFehlgeschlagene Dateien (%lu insgesamt):";

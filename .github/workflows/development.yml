@@ -202,6 +202,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Test imported Forge library layout
+        run: |
+          xcrun --sdk macosx clang -fobjc-arc -framework Foundation -I Natives scripts/test_modpack_layout.m -o "$RUNNER_TEMP/test-modpack-layout"
+          "$RUNNER_TEMP/test-modpack-layout"
+
       - name: Validate Localizable.strings syntax (Task228 gate)
         # 病历：Task191 与 Task228（Task227 引入）两次因值内引号未转义把
         # 整个语言表写坏——旧式 plist 一行坏 = 整表解析失败 = 全界面裸键名，

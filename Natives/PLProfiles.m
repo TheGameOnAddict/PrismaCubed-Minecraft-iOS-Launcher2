@@ -7,6 +7,7 @@
 
 #import "LauncherPreferences.h"
 #import "PLProfiles.h"
+#import "ModpackLayout.h"
 #import "utils.h"
 
 static PLProfiles* current;
@@ -329,6 +330,11 @@ static NSString *_ame353_registryLastGoodPath = nil;
     NSMutableArray<NSString *> *ame349_orphans = [NSMutableArray array];
     for (NSString *ame349_name in [ame349_entries sortedArrayUsingSelector:@selector(compare:)]) {
         if (ame349_name.length == 0 || [ame349_name hasPrefix:@"."]) continue;
+        NSRange backupSuffix = [ame349_name rangeOfString:@"-backup-[0-9]+$" options:NSRegularExpressionSearch];
+        if (backupSuffix.location != NSNotFound) {
+            NSString *original = [ame349_name substringToIndex:backupSuffix.location];
+            if (ModpackInstanceID([ame349_instancesDir stringByAppendingPathComponent:original], ame349_instancesDir)) continue;
+        }
         NSString *ame349_path = [ame349_instancesDir stringByAppendingPathComponent:ame349_name];
         NSDictionary *ame349_attrs = [ame349_fm attributesOfItemAtPath:ame349_path error:nil];
         // attributesOfItemAtPath 不跟随链接：仅真实目录入围（shared_core 级
@@ -343,7 +349,7 @@ static NSString *_ame353_registryLastGoodPath = nil;
                 if ([ame349_key isEqualToString:ame349_name]) { ame349_known = YES; break; }
                 NSString *ame349_gd = ame349_snapshot[ame349_key][@"gameDir"];
                 if ([ame349_gd isKindOfClass:[NSString class]] &&
-                    [ame349_gd isEqualToString:ame349_path]) { ame349_known = YES; break; }
+                    ([ame349_gd isEqualToString:ame349_path] || [ModpackInstanceID(ame349_gd, ame349_instancesDir) isEqual:ame349_name])) { ame349_known = YES; break; }
             }
         }
         if (!ame349_known) [ame349_orphans addObject:ame349_name];
@@ -458,6 +464,21 @@ static NSString *_ame353_registryLastGoodPath = nil;
     __block NSUInteger ame352_repaired = 0;
     __block NSMutableArray<NSString *> *ame352_repairedNames = [NSMutableArray array];
     [ame349_mgr applyChanges:^(NSMutableDictionary<NSString *, id> *profiles) {
+        // Remove only synthetic directory cards with no user configuration. Never remove instance files.
+        NSSet *scanFields = [NSSet setWithArray:@[@"name", @"gameDir", @"type", @"created", @"lastVersionId", @"lastPlayed"]];
+        for (NSString *key in profiles.allKeys) {
+            NSDictionary *pack = profiles[key];
+            if (![pack isKindOfClass:NSDictionary.class] || ![pack[@"type"] isEqual:@"modpack"]) continue;
+            NSString *folder = ModpackInstanceID(pack[@"gameDir"], ame349_instancesDir);
+            if (!folder || [key isEqual:folder]) continue;
+            NSDictionary *alias = profiles[folder];
+            if (![alias isKindOfClass:NSDictionary.class] || ![alias[@"name"] isEqual:folder] || ![alias[@"type"] isEqual:@"custom"] ||
+                ![alias[@"lastVersionId"] isEqual:pack[@"lastVersionId"]] ||
+                ![folder isEqual:ModpackInstanceID(alias[@"gameDir"], ame349_instancesDir)] ||
+                ![[NSSet setWithArray:alias.allKeys] isSubsetOfSet:scanFields]) continue;
+            [profiles removeObjectForKey:folder];
+            if ([ame349_mgr.selectedProfileName isEqual:folder]) ame349_mgr.profileDict[@"selectedProfile"] = (id)key;
+        }
         for (NSString *ame352_key in profiles.allKeys) {
             NSDictionary *ame352_p = profiles[ame352_key];
             if (![ame352_p isKindOfClass:[NSDictionary class]]) continue;

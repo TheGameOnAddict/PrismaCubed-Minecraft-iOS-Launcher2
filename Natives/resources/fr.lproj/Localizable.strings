@@ -1635,7 +1635,7 @@
 "i18n_str_581" = "Chargeur : %@";
 "i18n_str_582" = "Mods à télécharger : %ld\n";
 "i18n_str_583" = "Fichiers à extraire : %ld\n";
-"i18n_str_584" = "\n⚠️ Remarque : le chargeur %@ %@ doit être installé manuellement depuis la page de téléchargement, sinon le lancement échouera.";
+"i18n_str_584" = "\nPrismaCubic installe %@ %@ pendant l’import.";
 "i18n_str_585" = "Importer un modpack";
 "i18n_str_586" = "Exception d’import : %@";
 "i18n_str_587" = "\n\nFichiers en échec (%lu au total) :";

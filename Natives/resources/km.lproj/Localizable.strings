@@ -1364,7 +1364,7 @@
 "i18n_str_581" = "Loader: %@";
 "i18n_str_582" = "Mods to download: %ld\\n";
 "i18n_str_583" = "Files to extract: %ld\\n";
-"i18n_str_584" = "\\n⚠️ Note: The %@ %@ loader must be installed manually through the download page, otherwise the game will fail to launch.";
+"i18n_str_584" = "\nPrismaCubic ដំឡើង %@ %@ នៅពេលនាំចូល។";
 "i18n_str_585" = "Import Modpack";
 "i18n_str_586" = "Import exception: %@";
 "i18n_str_587" = "\\n\\nFailed files (%lu total):";
