@@ -3668,6 +3668,9 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
         // make-current 分支）同场留证：修复生效则 RESOLVED-SAME 且 ver 非空。
         // 文件不存在时回退裸名（原行为），其余渲染器路径零改动。
         NSString *openglLibPush = openglLibBareName;
+        if (strcmp(glLibName, RENDERER_NAME_TGLMT) == 0) {
+            openglLibPush = [NSBundle.mainBundle.privateFrameworksPath stringByAppendingPathComponent:@ RENDERER_NAME_TGLMT];
+        }
         if (strcmp(glLibName, RENDERER_NAME_MITHRIL) == 0) {
             // Task156：Mithril 的 opengl.libname 优先指向 GL 垫片 libmithril_glshim.dylib
             //（re-export libmithril 全部符号 + 本地 glGetIntegerv/glGetInteger64v 对
@@ -3692,6 +3695,8 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
                 }
             }
         }
+        NSLog(@"[Renderer] profile selection=%@, resolved GL library=%s, LWJGL provider=%@",
+              [PLProfiles resolveKeyForCurrentProfile:@"renderer"] ?: @"auto", glLibName, openglLibPush.lastPathComponent);
         PUSH_MARGV_FORMAT(@"-Dorg.lwjgl.opengl.libname=%s", openglLibPush.UTF8String);
 
         // 关键修复（参照 FCL，阶段4：26.2 图形 API 切换无效）：

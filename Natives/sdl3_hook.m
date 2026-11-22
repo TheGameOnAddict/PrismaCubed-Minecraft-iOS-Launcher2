@@ -1035,6 +1035,7 @@ static bool ame_glBridgeEnabled(void) {
     // 后端无法对接，必须由 bridge 建上下文并供给 GL 函数指针。
     if (strstr(renderer, "libMobileGL") != NULL) return true;    // MobileGL 双后端
     if (strstr(renderer, "libmithril") != NULL) return true;     // Mithril
+    if (strcmp(renderer, RENDERER_NAME_TGLMT) == 0) return true;
     if (strstr(renderer, "mobileglues") != NULL) return true;    // MobileGlues
     if (strstr(renderer, "gl4es") != NULL) return true;          // GL4ES
     if (strstr(renderer, "libltw") != NULL) return true;         // LTW

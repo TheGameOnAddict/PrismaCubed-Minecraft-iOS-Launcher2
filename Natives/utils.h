@@ -106,6 +106,9 @@ extern "C" {
 // 可能返回 0 个配置，触发 gl_init_context 的 assert(bundle->config)。
 // 参考：Uniaball/Mithril-Wrapper 仓库 launcher-patch/ 下对 Prisma 的接入方式。
 #define RENDERER_NAME_MITHRIL "libmithril.dylib"
+// Distinct from the legacy MobileGlues backend preference stored as libmithril.dylib.
+#define RENDERER_KEY_MITHRIL "mithril-experimental"
+#define RENDERER_NAME_TGLMT "libtglmt.dylib"
 
 // MobileGL - MobileGL-Dev 的桌面 OpenGL 实现（LGPL-3.0）。
 // 两个变体共用同一个 libMobileGL.dylib 二进制，由环境变量

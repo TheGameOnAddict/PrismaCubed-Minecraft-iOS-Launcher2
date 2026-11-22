@@ -547,7 +547,13 @@ static NSArray<NSDictionary *> *rendererCandidates(void) {
         // 随包构建（纯 C，无 glslang/spvc 依赖）。
         @{@"key": @ RENDERER_NAME_GL4ESZL2,
           @"name": localize(@"preference.title.renderer.debug.gl4eszl2", nil),
-          @"file": @ RENDERER_NAME_GL4ESZL2}
+          @"file": @ RENDERER_NAME_GL4ESZL2},
+        @{@"key": @ RENDERER_KEY_MITHRIL,
+          @"name": localize(@"preference.title.renderer.mithril_experimental", @"Mithril (Experimental)"),
+          @"file": @ RENDERER_NAME_MITHRIL},
+        @{@"key": @ RENDERER_NAME_TGLMT,
+          @"name": localize(@"preference.title.renderer.tglmt_experimental", @"TGLMT (Experimental)"),
+          @"file": @ RENDERER_NAME_TGLMT}
         // Task 132（MG 三端合并，用户明令）：MobileGL 家族三后端条目从本表
         // 退役，合并为 MobileGlues 分区的单一 pick 行（typePickField 悬浮
         // 浮窗，选项 MobileGlues (Vulkan 直连) / (GLES 后端) / (OpenGL 4.0
@@ -667,6 +673,9 @@ NSString *ame_effective_renderer(void) {
     //     等任何非 auto 选择都原样生效，MobileGL 后端选项不干预。
     // （legacy 家族键在此路径原样返回——迁移后不再出现，未迁移安装
     // 保持 Task132-140 行为，与 Task138 dylib 守卫同构。）
+    if ([renderer isEqualToString:@ RENDERER_KEY_MITHRIL]) {
+        renderer = @ RENDERER_NAME_MITHRIL;
+    }
     if (![renderer isEqualToString:@"auto"]) {
         // Task 138：dylib 缺失守卫。显式选中的渲染器物理文件不在 app
         // Frameworks 时回落 auto（当前唯一现实命中 = Mithril——

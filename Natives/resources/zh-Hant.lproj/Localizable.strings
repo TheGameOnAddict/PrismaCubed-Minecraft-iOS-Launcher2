@@ -3846,3 +3846,6 @@
 "modpack.import.curseforge.code.expired" = "此 CurseForge 分享碼無效或已過期。請向分享者索取新的分享碼。";
 "modpack.import.curseforge.code.downloadFailed" = "無法下載 CurseForge 設定檔。請檢查網路連線後再試一次。";
 "modpack.import.curseforge.code.invalidArchive" = "CurseForge 傳回的檔案不是有效的模組包。";
+
+"preference.title.renderer.mithril_experimental" = "Mithril (實驗性)";
+"preference.title.renderer.tglmt_experimental" = "TGLMT (實驗性)";

@@ -18,6 +18,7 @@
 
 #include "glfw_keycodes.h"
 #include "ctxbridges/bridge_tbl.h"
+#include "ctxbridges/tglmt_bridge.h"
 #include "ctxbridges/osmesa_internal.h"
 // Task 215：VirGLRenderer(≤26.2)（ZL2 移植，Task212 预留的 stage 2）—— vtest 服务端引导桥
 #include "ctxbridges/virgl_server.h"
@@ -145,6 +146,8 @@ void pojavTerminate() {
 }
 
 void* pojavGetCurrentContext() {
+    // TGLMT owns one context. A lookup on a worker thread must never adopt it.
+    if (br_init == tglmt_bridge_init) return br_get_current();
     // Task 144：渲染线程上下文采纳（defense-in-depth）。
     // POJAV_RENDERER 修复（JavaLauncher 侧 setenv 激活 LWJGL 补丁的
     // fixPojavGLContext）已让 createCapabilities 前主动重绑；此处兜底其余
@@ -489,6 +492,8 @@ static int pojavInitOpenGLInternal(BOOL setLwjglProperty) {
         NSLog(@"[egl_bridge] Task211: ZL2 classic gl4es renderer: gl4es-family "
               "GL-on-ES translation (pure-C string-rewrite shader pipeline)");
         set_gl_bridge_tbl();
+    } else if ([renderer isEqualToString:@ RENDERER_NAME_TGLMT]) {
+        set_tglmt_bridge_tbl();
     } else if ([renderer isEqualToString:@ RENDERER_NAME_MITHRIL]) {
         // Mithril 渲染器：EGL 1.5 + GL 3.3 Core 全部由 libmithril.dylib 提供
         // （Vulkan backend，经 MoltenVK 到 Metal）。
@@ -622,7 +627,10 @@ static int pojavInitOpenGLInternal(BOOL setLwjglProperty) {
         const char *ame131_libname = strcmp(renderer.UTF8String, RENDERER_NAME_MOBILEGL_GLES) == 0
             ? RENDERER_NAME_MOBILEGL
             : renderer.UTF8String;
-        JNI_LWJGL_changeRenderer(ame131_libname);
+        // These providers were set by absolute path before the JVM started.
+        if (!isMithrilRenderer(renderer.UTF8String) && ![renderer isEqualToString:@ RENDERER_NAME_TGLMT]) {
+            JNI_LWJGL_changeRenderer(ame131_libname);
+        }
     }
     // ★ Task227（上游 c9b568da72 P0 移植）：渲染器分发兜底。分发链是
     // 一串 else-if，AMETHYST_RENDERER 为任何未匹配值（手改 video.renderer
@@ -873,7 +881,7 @@ void* pojavCreateContext(basic_render_window_t* contextSrc) {
     // 即使 renderer=libMoltenVK.dylib，pojavInitOpenGL 已设置 GL bridge（set_gl_bridge_tbl），
     // 所以这里会调用 gl_init_context 创建 ANGLE Metal EGL 上下文
     NSLog(@"[egl_bridge] OpenGL path: creating EGL/GL context via br_init_context");
-    return br_init_context(contextSrc);
+    return pojavIsOpenGLInited() && br_init_context ? br_init_context(contextSrc) : NULL;
 }
 
 void pojavSwapInterval(int interval) {

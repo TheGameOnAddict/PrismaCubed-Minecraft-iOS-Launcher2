@@ -450,6 +450,7 @@ add_executable(AngelAuraAmethyst
   authenticator/ThirdPartyAuthenticator.m
 
   ctxbridges/gl_bridge.m
+  ctxbridges/tglmt_bridge.m
   ctxbridges/osm_bridge.mm
   ctxbridges/mgl_fsr.mm
   ctxbridges/mgl_metal_fsr.mm
