@@ -37,22 +37,36 @@
     });
 }
 
+static NSString *UniqueTitleMatch(NSArray *results, NSString *title) {
+    NSString *match = nil;
+    for (NSDictionary *hit in results) {
+        if (![hit isKindOfClass:NSDictionary.class] || ![hit[@"title"] isKindOfClass:NSString.class] ||
+            [hit[@"title"] caseInsensitiveCompare:title] != NSOrderedSame) continue;
+        NSString *candidate = [hit[@"id"] description];
+        if (!candidate.length) continue;
+        if (match && ![match isEqual:candidate]) return nil;
+        match = candidate;
+    }
+    return match;
+}
+
 + (void)findProject:(NSString *)title type:(NSString *)type source:(NSInteger)source completion:(void (^)(NSString *, NSError *))completion {
     NSDictionary *query = @{@"name":title ?: @"", @"projectType":type ?: @"mod", @"limit":@20};
     void (^found)(NSArray *, NSError *) = ^(NSArray *results, NSError *error) {
-        NSString *match = nil;
-        for (NSDictionary *hit in results) {
-            if (![hit isKindOfClass:NSDictionary.class] || ![hit[@"title"] isKindOfClass:NSString.class] ||
-                [hit[@"title"] caseInsensitiveCompare:title] != NSOrderedSame) continue;
-            NSString *candidate = [hit[@"id"] description];
-            if (!candidate.length) continue;
-            if (match && ![match isEqual:candidate]) { completion(nil, nil); return; }
-            match = candidate;
-        }
-        completion(match, error);
+        completion(UniqueTitleMatch(results, title), error);
     };
-    if (source == 2) [[CurseForgeAPI sharedInstance] searchModWithFilters:query completion:found];
-    else [[ModrinthAPI sharedInstance] searchModWithFilters:query completion:found];
+    if (source != 2) {
+        [[ModrinthAPI sharedInstance] searchModWithFilters:query completion:found];
+        return;
+    }
+    // CurseForge can rank recently updated add-ons ahead of the exact project (e.g. Sodium).
+    NSMutableDictionary *popular = [query mutableCopy];
+    popular[@"sort"] = @"downloads";
+    [[CurseForgeAPI sharedInstance] searchModWithFilters:popular completion:^(NSArray *results, NSError *error) {
+        NSString *match = UniqueTitleMatch(results, title);
+        if (match || error) { completion(match, error); return; }
+        [[CurseForgeAPI sharedInstance] searchModWithFilters:query completion:found];
+    }];
 }
 
 + (ModVersion *)latestFile:(NSArray<ModVersion *> *)files minecraft:(NSString *)minecraft loader:(NSString *)loader {
