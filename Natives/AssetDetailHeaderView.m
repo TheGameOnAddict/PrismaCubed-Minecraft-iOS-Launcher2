@@ -26,6 +26,7 @@
 @property (nonatomic, strong) UIColor *projectAccent;
 @property (nonatomic, copy) NSArray<NSString *> *projectCategories;
 @property (nonatomic) CGFloat projectLayoutWidth;
+@property (nonatomic, strong) NSLayoutConstraint *collapsedExpandHeight;
 
 // 顶部水平区：封面图 + 标题/作者
 @property (nonatomic, strong) UIImageView *iconImageView;
@@ -77,6 +78,7 @@
         self.titleLabel.font = [UIFont systemFontOfSize:23 weight:UIFontWeightBold];
         self.descriptionLabel.font = [UIFont systemFontOfSize:15];
         self.expandToggleButton.tintColor = accent;
+        self.collapsedExpandHeight = [self.expandToggleButton.heightAnchor constraintEqualToConstant:0];
     }
     return self;
 }
@@ -503,6 +505,17 @@
 
 /// 检测描述是否超过 3 行（决定是否显示展开按钮）
 - (void)evaluateDescriptionTruncation {
+    if (self.projectAccent) {
+        CGFloat width = self.bounds.size.width - 64; // Card and text each have 16 pt side insets.
+        if (width <= 0) return;
+        CGRect fullText = [self.descriptionLabel.text boundingRectWithSize:CGSizeMake(width, CGFLOAT_MAX)
+            options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+            attributes:@{NSFontAttributeName:self.descriptionLabel.font} context:nil];
+        BOOL canExpand = fullText.size.height > ceil(self.descriptionLabel.font.lineHeight * 3);
+        self.expandToggleButton.hidden = !canExpand;
+        self.collapsedExpandHeight.active = !canExpand;
+        return;
+    }
     [self.descriptionLabel layoutIfNeeded];
 
     // 方法：比较 numberOfLines=0（无限）和 numberOfLines=3 时的高度

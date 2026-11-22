@@ -238,6 +238,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.filtersButton.backgroundColor = [UIColor colorWithWhite:1 alpha:0.08];
     self.filtersButton.layer.cornerRadius = curseForge ? 5 : 12;
     [self.filtersButton addTarget:self action:@selector(toggleProjectFilters) forControlEvents:UIControlEventTouchUpInside];
+    [self.filtersButton setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [self.filesTitle setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
     [self.filtersButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     UIStackView *filesBar = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesTitle, self.activityIndicator, self.filtersButton]];
     filesBar.alignment = UIStackViewAlignmentCenter;

@@ -79,6 +79,7 @@
 #import "ZL2Theme.h"
 #import "ZL2VersionIndex.h"          // 7.0-UI-11：启动链版本索引服务（warmUp）
 #import "ZL2HomeViewController.h"
+#import "ModVersionViewController.h"
 #import "ZL2DownloadViewController.h"
 #import "ZL2VersionsViewController.h"
 #import "ZL2AccountsViewController.h"
@@ -1419,7 +1420,10 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     UIViewController *current = nav.topViewController;
     BOOL profileNavigation = [current isKindOfClass:ZL2VersionDetailViewController.class] ||
         ([current isKindOfClass:ZL2AssetSearchViewController.class] && ((ZL2AssetSearchViewController *)current).targetProfileName.length);
-    if (profileNavigation) {
+    BOOL projectPage = [current isKindOfClass:ModVersionViewController.class];
+    if (projectPage) {
+        title = @"PrismaCubic";
+    } else if (profileNavigation) {
         title = @"PrismaCubic";
         clusterVisible = NO;
     } else if (nav.viewControllers.count > 1) {
@@ -1442,7 +1446,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         self.leftCluster.hidden = !clusterVisible;
         self.backButton.alpha = backVisible ? 1.0 : 0.0;
         self.backButton.hidden = !backVisible;
-        self.homeButton.hidden = index == 3;
+        self.homeButton.hidden = index == 3 || projectPage;
         [self.topBar layoutIfNeeded];
     };
     if (animated && self.topBar.window) {
