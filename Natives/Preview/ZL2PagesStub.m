@@ -840,6 +840,8 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
        expectedSHA1:(nullable NSString *)expectedSHA1
            progress:(nullable void (^)(NSProgress *downloadProgress))progress
          completion:(void (^)(NSError * _Nullable error))completion {
+    [NSNotificationCenter.defaultCenter postNotificationName:@"PreviewModDownload" object:nil
+        userInfo:@{@"file":mod.fileName ?: @"", @"profile":profileName ?: @""}];
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
 }

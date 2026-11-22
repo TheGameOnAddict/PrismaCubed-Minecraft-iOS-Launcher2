@@ -220,18 +220,18 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         if (strongSelf) [strongSelf updateTableHeaderHeight];
     };
 
-    BOOL original = self.apiSource == self.selectedSource || localFile;
+    BOOL original = (self.apiSource == 2 ? 2 : 1) == self.selectedSource || localFile;
     if (original) {
-    [self.detailHeaderView configureWithIconURL:self.modItem.iconURL
-                                          title:self.modItem.displayName
-                                         author:self.modItem.author
-                                      downloads:self.modItem.downloads
-                                          likes:self.modItem.likes
-                                descriptionText:self.modItem.modDescription
-                                    categories:self.modItem.categories
-                                   lastUpdated:self.modItem.lastUpdated
-                           placeholderSymbolName:@"puzzlepiece.extension.fill"
-                               placeholderColor:accent];
+        [self.detailHeaderView configureWithIconURL:self.modItem.iconURL
+                                              title:self.modItem.displayName
+                                             author:self.modItem.author
+                                          downloads:self.modItem.downloads
+                                              likes:self.modItem.likes
+                                    descriptionText:self.modItem.modDescription
+                                        categories:self.modItem.categories
+                                       lastUpdated:self.modItem.lastUpdated
+                               placeholderSymbolName:@"puzzlepiece.extension.fill"
+                                   placeholderColor:accent];
 
         if (self.showsInstalledFile && self.modItem.icon) [self.detailHeaderView showLocalIcon:self.modItem.icon];
     } else {
@@ -346,7 +346,11 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
 - (void)changeProjectTab:(UISegmentedControl *)control {
     self.tab = control.selectedSegmentIndex;
-    if (self.tab != ProjectTabVersions) [self.filterContainerView removeFromSuperview];
+    if (self.tab != ProjectTabVersions) {
+        [self.filterContainerView removeFromSuperview];
+        self.filtersButton.accessibilityTraits &= ~UIAccessibilityTraitSelected;
+    }
+    if (self.tab == ProjectTabChangelog && !self.notesCache[self.notesKey ?: @""]) self.notesKey = nil;
     [self refreshProjectTab];
     [self.tableView reloadData];
 }
@@ -360,7 +364,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     NSString *match = localize(@"prisma.project.choose", nil);
     self.fileSummary.text = self.chosenFile ? [NSString stringWithFormat:@"%@ · %@", self.selectedSource == 2 ? @"CurseForge" : @"Modrinth",
         self.chosenFile.primaryFile[@"filename"] ?: self.chosenFile.name] : match;
-    self.tabMessage.attributedText = nil;
+    self.tabMessage.text = nil;
     NSString *message = nil;
     if (versions && !self.filteredVersions.count) message = self.versionStatus;
     if (self.tab == ProjectTabGallery && !self.gallery.count)
@@ -994,39 +998,20 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 /// 最新版本的必需依赖并展示在表尾（"本模组需要以下前置，下载时会询问
 /// 是否一起安装"）。解析失败静默（footer 不出现，不影响列表）。
 - (void)ame227_refreshDependenciesFooter {
-    // ★ Task238（用户："cf源没有显示前置" + "前置摆在最上面"）：
-    //   ① 数据源探测——最新版本的 dependencies[] 可能为空（老文件字段
-    //      缺失 / 镜像裁剪），逐个向后探测最多 6 个版本直到找到携带
-    //      依赖清单的一个，CF 源"看不到前置"的一路根因消除；
-    //   ② 展示位从表尾上移到详情头之下、版本列表之上（头部堆叠）。
-    NSDictionary *ame238_detail = nil;
-    NSInteger ame238_src = 0;
-    NSUInteger ame238_probe = MIN((NSUInteger)6, self.allVersions.count);
-    for (NSUInteger ame238_i = 0; ame238_i < ame238_probe; ame238_i++) {
-        ModVersion *ame238_v = self.allVersions[ame238_i];
-        if (![ame238_v isKindOfClass:[ModVersion class]] || ame238_v.rawDictionary == nil) continue;
-        id ame238_depsArr = ame238_v.rawDictionary[@"dependencies"];
-        if ([ame238_depsArr isKindOfClass:[NSArray class]] && ((NSArray *)ame238_depsArr).count > 0) {
-            ame238_detail = ame238_v.rawDictionary;
-            ame238_src = ame238_v.apiSource;
-            break;
-        }
-    }
-    if (ame238_detail == nil) {
-        self.ame238_depsSectionView = nil;
-        [self updateTableHeaderHeight];
-        return;
-    }
+    ModVersion *file = self.chosenFile;
+    self.ame238_depsSectionView = nil;
+    [self updateTableHeaderHeight];
+    if (![file.rawDictionary[@"dependencies"] isKindOfClass:NSArray.class] || ![file.rawDictionary[@"dependencies"] count]) return;
     __weak typeof(self) weakSelf = self;
     NSUInteger request = self.sourceRequest;
-    [[ModDependencyResolver sharedResolver] resolveDependenciesFromVersionDetail:ame238_detail
-                                                                       apiSource:ame238_src
+    [[ModDependencyResolver sharedResolver] resolveDependenciesFromVersionDetail:file.rawDictionary
+                                                                       apiSource:file.apiSource
                                                             installedProjectIds:nil
-                                                                          loader:nil
-                                                                     gameVersion:nil
+                                                                          loader:self.preferredLoader
+                                                                     gameVersion:self.preferredGameVersion
                                                                       completion:^(ModDependencyPlan *plan, NSError * _Nullable error) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf.sourceRequest != request) return;
+        if (!strongSelf || strongSelf.sourceRequest != request || strongSelf.chosenFile != file) return;
         NSArray<ModDependencyItem *> *ame227_req = plan.required ?: @[];
         if (ame227_req.count == 0) {
             strongSelf.ame238_depsSectionView = nil;
@@ -1049,6 +1034,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         return;
     }
     NSUInteger request = self.sourceRequest;
+    ModVersion *file = self.chosenFile;
     __weak typeof(self) ame236_wself = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSMutableArray<NSMutableDictionary *> *ame236_rows = [NSMutableArray array];
@@ -1090,7 +1076,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(ame236_wself) ame236_sself = ame236_wself;
-            if (!ame236_sself || ame236_sself.sourceRequest != request) return;
+            if (!ame236_sself || ame236_sself.sourceRequest != request || ame236_sself.chosenFile != file) return;
             [ame236_sself ame236_renderDependencyFooter:ame236_rows];
             // ★ Task238：CF 前置行的富元数据回填（全链主线程，无跨线程
             //   写入；全部回填完成后重渲染一次）。占位先行 → 名称/介绍/
@@ -1131,7 +1117,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
             }
             dispatch_group_notify(ame238_group, dispatch_get_main_queue(), ^{
                 __strong typeof(ame236_wself) ame238_sself2 = ame236_wself;
-                if (!ame238_sself2 || ame238_sself2.sourceRequest != request) return;
+                if (!ame238_sself2 || ame238_sself2.sourceRequest != request || ame238_sself2.chosenFile != file) return;
                 [ame238_sself2 ame236_renderDependencyFooter:ame236_rows];
                 NSLog(@"[ModVersionVC] Task238 CF dependency rows enriched (%lu project lookups)",
                       (unsigned long)ame238_cfPids.count);
@@ -1503,6 +1489,10 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     }
 
     self.filteredVersions = sorted;
+    if (self.chosenFile && ![sorted containsObject:self.chosenFile]) {
+        self.chosenFile = nil;
+        [self ame227_refreshDependenciesFooter];
+    }
     [self refreshProjectTab];
 
     [self.tableView reloadData];
@@ -1562,8 +1552,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     }
     ModVersion *version = self.filteredVersions[indexPath.row];
     [cell configureWithVersion:version];
-    cell.accessoryType = version == self.chosenFile ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    cell.tintColor = [self accentForSource:self.selectedSource];
+    [cell setChosenFile:version == self.chosenFile];
     return cell;
 }
 
@@ -1573,6 +1562,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.tab == ProjectTabGallery) { [self openGalleryImage:self.gallery[indexPath.row]]; return; }
     self.chosenFile = self.filteredVersions[indexPath.row];
+    [self ame227_refreshDependenciesFooter];
     [self refreshProjectTab];
     [tableView reloadData];
 }

@@ -19,6 +19,7 @@
 // 卡片容器：圆角 + 阴影 + 半透明背景（统一视觉规范）
 @property (nonatomic, strong) UIView *cardContainer;
 @property (nonatomic, strong) UIColor *projectAccent;
+@property (nonatomic, strong) UIImageView *choiceMark;
 // 左侧信息区（版本名行 + 版本号 + 加载器徽章行）
 @property (nonatomic, strong) UIStackView *leftStackView;
 // 版本名行（水平：nameLabel + releaseTypeBadge，参照 FCL 版本行的发布类型标签）
@@ -55,19 +56,26 @@
         self.cardContainer.backgroundColor = [UIColor colorWithWhite:1 alpha:0.065];
         self.cardContainer.layer.cornerRadius = radius;
         self.cardContainer.layer.shadowOpacity = 0;
-        UIImageView *download = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"arrow.down.circle"]];
-        download.tintColor = accent;
-        download.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.cardContainer addSubview:download];
+        self.choiceMark = [[UIImageView alloc] init];
+        self.choiceMark.tintColor = accent;
+        self.choiceMark.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.cardContainer addSubview:self.choiceMark];
         [NSLayoutConstraint activateConstraints:@[
-            [download.trailingAnchor constraintEqualToAnchor:self.cardContainer.trailingAnchor constant:-8],
-            [download.centerYAnchor constraintEqualToAnchor:self.cardContainer.centerYAnchor],
-            [download.widthAnchor constraintEqualToConstant:18],
-            [download.heightAnchor constraintEqualToConstant:18],
+            [self.choiceMark.trailingAnchor constraintEqualToAnchor:self.cardContainer.trailingAnchor constant:-8],
+            [self.choiceMark.centerYAnchor constraintEqualToAnchor:self.cardContainer.centerYAnchor],
+            [self.choiceMark.widthAnchor constraintEqualToConstant:18],
+            [self.choiceMark.heightAnchor constraintEqualToConstant:18],
         ]];
         self.nameLabel.numberOfLines = 2;
     }
     return self;
+}
+
+- (void)setChosenFile:(BOOL)chosen {
+    self.choiceMark.image = [UIImage systemImageNamed:chosen ? @"checkmark.circle.fill" : @"circle"];
+    self.choiceMark.tintColor = chosen ? self.projectAccent : UIColor.tertiaryLabelColor;
+    if (chosen) self.accessibilityTraits |= UIAccessibilityTraitSelected;
+    else self.accessibilityTraits &= ~UIAccessibilityTraitSelected;
 }
 
 - (void)setupUI {

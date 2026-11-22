@@ -760,6 +760,27 @@ static void PreviewScreens(UIWindow *window) {
     NSCAssert([home isKindOfClass:ZL2HomeViewController.class], @"Home route unavailable");
     BOOL installed = [route isEqual:@"installed-project"];
     BOOL projectRoute = installed || [route isEqual:@"curseforge"] || [route isEqual:@"modrinth"];
+    BOOL quickRoute = [route isEqual:@"quick-install"];
+    __block BOOL downloaded = NO;
+    if (quickRoute) {
+        ZL2AssetSearchViewController *search = [[ZL2AssetSearchViewController alloc] initWithType:ZL2AssetSearchTypeMod title:@"Add Mods"];
+        search.targetProfileName = @"The Gang";
+        [nav pushViewController:search animated:NO];
+        [NSNotificationCenter.defaultCenter addObserverForName:@"PreviewModDownload" object:nil queue:nil usingBlock:^(NSNotification *note) {
+            NSCAssert(!downloaded && [note.userInfo[@"file"] isEqual:@"dragons-2.jar"] && [note.userInfo[@"profile"] isEqual:@"The Gang"], @"Wrong mod or destination");
+            downloaded = YES;
+        }];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
+            NSDictionary *item = @{@"id":@"book-of-dragons", @"title":@"Book of Dragons", @"apiSource":@1};
+            [search setValue:[@[item] mutableCopy] forKey:@"results"];
+            UITableView *table = [search valueForKey:@"tableView"];
+            [table reloadData];
+            UITableViewCell *cell = [table.dataSource tableView:table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+            UIButton *install = [cell valueForKey:@"installButton"];
+            [install sendActionsForControlEvents:UIControlEventTouchUpInside];
+            [install sendActionsForControlEvents:UIControlEventTouchUpInside];
+        });
+    }
     __block BOOL quickInstallChecked = NO;
     if (projectRoute) {
         [ModProjectCatalog quickFileForID:@"book-of-dragons" title:@"Book of Dragons" source:1 minecraft:@"1.20.1" loader:@"forge" completion:^(ModVersion *file, NSError *error) {
@@ -831,6 +852,7 @@ static void PreviewScreens(UIWindow *window) {
             }
             [page layoutIfNeeded];
         }
+        if (quickRoute) NSCAssert(downloaded && [nav.topViewController isKindOfClass:ZL2AssetSearchViewController.class], @"Quick install did not stay on the results screen");
         if (projectRoute) {
             ModVersionViewController *detail = (id)nav.topViewController;
             UITableView *table = [detail valueForKey:@"tableView"];

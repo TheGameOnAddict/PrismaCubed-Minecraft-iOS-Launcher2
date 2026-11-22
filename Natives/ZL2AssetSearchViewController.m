@@ -1847,7 +1847,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                      fallbackSymbol:[symbol stringByAppendingString:@".fill"]];
     }
     __weak typeof(self) weakSelf = self;
-    BOOL mods = self.assetType == ZL2AssetSearchTypeMod;
+    BOOL mods = self.assetType == ZL2AssetSearchTypeMod && !self.favoritesMode;
     NSInteger source = [item[@"apiSource"] integerValue] ?: [self ame_apiSourceForType];
     NSString *key = [NSString stringWithFormat:@"%ld/%@", (long)source, item[@"id"]];
     BOOL pending = mods && [self.quickInstallKey isEqual:key];
