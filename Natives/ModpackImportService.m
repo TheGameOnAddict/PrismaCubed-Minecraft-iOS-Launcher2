@@ -38,6 +38,11 @@
 
 static NSString * const kImportedModpacksKey = @"ImportedModpacks";
 
+static NSURL *CurseForgeProjectDownload(long long projectID, long long fileID) {
+    return [NSURL URLWithString:[NSString stringWithFormat:
+        @"https://www.curseforge.com/api/v1/mods/%lld/files/%lld/download", projectID, fileID]];
+}
+
 @interface ModpackImportService ()
 /// 整合包工作区根目录: <POJAV_GAME_DIR>/custom_gamedir
 @property (nonatomic, strong) NSString *customGameDir;
@@ -45,14 +50,6 @@ static NSString * const kImportedModpacksKey = @"ImportedModpacks";
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *failedFilesInternal;
 /// Phase 3（Task 3.2）：跟踪本次导入过程中因 404/资源不存在被跳过的文件（警告，非失败）
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *skippedFilesInternal;
-/// ★ Task272：CurseForge manifest 依赖文件元数据缓存（fileID → fileName/downloadUrl/sha1/classId/fileLength）。
-///   安装开工时按项目批量预取（ame272_prefetchCurseForgeFileMetadata:）填充；
-///   fetchCurseForgeFileMetadata / 候选构造优先读缓存（装机实证旧元数据/HEAD 端点双双 404）。
-@property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSDictionary *> *ame272_cfFilesByFileID;
-/// ★ Task274-h S13：本次导入会话 CurseForge 元数据预取失败一次性标记——置位后逐文件
-///   回退链跳过死端点（GET filesByFileID 10s + HEAD 文件名 15s = 每文件最多 25s 纯等待
-///   挤占 12 并发槽），元数据缺文件名时按既有 BMCL/CDN 垫底顺序直试。
-@property (nonatomic, assign) BOOL ame274_cfPrefetchDead;
 /// redesign-download-ui Phase 5 Task 5.1：整合包导入主任务（6 阶段 + autoPresentDetail 统一进度页）
 @property (nonatomic, copy, nullable) NSString *currentImportTaskId;
 /// Task 5.9：本次导入写入主 versions 目录的 version JSON 路径（取消时清理）
@@ -1653,14 +1650,6 @@ static BOOL ame269_sMigrationRunning = NO;
                                               totalFileCount:(NSInteger)total];
     }
 
-    // ★ Task272：安装开工先按项目批量预取 CurseForge 依赖元数据（去重 projectID，
-    //   每项目 1 请求；旧路径每文件各发 1 个注定 404 的 10s 超时假请求 = 纯延迟）。
-    //   预取失败不阻断——逐文件回退链照旧，只是拿不到真实文件名。
-    // ★ Task274-h S13：会话级死端点标记随本次 downloadModFiles 重置（预取后按命中
-    //   情况重新置位；"重试缺失模组"链路复用本方法，同样重新评估）。
-    self.ame274_cfPrefetchDead = NO;
-    [self ame272_prefetchCurseForgeFileMetadata:pendingFiles];
-
     for (NSDictionary *fileInfo in pendingFiles) {
         // 取消检查点：停止提交新任务；已在途任务等待其自然收尾后由 group_wait 返回
         if ([self checkCancelledWithError:error]) {
@@ -1696,12 +1685,8 @@ static BOOL ame269_sMigrationRunning = NO;
                 //（修复 P0-2：CurseForge manifest 无哈希，此前仅 zip EOCD 兜底，静默损坏文件
                 // 无法拦截）、classId 项目类型分发（修复 P0-3：shader/resource/datapack 不再
                 // 全塞 mods/）。元数据不可用时回退 HEAD 文件名解析 + zip EOCD 兜底。
-                // ★ Task274-h S13：预取已判死的会话跳过逐文件死端点 GET（缓存必空，
-                //   请求注定 10s 超时）；fileMeta=nil 走既有 fallback 链。
-                NSDictionary *fileMeta = nil;
-                if (!self.ame274_cfPrefetchDead) {
-                    fileMeta = [self fetchCurseForgeFileMetadata:projectID fileID:fileID];
-                }
+                // Shared profiles pin file IDs, including older releases outside the first results page.
+                NSDictionary *fileMeta = [self fetchCurseForgeFileMetadata:projectID fileID:fileID];
 
                 // 文件名：manifest 透传 > 元数据 fileName > HEAD 解析 > "pid-fid.jar" fallback
                 BOOL hasRealFileName = NO;
@@ -1714,12 +1699,7 @@ static BOOL ame269_sMigrationRunning = NO;
                         fileName = metaName;
                         hasRealFileName = YES;
                     } else {
-                        // ★ Task274-h S13：预取已判死的会话跳过 HEAD 文件名死端点（15s/文件），
-                        //   直接落 "projectID-fileID.jar" fallback + BMCL/CDN 垫底候选。
-                        NSString *realName = nil;
-                        if (!self.ame274_cfPrefetchDead) {
-                            realName = [self fetchCurseForgeRealFileName:projectID fileID:fileID];
-                        }
+                        NSString *realName = [self fetchCurseForgeRealFileName:projectID fileID:fileID];
                         if (realName.length > 0) {
                             fileName = realName;
                             hasRealFileName = YES;
@@ -1804,6 +1784,10 @@ if (hasRealFileName) {
                         }
                     }
                 }
+                NSURL *projectDownload = CurseForgeProjectDownload(projectID, fileID);
+                [candidates addObject:projectDownload];
+                if (!recordURL.length) recordURL = projectDownload.absoluteString;
+
                 NSURL *bmclURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/curseforge/files/%lld/%lld/download",
                                                        PLMirrorBMCLAPIRootURL, projectID, fileID]];
                 if (bmclURL) {
@@ -2273,15 +2257,8 @@ if (hasRealFileName) {
 ///   - classId：按项目类型分发目录（修复 P0-3：shader/resource/datapack 不再全塞 mods/）
 ///     6=Mods, 12=Resource Packs, 17=Worlds, 5231=Data Packs, 6552=Shaders
 - (nullable NSDictionary *)fetchCurseForgeFileMetadata:(long long)projectID fileID:(long long)fileID {
-    // ★ Task272：缓存优先（开工预取已覆盖 → 零网络零等待）；未命中才回退旧端点
-    //   （2026-10 实测 404，仅作最后兜底语义保留）。
-    @synchronized(self) {
-        NSDictionary *ame272_cached = self.ame272_cfFilesByFileID[@(fileID)];
-        if ([ame272_cached isKindOfClass:[NSDictionary class]] && ame272_cached.count > 0) {
-            return ame272_cached;
-        }
-    }
-    NSString *apiURL = [NSString stringWithFormat:@"%@/cf/v1/mods/files/%lld", PLMirrorBMCLAPIRootURL, fileID];
+    NSString *apiURL = [NSString stringWithFormat:@"%@/mods/%lld/files/%lld",
+                        PLMirrorCenter.mcimCurseForgeAPIBaseURL, projectID, fileID];
     NSURL *url = [NSURL URLWithString:apiURL];
     if (!url) return nil;
 
@@ -2305,11 +2282,16 @@ if (hasRealFileName) {
                 NSError *jsonError = nil;
                 NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
                 NSDictionary *fileInfo = [root isKindOfClass:[NSDictionary class]] ? root[@"data"] : nil;
-                if ([fileInfo isKindOfClass:[NSDictionary class]]) {
+                if ([fileInfo isKindOfClass:NSDictionary.class] && [fileInfo[@"id"] isEqual:@(fileID)] &&
+                    [fileInfo[@"modId"] isEqual:@(projectID)]) {
                     NSMutableDictionary *result = [NSMutableDictionary dictionary];
                     NSString *fileName = fileInfo[@"fileName"];
                     if ([fileName isKindOfClass:[NSString class]] && fileName.length > 0) {
                         result[@"fileName"] = fileName;
+                    }
+                    NSString *downloadURL = fileInfo[@"downloadUrl"];
+                    if ([downloadURL isKindOfClass:NSString.class] && [downloadURL hasPrefix:@"https://"]) {
+                        result[@"downloadUrl"] = downloadURL;
                     }
                     // hashes 数组：algo 1 = SHA1
                     NSArray *hashes = [fileInfo[@"hashes"] isKindOfClass:[NSArray class]] ? fileInfo[@"hashes"] : @[];
@@ -2348,124 +2330,11 @@ if (hasRealFileName) {
     return metadata;
 }
 
-/// ★ Task272（CF 依赖链全死根修）：按 manifest 去重 projectID 批量预取文件元数据。
-///   端点 = MCIM CurseForge API 镜像（无 key 设备唯一可用路径；装机同日志
-///   searchModWithFilters/loadDetailsOfMod 实证 200 且条目含 fileName/downloadUrl）。
-///   GET {base}/mods/{projectID}/files → data[] → fileID 索引入 ame272_cfFilesByFileID。
-///   参考 FCL/HMCL：均先按 (projectID,fileID) 拉权威文件表再下载，绝不裸拼下载 URL。
-///   并发上限 4、单请求 12s 超时、整体阻塞至收尾（调用方本就在后台导入线程）。
-- (void)ame272_prefetchCurseForgeFileMetadata:(NSArray<NSDictionary *> *)pendingFiles {
-    NSMutableSet<NSNumber *> *ame272_pids = [NSMutableSet set];
-    for (NSDictionary *ame272_fi in pendingFiles) {
-        NSNumber *ame272_pid = ame272_fi[@"projectID"];
-        if ([ame272_pid isKindOfClass:[NSNumber class]] && ame272_pid.longLongValue > 0) {
-            [ame272_pids addObject:ame272_pid];
-        }
-    }
-    if (ame272_pids.count == 0) return;
-    @synchronized(self) {
-        if (!self.ame272_cfFilesByFileID) self.ame272_cfFilesByFileID = [NSMutableDictionary dictionary];
-    }
-    // ★ Task274-h S13：预取前快照缓存计数（缓存为单例级跨导入存活——delta 判据才能
-    //   精确表达"本次预取零新增"，避免同会话二次导入被旧缓存误判/漏判）。
-    NSUInteger ame274_cacheCountBefore = self.ame272_cfFilesByFileID.count;
-    NSString *ame272_base = [PLMirrorCenter mcimCurseForgeAPIBaseURL];
-    if (ame272_base.length == 0) {
-        NSLog(@"[ModpackImport] Task272: mcim CF API base unavailable -- metadata prefetch skipped");
-        // ★ Task274-h S13：预取不可用 → 会话级置死标记，逐文件回退链跳过死端点
-        self.ame274_cfPrefetchDead = YES;
-        return;
-    }
-    NSURLSessionConfiguration *ame272_cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
-    ame272_cfg.timeoutIntervalForRequest = 12;
-    ame272_cfg.HTTPAdditionalHeaders = @{
-        @"User-Agent": @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        @"Accept": @"application/json"
-    };
-    NSURLSession *ame272_session = [NSURLSession sessionWithConfiguration:ame272_cfg];
-    dispatch_group_t ame272_grp = dispatch_group_create();
-    dispatch_semaphore_t ame272_sem = dispatch_semaphore_create(4);
-    for (NSNumber *ame272_pid in ame272_pids) {
-        NSURL *ame272_url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/mods/%@/files", ame272_base, ame272_pid]];
-        if (!ame272_url) continue;
-        dispatch_semaphore_wait(ame272_sem, DISPATCH_TIME_FOREVER);
-        dispatch_group_enter(ame272_grp);
-        NSMutableURLRequest *ame272_req = [NSMutableURLRequest requestWithURL:ame272_url];
-        ame272_req.HTTPMethod = @"GET";
-        NSLog(@"[ModpackImport] Task272: prefetch CF files of project %@ -> %@", ame272_pid, ame272_url.absoluteString);
-        [[ame272_session dataTaskWithRequest:ame272_req
-                           completionHandler:^(NSData *ame272_data, NSURLResponse *ame272_resp, NSError *ame272_err) {
-            @try {
-                NSHTTPURLResponse *ame272_http = [ame272_resp isKindOfClass:[NSHTTPURLResponse class]]
-                    ? (NSHTTPURLResponse *)ame272_resp : nil;
-                if (!ame272_err && ame272_http.statusCode == 200 && ame272_data.length > 0) {
-                    NSDictionary *ame272_root = [NSJSONSerialization JSONObjectWithData:ame272_data options:0 error:nil];
-                    NSArray *ame272_arr = [ame272_root isKindOfClass:[NSDictionary class]] ? ame272_root[@"data"] : nil;
-                    if ([ame272_arr isKindOfClass:[NSArray class]]) {
-                        NSInteger ame272_got = 0;
-                        for (NSDictionary *ame272_f in ame272_arr) {
-                            if (![ame272_f isKindOfClass:[NSDictionary class]]) continue;
-                            NSNumber *ame272_fid = ame272_f[@"id"];
-                            if (![ame272_fid isKindOfClass:[NSNumber class]] || ame272_fid.longLongValue <= 0) continue;
-                            NSMutableDictionary *ame272_entry = [NSMutableDictionary dictionary];
-                            NSString *ame272_fn = ame272_f[@"fileName"];
-                            if ([ame272_fn isKindOfClass:[NSString class]] && ame272_fn.length > 0) {
-                                ame272_entry[@"fileName"] = ame272_fn;
-                            }
-                            NSString *ame272_du = ame272_f[@"downloadUrl"];
-                            if ([ame272_du isKindOfClass:[NSString class]] && ame272_du.length > 0 &&
-                                ([ame272_du hasPrefix:@"http://"] || [ame272_du hasPrefix:@"https://"])) {
-                                ame272_entry[@"downloadUrl"] = ame272_du;
-                            }
-                            NSString *ame272_s1 = ame272_f[@"sha1"];
-                            if ([ame272_s1 isKindOfClass:[NSString class]] && ame272_s1.length == 40) {
-                                ame272_entry[@"sha1"] = ame272_s1;
-                            }
-                            NSNumber *ame272_cid = ame272_f[@"classId"];
-                            if ([ame272_cid isKindOfClass:[NSNumber class]]) ame272_entry[@"classId"] = ame272_cid;
-                            NSNumber *ame272_flen = ame272_f[@"fileLength"];
-                            if ([ame272_flen isKindOfClass:[NSNumber class]]) ame272_entry[@"fileLength"] = ame272_flen;
-                            if (ame272_entry.count > 0) {
-                                @synchronized(self) { self.ame272_cfFilesByFileID[ame272_fid] = ame272_entry; }
-                                ame272_got++;
-                            }
-                        }
-                        NSLog(@"[ModpackImport] Task272: project %@ -> %ld file metadata cached",
-                              ame272_pid, (long)ame272_got);
-                    }
-                } else {
-                    NSLog(@"[ModpackImport] Task272: project %@ prefetch failed (status=%d err=%@)",
-                          ame272_pid, ame272_http.statusCode, ame272_err.localizedDescription ?: @"-");
-                }
-            } @catch (NSException *ame272_ex) {
-                NSLog(@"[ModpackImport] Task272: prefetch parse exception: %@", ame272_ex.reason);
-            } @finally {
-                dispatch_semaphore_signal(ame272_sem);
-                dispatch_group_leave(ame272_grp);
-            }
-        }] resume];
-    }
-    dispatch_group_wait(ame272_grp, DISPATCH_TIME_FOREVER);
-    [ame272_session finishTasksAndInvalidate];
-    // ★ Task274-h S13：预取零命中 → 会话级置死标记（后续逐文件 GET/HEAD 全是
-    //   同款死端点，逐文件重试=纯延迟；置位后按既有 BMCL/CDN 垫底顺序直试）。
-    if (self.ame272_cfFilesByFileID.count <= ame274_cacheCountBefore) {
-        self.ame274_cfPrefetchDead = YES;
-        NSLog(@"[ModpackImport] Task274-h S13: CF metadata prefetch yielded nothing (%lu project(s)) -- per-file dead-endpoint fallback disabled for this import session",
-              (unsigned long)ame272_pids.count);
-    }
-}
-
-/// 阶段5修复（参照 FCL CurseForgeFileResolver）：当整合包 manifest 中缺失 fileName 且
-/// filesByFileID 元数据也不可用时，通过 BMCLAPI 下载链接做 HEAD 请求，跟随重定向到
-/// CurseForge CDN 的实际文件 URL，取其 lastPathComponent 作为真实文件名。
-/// 失败时返回 nil，由调用方继续使用 "projectID-fileID.jar" fallback。
 - (nullable NSString *)fetchCurseForgeRealFileName:(long long)projectID fileID:(long long)fileID {
-    NSString *bmclDownloadURL = [NSString stringWithFormat:@"https://bmclapi2.bangbang93.com/curseforge/files/%lld/%lld/download", projectID, fileID];
-    NSURL *url = [NSURL URLWithString:bmclDownloadURL];
+    NSURL *url = CurseForgeProjectDownload(projectID, fileID);
     if (!url) return nil;
 
-    // 使用临时 NSURLSession 不跟随重定向（手工处理），便于拿到 Location 头
+    // URLSession follows the download redirect to the named file on the CDN.
     NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
     cfg.timeoutIntervalForRequest = 15;
     cfg.HTTPAdditionalHeaders = @{
@@ -2480,7 +2349,8 @@ if (hasRealFileName) {
     dispatch_semaphore_t sem = dispatch_semaphore_create(0);
     NSURLSessionDataTask *task = [session dataTaskWithRequest:request
                                             completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (!error && [response isKindOfClass:[NSHTTPURLResponse class]]) {
+        if (!error && [response isKindOfClass:NSHTTPURLResponse.class] &&
+            ((NSHTTPURLResponse *)response).statusCode / 100 == 2) {
             NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
             // 优先取 Content-Disposition 头中的 filename（最权威）
             NSString *contentDisposition = http.allHeaderFields[@"Content-Disposition"];

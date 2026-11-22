@@ -245,6 +245,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 @property (nonatomic, strong) UILabel *authorLabel;
 @property (nonatomic, strong) UILabel *descLabel;
 @property (nonatomic, strong) UIStackView *tagsLabel;
+@property (nonatomic, strong) NSLayoutConstraint *landscapeFooterSpacing;
 @property (nonatomic, strong) UILabel *downloadsLabel;
 @property (nonatomic, strong) CubicResultTitle *titleViewport;
 @property (nonatomic, strong) UIButton *installButton;
@@ -332,7 +333,9 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         _downloadsLabel.textColor = [ZL2Theme onSurface];
         _downloadsLabel.numberOfLines = 1;
         _downloadsLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [_downloadsLabel setContentCompressionResistancePriority:751 forAxis:UILayoutConstraintAxisHorizontal];
         [_cardView addSubview:_downloadsLabel];
+        _landscapeFooterSpacing = [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_downloadsLabel.leadingAnchor constant:-6];
 
         [NSLayoutConstraint activateConstraints:@[
             [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
@@ -342,25 +345,24 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 
             [_iconView.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:8],
             [_iconView.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:8],
-            [_iconView.widthAnchor constraintEqualToConstant:62],
-            [_iconView.heightAnchor constraintEqualToConstant:62],
+            [_iconView.widthAnchor constraintEqualToConstant:78],
+            [_iconView.heightAnchor constraintEqualToAnchor:_iconView.widthAnchor],
             [titleStack.topAnchor constraintEqualToAnchor:_iconView.topAnchor],
             [titleStack.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:8],
             [titleStack.trailingAnchor constraintEqualToAnchor:_authorLabel.leadingAnchor constant:-6],
             [_authorLabel.topAnchor constraintEqualToAnchor:_iconView.topAnchor],
             [_authorLabel.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
             [_authorLabel.widthAnchor constraintEqualToConstant:78],
-            [_installButton.topAnchor constraintEqualToAnchor:_authorLabel.bottomAnchor constant:4],
+            [_installButton.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
             [_installButton.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-8],
-            [_installButton.widthAnchor constraintEqualToConstant:74],
+            [_installButton.widthAnchor constraintEqualToConstant:78],
             [_installButton.heightAnchor constraintEqualToConstant:38],
             [_descLabel.topAnchor constraintEqualToAnchor:titleStack.bottomAnchor constant:1],
             [_descLabel.leadingAnchor constraintEqualToAnchor:titleStack.leadingAnchor],
             [_descLabel.trailingAnchor constraintEqualToAnchor:titleStack.trailingAnchor],
             [_tagsLabel.leadingAnchor constraintEqualToAnchor:_iconView.leadingAnchor],
-            [_tagsLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_installButton.trailingAnchor],
-            [_tagsLabel.bottomAnchor constraintEqualToAnchor:_downloadsLabel.topAnchor constant:-3],
-            [_downloadsLabel.leadingAnchor constraintEqualToAnchor:_iconView.leadingAnchor],
+            [_tagsLabel.bottomAnchor constraintEqualToAnchor:_downloadsLabel.bottomAnchor],
+            [_downloadsLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:_iconView.leadingAnchor],
             [_downloadsLabel.trailingAnchor constraintEqualToAnchor:_installButton.trailingAnchor],
             [_downloadsLabel.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-6],
         ]];
@@ -377,7 +379,9 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGSize viewport = self.window.bounds.size;
-    self.tagsLabel.hidden = viewport.width <= viewport.height;
+    BOOL landscape = viewport.width > viewport.height;
+    self.tagsLabel.hidden = !landscape;
+    self.landscapeFooterSpacing.active = landscape;
 }
 
 - (void)cubicInstall {

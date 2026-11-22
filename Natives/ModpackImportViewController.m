@@ -379,10 +379,11 @@
     }];
     [alert addAction:[UIAlertAction actionWithTitle:localize(@"resman.common.cancel", nil)
                                              style:UIAlertActionStyleCancel handler:nil]];
-    __weak UIAlertController *weakAlert = alert;
+    // The glass presenter mirrors the text field and releases the original alert.
+    UITextField *codeField = alert.textFields.firstObject;
     [alert addAction:[UIAlertAction actionWithTitle:localize(@"i18n_str_156", nil)
                                              style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self downloadCurseForgeSharedProfile:weakAlert.textFields.firstObject.text ?: @""];
+        [self downloadCurseForgeSharedProfile:codeField.text ?: @""];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
 }

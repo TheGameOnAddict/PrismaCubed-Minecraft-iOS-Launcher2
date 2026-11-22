@@ -818,13 +818,28 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
         item.basename = item.displayName = name;
         item.fileName = [NSString stringWithFormat:@"%@-forge-1.20.1.jar",name.lowercaseString];
         item.filePath = [NSTemporaryDirectory() stringByAppendingPathComponent:item.fileName];
-        if (![NSFileManager.defaultManager fileExistsAtPath:item.filePath]) {
+        NSString *disabledPath = [item.filePath stringByAppendingPathExtension:@"disabled"];
+        if ([NSFileManager.defaultManager fileExistsAtPath:disabledPath]) {
+            item.filePath = disabledPath;
+            item.fileName = disabledPath.lastPathComponent;
+            item.disabled = YES;
+        } else if (![NSFileManager.defaultManager fileExistsAtPath:item.filePath]) {
             [[NSMutableData dataWithLength:131072] writeToFile:item.filePath atomically:YES];
         }
         item.isForge = YES;
         [mods addObject:item];
     }
     completion(mods);
+}
+- (BOOL)toggleEnableForMod:(ModItem *)item error:(NSError **)error {
+    BOOL disabledOnDisk = [item.filePath.pathExtension isEqualToString:@"disabled"];
+    NSCAssert(disabledOnDisk == item.disabled, @"The switch changed the model before the rename");
+    NSString *target = disabledOnDisk ? item.filePath.stringByDeletingPathExtension : [item.filePath stringByAppendingPathExtension:@"disabled"];
+    if (![NSFileManager.defaultManager moveItemAtPath:item.filePath toPath:target error:error]) return NO;
+    item.filePath = target;
+    item.fileName = target.lastPathComponent;
+    item.disabled = !disabledOnDisk;
+    return YES;
 }
 - (void)fetchMetadataForMod:(ModItem *)item completion:(void (^)(ModItem *, NSError *))completion { completion(item,nil); }
 // ★ Task324：隔离骨架桩（ZL2GameAddons 安装成功分支消费；预览态空转）

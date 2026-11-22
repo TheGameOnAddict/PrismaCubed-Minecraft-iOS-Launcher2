@@ -1333,7 +1333,7 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
 
     if (mod.disabled) {
         if ([currentPath.lowercaseString hasSuffix:@".jar.disabled"]) {
-            newPath = [currentPath substringToIndex:currentPath.length - 9];
+            newPath = currentPath.stringByDeletingPathExtension;
         } else {
             if (error) *error = [NSError errorWithDomain:@"ModServiceError" code:101 userInfo:@{NSLocalizedDescriptionKey:localize(@"i18n_str_452", nil)}];
             return NO;

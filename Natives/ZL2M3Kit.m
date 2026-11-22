@@ -129,7 +129,9 @@ static UIViewController *ZL2M3TopmostViewController(void) {
     self = [super initWithFrame:frame];
     if (self) {
         self.backgroundColor = [ZL2Theme surfaceContainerHigh];
-        self.layer.cornerRadius = [ZL2Theme radiusXL];
+        self.layer.cornerRadius = 8;
+        self.layer.borderWidth = 1;
+        self.layer.borderColor = ZL2Theme.outlineVariant.CGColor;
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.isAccessibilityElement = YES;
         self.accessibilityTraits = UIAccessibilityTraitSearchField;

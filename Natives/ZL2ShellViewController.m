@@ -117,6 +117,21 @@ static const CGFloat ZL2ShellRegularMinWidth = 640.0;   // ≥ 此宽常驻窗�
 
 // SF Symbols 取图兜底（ZL2HomeViewController 同款静态 helper）：基名优先，
 // 取不到走同族旧名，仍取不到为 nil（调用方以模板渲染前自判）
+static UIImage *CubicBrandMark(void) {
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(22, 22)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextRef canvas = context.CGContext;
+        CGPoint silhouette[] = {{11,0},{21,5.5},{21,16.5},{11,22},{1,16.5},{1,5.5}};
+        CGContextAddLines(canvas, silhouette, 6);
+        CGContextSetFillColorWithColor(canvas, ZL2Theme.primary.CGColor);
+        CGContextFillPath(canvas);
+        CGPoint side[] = {{11,11},{21,5.5},{21,16.5},{11,22}};
+        CGContextAddLines(canvas, side, 4);
+        CGContextSetRGBFillColor(canvas, 0.68, 0.30, 0.15, 1);
+        CGContextFillPath(canvas);
+    }];
+}
+
 static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     UIImage *image = [UIImage systemImageNamed:name];
     if (!image && fallback) image = [UIImage systemImageNamed:fallback];
@@ -648,12 +663,10 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
                                        forAxis:UILayoutConstraintAxisHorizontal];
     [self.titleLabel setContentCompressionResistancePriority:(UILayoutPriority)749.0
                                                      forAxis:UILayoutConstraintAxisHorizontal];
-    UIImageView *brand = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"WelcomeAppIcon"]];
+    UIImageView *brand = [[UIImageView alloc] initWithImage:CubicBrandMark()];
     brand.contentMode = UIViewContentModeScaleAspectFit;
-    brand.layer.cornerRadius = 5;
-    brand.clipsToBounds = YES;
-    [brand.widthAnchor constraintEqualToConstant:26].active = YES;
-    [brand.heightAnchor constraintEqualToConstant:26].active = YES;
+    [brand.widthAnchor constraintEqualToConstant:22].active = YES;
+    [brand.heightAnchor constraintEqualToConstant:22].active = YES;
     [self.barRow addArrangedSubview:brand];
     [self.barRow addArrangedSubview:self.titleLabel];
 
@@ -750,27 +763,65 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     BOOL local = [method isEqual:@"local"] || (!method && !auth[@"xboxGamertag"]);
     NSString *type = thirdParty ? localize(@"login.option.3rdparty", nil) : local ? localize(@"login.option.local", nil) : @"Microsoft";
     NSString *username = [auth[@"username"] isKindOfClass:NSString.class] ? auth[@"username"] : nil;
-    NSString *accountTitle = username.length ? [NSString stringWithFormat:@"%@\n%@\nManage Accounts ›", username, type] : NSLocalizedString(@"Add Account ›", nil);
-    NSArray *titles = @[accountTitle, NSLocalizedString(@"Directory", nil), NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
+    NSString *manage = username.length ? NSLocalizedString(@"Manage Accounts", nil) : NSLocalizedString(@"Add Account", nil);
+    NSArray *titles = @[manage, NSLocalizedString(@"Directory", nil), NSLocalizedString(@"Terracotta Multiplayer", nil), NSLocalizedString(@"Settings", nil)];
     NSArray *icons = @[@"person.crop.circle", @"folder", @"person.2", @"gearshape"];
     __weak typeof(self) weakSelf = self;
     [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
         UIButton *item = [UIButton buttonWithType:UIButtonTypeSystem];
-        [item setTitle:title forState:UIControlStateNormal];
-        UIImage *image = index == 0 ? self.cubicAccountButton.currentImage : [UIImage systemImageNamed:icons[index]];
-        [item setImage:image forState:UIControlStateNormal];
-        item.titleLabel.numberOfLines = index == 0 ? 3 : 1;
-        if (index == 0) item.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-        item.tintColor = [ZL2Theme onSurface];
-        item.backgroundColor = index == 0 ? ZL2Theme.surfaceContainerHigh : ZL2Theme.surfaceContainer;
+        item.layer.cornerRadius = 9;
         if (index == 0) {
-            item.layer.borderColor = ZL2Theme.primary.CGColor;
+            item.backgroundColor = [UIColor colorWithRed:0.20 green:0.165 blue:0.153 alpha:1];
+            item.layer.borderColor = [UIColor colorWithRed:0.32 green:0.27 blue:0.24 alpha:1].CGColor;
             item.layer.borderWidth = 1;
+            UILabel *name = [UILabel new];
+            name.text = username.length ? username : NSLocalizedString(@"No account selected", nil);
+            name.font = [UIFont boldSystemFontOfSize:16];
+            name.textColor = UIColor.whiteColor;
+            UILabel *provider = [UILabel new];
+            provider.text = username.length ? type : NSLocalizedString(@"Signed out", nil);
+            provider.font = [UIFont systemFontOfSize:12];
+            provider.textColor = ZL2Theme.onSurfaceVariant;
+            UILabel *action = [UILabel new];
+            action.text = manage;
+            action.textColor = [UIColor colorWithRed:1 green:0.75 blue:0.61 alpha:1];
+            action.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+            UIStackView *labels = [[UIStackView alloc] initWithArrangedSubviews:@[name, provider, action]];
+            labels.axis = UILayoutConstraintAxisVertical;
+            labels.spacing = 2;
+            [labels setCustomSpacing:4 afterView:provider];
+            UIImageView *avatar = [[UIImageView alloc] initWithImage:self.cubicAccountButton.currentImage];
+            avatar.layer.cornerRadius = 8;
+            avatar.clipsToBounds = YES;
+            avatar.contentMode = UIViewContentModeScaleAspectFill;
+            avatar.tintColor = ZL2Theme.primary;
+            UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"]];
+            chevron.tintColor = ZL2Theme.primary;
+            chevron.contentMode = UIViewContentModeScaleAspectFit;
+            UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[avatar, labels, chevron]];
+            row.translatesAutoresizingMaskIntoConstraints = NO;
+            row.userInteractionEnabled = NO;
+            row.alignment = UIStackViewAlignmentCenter;
+            row.spacing = 10;
+            [item addSubview:row];
+            [NSLayoutConstraint activateConstraints:@[
+                [avatar.widthAnchor constraintEqualToConstant:42], [avatar.heightAnchor constraintEqualToAnchor:avatar.widthAnchor],
+                [chevron.widthAnchor constraintEqualToConstant:14],
+                [row.leadingAnchor constraintEqualToAnchor:item.leadingAnchor constant:10],
+                [row.trailingAnchor constraintEqualToAnchor:item.trailingAnchor constant:-12],
+                [row.topAnchor constraintEqualToAnchor:item.topAnchor constant:10],
+                [row.bottomAnchor constraintEqualToAnchor:item.bottomAnchor constant:-10],
+            ]];
+            item.accessibilityLabel = [@[name.text, provider.text, manage] componentsJoinedByString:@", "];
+        } else {
+            [item setTitle:title forState:UIControlStateNormal];
+            [item setImage:[UIImage systemImageNamed:icons[index]] forState:UIControlStateNormal];
+            item.tintColor = ZL2Theme.onSurface;
+            item.backgroundColor = ZL2Theme.surfaceContainer;
+            item.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+            item.contentEdgeInsets = UIEdgeInsetsMake(12, 12, 12, 12);
+            item.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, -8);
         }
-        item.layer.cornerRadius = 8;
-        item.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-        item.contentEdgeInsets = UIEdgeInsetsMake(12, 12, 12, 12);
-        item.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, -8);
         [item addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
             [weakDrawer dismissViewControllerAnimated:NO completion:^{
                 if (index == 1) [weakSelf ame_openFileManagerSheet];
@@ -1326,7 +1377,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 
     UINavigationController *nav = [self ame_currentNav];
     BOOL clusterVisible = (index != 0 || nav.viewControllers.count > 1);                  // 左簇仅非主页显示
-    BOOL backVisible = (nav.viewControllers.count > 1);  // 可 pop 才有返回钮
+    BOOL backVisible = (nav.viewControllers.count > 1 || index == 3);  // 可 pop 才有返回钮
 
     NSString *title = [self ame_titleForIndex:index];
     UIViewController *current = nav.topViewController;
@@ -1355,6 +1406,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         self.leftCluster.hidden = !clusterVisible;
         self.backButton.alpha = backVisible ? 1.0 : 0.0;
         self.backButton.hidden = !backVisible;
+        self.homeButton.hidden = index == 3;
         [self.topBar layoutIfNeeded];
     };
     if (animated && self.topBar.window) {
@@ -1368,6 +1420,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     UINavigationController *nav = [self ame_currentNav];
     if (nav && nav.viewControllers.count > 1) {
         [nav popViewControllerAnimated:YES];
+    } else if (self.currentIndex == 3) {
+        [self ame_showHome];
     }
 }
 

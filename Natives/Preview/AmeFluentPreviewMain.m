@@ -705,6 +705,7 @@ static void CubicCheckResults(UIView *host) {
 #import "ZL2ShellViewController.h"
 #import "ZL2VersionDetailViewController.h"
 #import "ZL2VersionPages.h"
+#import "ZL2M3Kit.h"
 #import "ModpackImportViewController.h"
 #import "ZL2GameDownloadViewController.h"
 
@@ -723,6 +724,15 @@ static void CubicCheckResults(UIView *host) {
 
 static UIInterfaceOrientationMask PreviewOrientation(void) {
     return [NSProcessInfo.processInfo.arguments containsObject:@"portrait"] ? UIInterfaceOrientationMaskPortrait : UIInterfaceOrientationMaskLandscapeRight;
+}
+
+static UIControl *PreviewModSwitch(UIView *root) {
+    if ([root isKindOfClass:ZL2M3Switch.class]) return (UIControl *)root;
+    for (UIView *child in root.subviews) {
+        UIControl *toggle = PreviewModSwitch(child);
+        if (toggle) return toggle;
+    }
+    return nil;
 }
 
 static void PreviewScreens(UIWindow *window) {
@@ -756,6 +766,17 @@ static void PreviewScreens(UIWindow *window) {
         if ([route isEqual:@"accounts"]) NSCAssert([[shell ame_currentNav].topViewController isKindOfClass:ZL2AccountsViewController.class], @"Missing accounts");
         if ([route isEqual:@"mods"]) NSCAssert([nav.topViewController isKindOfClass:ZL2AssetSearchViewController.class], @"Missing add mods");
         if ([route isEqual:@"browse"]) NSCAssert([home valueForKey:@"packBrowser"], @"Missing catalog");
+        if ([route isEqual:@"profile"]) {
+            UIView *page = nav.topViewController.view;
+            ZL2M3Switch *toggle = (id)PreviewModSwitch(page);
+            NSCAssert(toggle && toggle.on, @"Missing enabled fixture switch");
+            for (NSInteger i = 0; i < 2; i++) {
+                [toggle sendActionsForControlEvents:UIControlEventTouchUpInside];
+                toggle = (id)PreviewModSwitch(page);
+                NSCAssert(toggle && toggle.on == (i == 1), @"Mod state lost after rescan");
+            }
+            [page layoutIfNeeded];
+        }
         NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";
         CGSize size = window.bounds.size;
         NSCAssert((size.width < size.height) == [orientation isEqual:@"portrait"], @"Unexpected viewport %@", NSStringFromCGSize(size));

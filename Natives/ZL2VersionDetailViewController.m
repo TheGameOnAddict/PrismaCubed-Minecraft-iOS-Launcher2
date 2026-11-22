@@ -245,7 +245,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     [_iconBg addSubview:_iconView];
 
     _nameLabel = [[UILabel alloc] init];
-    _nameLabel.font = [ZL2Theme fontTitleMedium];
+    _nameLabel.font = [UIFont boldSystemFontOfSize:20];
     _nameLabel.textColor = [ZL2Theme onSurface];
     _nameLabel.numberOfLines = 1;
     _nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -254,7 +254,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     _descLabel = [[UILabel alloc] init];
     _descLabel.font = [ZL2Theme fontBodyMedium];
     _descLabel.textColor = [ZL2Theme onSurfaceVariant];
-    _descLabel.numberOfLines = 1;
+    _descLabel.numberOfLines = 2;
     _descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     _descLabel.translatesAutoresizingMaskIntoConstraints = NO;
 
@@ -269,7 +269,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     UIStackView *textStack = [[UIStackView alloc] initWithArrangedSubviews:@[_nameLabel, _descLabel, _tagLabel]];
     textStack.axis = UILayoutConstraintAxisVertical;
     textStack.alignment = UIStackViewAlignmentLeading;
-    textStack.spacing = 2;
+    textStack.spacing = 4;
     textStack.translatesAutoresizingMaskIntoConstraints = NO;
     [_headerCard addSubview:textStack];
 
@@ -352,15 +352,15 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 
         [_iconBg.leadingAnchor constraintEqualToAnchor:_headerCard.leadingAnchor constant:14],
         [_iconBg.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
-        [_iconBg.widthAnchor constraintEqualToConstant:72],
-        [_iconBg.heightAnchor constraintEqualToConstant:72],
+        [_iconBg.widthAnchor constraintEqualToConstant:88],
+        [_iconBg.heightAnchor constraintEqualToAnchor:_iconBg.widthAnchor],
         [_iconView.centerXAnchor constraintEqualToAnchor:_iconBg.centerXAnchor],
         [_iconView.centerYAnchor constraintEqualToAnchor:_iconBg.centerYAnchor],
         [_iconView.widthAnchor constraintEqualToAnchor:_iconBg.widthAnchor],
         [_iconView.heightAnchor constraintEqualToAnchor:_iconBg.heightAnchor],
 
         [textStack.leadingAnchor constraintEqualToAnchor:_iconBg.trailingAnchor constant:12],
-        [_headerCard.heightAnchor constraintEqualToConstant:98],
+        [_headerCard.heightAnchor constraintEqualToConstant:116],
         [textStack.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
         [textStack.bottomAnchor constraintLessThanOrEqualToAnchor:_headerCard.bottomAnchor constant:-12],
         [doneButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:textStack.trailingAnchor constant:8],

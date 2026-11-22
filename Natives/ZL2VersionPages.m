@@ -492,7 +492,7 @@ static UIImage *ZL2V13ThumbnailAtPath(NSString *path, CGFloat maxPixel) {
         [row.topAnchor constraintEqualToAnchor:card.topAnchor constant:ZL2V13CardPadding],
         [row.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-ZL2V13CardPadding],
         [row.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:ZL2V13CardPadding],
-        [row.trailingAnchor constraintLessThanOrEqualToAnchor:card.trailingAnchor constant:-ZL2V13CardPadding],
+        [row.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-ZL2V13CardPadding],
     ]];
 
     // 外壳再包一层竖排，让卡片吃满内容列宽（行内 trailing 由内容撑）
@@ -1067,7 +1067,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     return hex;
 }
 
-@interface ZL2VersionModsPage () <UIDocumentPickerDelegate>
+@interface ZL2VersionModsPage () <UIDocumentPickerDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIStackView *ameV13_contentStack;
 @property (nonatomic, strong) UIStackView *ameV13_cardsStack;
 @property (nonatomic, strong) UILabel *ameV13_countLabel;
@@ -1312,6 +1312,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         UIStackView *wrap = [self ameV13_rowCardWithViews:@[iconBox, textStack, spacer, check]
                                                 alignment:UIStackViewAlignmentCenter];
         UITapGestureRecognizer *rowTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameV13_cardTapped:)];
+        rowTap.delegate = self;
         [wrap addGestureRecognizer:rowTap];
         objc_setAssociatedObject(wrap, @selector(ameV13_cardTapped:), mod.filePath, OBJC_ASSOCIATION_COPY_NONATOMIC);
         return wrap;
@@ -1330,6 +1331,8 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     // 行点按 = Modrinth 项目页（onlineID 命中）；未命中出「链接不可用」说明
     UITapGestureRecognizer *rowTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameV13_cardTapped:)];
     UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(cubicModHeld:)];
+    hold.delegate = self;
+    rowTap.delegate = self;
     [wrap addGestureRecognizer:hold];
     [rowTap requireGestureRecognizerToFail:hold];
     [wrap addGestureRecognizer:rowTap];
@@ -1338,6 +1341,13 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 }
 
 #pragma mark 卡片动作
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+    for (UIView *view = touch.view; view && view != recognizer.view; view = view.superview) {
+        if ([view isKindOfClass:UIControl.class]) return NO;
+    }
+    return YES;
+}
 
 - (void)cubicModHeld:(UILongPressGestureRecognizer *)gesture {
     if (gesture.state != UIGestureRecognizerStateBegan || _ameV13_selectMode || _ameV13_updateBusy) return;
@@ -1417,20 +1427,23 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         if ([mod.filePath isEqualToString:path]) { target = mod; break; }
     }
     if (!target) { sender.on = !sender.on; return; }
-    // ZL2M3Switch 契约：sender.on = 用户意图新值
-    target.disabled = !sender.on;
+    // The service derives the rename direction from the current file state.
     NSError *error = nil;
     BOOL ok = [[ModService sharedService] toggleEnableForMod:target error:&error];
     if (!ok) {
         // Task217 家族：失败一律弹窗给真实原因；ModServiceError 201（源文件
         // 缺失）额外自愈重扫——幽灵条目即刻消失，不再是"点了没反应"
-        sender.on = !sender.on;   // 视觉回滚（失败时模型态未变）
+        sender.on = !target.disabled;
         [self ameV13_showAlertMessage:error.localizedDescription ?: localize(@"common.unknown_error", nil)];
         if ([error.domain isEqualToString:@"ModServiceError"] && error.code == 201) {
             [self ameV13_reloadContent];
         }
         return;
     }
+    [_ameV13_updateResults removeObjectForKey:path];
+    [_ameV13_displayNameByPath removeObjectForKey:path];
+    [_ameV13_onlineIdByPath removeObjectForKey:path];
+    [self ameV13_reloadContent];
     NSLog(@"[ZL2VersionPages] Task343 mod toggle: %@ -> %@", target.fileName, target.disabled ? @"disabled" : @"enabled");
 }
 

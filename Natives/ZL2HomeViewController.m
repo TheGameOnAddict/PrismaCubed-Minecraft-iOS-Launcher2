@@ -870,7 +870,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [browse setTitle:NSLocalizedString(@"Browse Modpacks", nil) forState:UIControlStateNormal];
     [browse addTarget:self action:@selector(cubicBrowseModpacks) forControlEvents:UIControlEventTouchUpInside];
     UIButton *import = [UIButton buttonWithType:UIButtonTypeSystem];
-    [import setTitle:[@"↓ " stringByAppendingString:NSLocalizedString(@"Import", nil)] forState:UIControlStateNormal];
+    [import setTitle:NSLocalizedString(@"Import", nil) forState:UIControlStateNormal];
+    UIImageSymbolConfiguration *arrowSize = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightBold];
+    [import setImage:[UIImage systemImageNamed:@"arrow.down" withConfiguration:arrowSize] forState:UIControlStateNormal];
+    import.tintColor = ZL2Theme.primary;
     [import addTarget:self action:@selector(cubicImport) forControlEvents:UIControlEventTouchUpInside];
     UIButton *create = [UIButton buttonWithType:UIButtonTypeSystem];
     [create setTitle:[@"+ " stringByAppendingString:NSLocalizedString(@"New Profile", nil)] forState:UIControlStateNormal];
@@ -906,7 +909,9 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     actions.tintColor = [ZL2Theme primary];
     actions.translatesAutoresizingMaskIntoConstraints = NO;
     UIStackView *navigation = [[UIStackView alloc] initWithArrangedSubviews:@[login, actions]];
-    navigation.backgroundColor = ZL2Theme.surfaceContainer;
+    navigation.backgroundColor = ZL2Theme.surfaceContainerLow;
+    navigation.layoutMarginsRelativeArrangement = YES;
+    navigation.layoutMargins = UIEdgeInsetsMake(0, 12, 0, 12);
     navigation.axis = UILayoutConstraintAxisVertical;
     navigation.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:navigation];
@@ -943,8 +948,8 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
     [NSLayoutConstraint activateConstraints:@[
         [navigation.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
-        [navigation.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:12],
-        [navigation.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        [navigation.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],
+        [navigation.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor],
         [actions.heightAnchor constraintGreaterThanOrEqualToConstant:44],
         [heading.topAnchor constraintEqualToAnchor:actions.bottomAnchor constant:2],
         [heading.leadingAnchor constraintEqualToAnchor:actions.leadingAnchor],
