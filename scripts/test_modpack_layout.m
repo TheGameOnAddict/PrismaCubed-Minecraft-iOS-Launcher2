@@ -63,6 +63,25 @@ int main(void) {
         assert([fm createDirectoryAtPath:stable.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:NULL]);
         assert([fm createSymbolicLinkAtPath:stable withDestinationPath:installer error:NULL]);
         assert([ModpackInstalledRuntime(home, nil, @"default", vid) isEqual:ModpackResolvedPath(installer, NULL)]);
+        NSString *runtimeJSON = [NSString stringWithFormat:@"versions/%@/%@.json", vid, vid];
+        NSString *runtimeLibrary = [@"libraries" stringByAppendingPathComponent:products.firstObject];
+        NSString *receiptPath = [mainJSON.stringByDeletingLastPathComponent stringByAppendingPathComponent:@".prismacubic-forge.plist"];
+        NSString *expected = @"0123456789012345678901234567890123456789";
+        NSString *(^fixtureDigest)(NSString *) = ^NSString *(NSString *file) {
+            NSData *data = [NSData dataWithContentsOfFile:file];
+            return (data && (data.length == 0 || [data isEqual:header])) ? expected : nil;
+        };
+        assert(!ModpackCanReuseForge(installer, vid, fixtureDigest));
+        NSDictionary *receipt = @{runtimeJSON:expected, runtimeLibrary:expected};
+        assert([receipt writeToFile:receiptPath atomically:YES]);
+        assert(ModpackCanReuseForge(installer, vid, fixtureDigest));
+        assert(!ModpackCanReuseForge(installer, @"1.20.1-forge-47.4.29", fixtureDigest));
+        NSString *jar = [installer stringByAppendingPathComponent:runtimeLibrary];
+        assert([[@"broken" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:jar atomically:YES]);
+        assert(!ModpackCanReuseForge(installer, vid, fixtureDigest));
+        assert([fm removeItemAtPath:jar error:NULL]);
+        assert(!ModpackCanReuseForge(installer, vid, fixtureDigest));
+        assert([header writeToFile:jar atomically:YES]);
         // A new profile reached through an alias has no libraries/net/... descendants yet.
         NSString *alias = [instances stringByAppendingPathComponent:@"game-dir"];
         assert([fm createSymbolicLinkAtPath:alias withDestinationPath:installer error:NULL]);

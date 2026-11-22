@@ -76,6 +76,7 @@
 #import <CommonCrypto/CommonDigest.h> // ★ Task343：流式 SHA1（Modrinth 反查依赖）
 #import "ZL2VersionDetailViewController.h"   // +ameV13_resolvedGameDirForProfileName:（gameDir 重解析兜底）
 #import "PLProfiles.h"
+#import "ModpackImportService.h"
 #import "ProfileSettingsViewController.h"    // 「完整实例设置」长尾入口（旧链 1:1）
 #import "LauncherPreferences.h"              // getRendererKeys/getRendererNames
 #import "utils.h"                            // localize() / ame173_safeHeapCeilingMB()
@@ -956,11 +957,20 @@ static UIImage *ZL2V13ThumbnailAtPath(NSString *path, CGFloat maxPixel) {
         NSString *versionId = [profile isKindOfClass:NSDictionary.class] && [profile[@"lastVersionId"] isKindOfClass:[NSString class]]
             ? (NSString *)profile[@"lastVersionId"] : nil;
 
-        [PLProfiles.current.profiles removeObjectForKey:profileName];
-        if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
-            PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;
+        if ([profile[@"type"] isEqual:@"modpack"] && [profile[@"sharedForgeRuntime"] boolValue]) {
+            NSError *error = nil;
+            if (![[ModpackImportService new] deleteImportedProfileNamed:profileName error:&error]) {
+                [self ameV13_showAlertMessage:error.localizedDescription];
+                return;
+            }
+            versionId = nil; // The shared installation also serves other profiles.
+        } else {
+            [PLProfiles.current.profiles removeObjectForKey:profileName];
+            if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
+                PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;
+            }
+            [PLProfiles.current save];
         }
-        [PLProfiles.current save];
 
         if (versionId.length > 0) {
             BOOL stillReferenced = NO;

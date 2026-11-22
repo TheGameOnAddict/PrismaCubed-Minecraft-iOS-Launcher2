@@ -140,24 +140,28 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
                                                         error:nil];
 
         BOOL success = NO;
-        if (isOldFormat) {
-            NSLog(@"[ForgeDirect] Using old format installer");
-            success = [self installOldFormat:installProfile
-                               installerPath:installerPath
-                                   versionId:versionId
-                                    gameDir:gameDir
-                               librariesDir:librariesDir
-                                    progress:progress
-                                      error:error];
-        } else {
-            NSLog(@"[ForgeDirect] Using new format installer");
-            success = [self installNewFormat:installProfile
-                               installerPath:installerPath
-                                   versionId:versionId
-                                    gameDir:gameDir
-                               librariesDir:librariesDir
-                                    progress:progress
-                                      error:error];
+        @synchronized (self) {
+            if (isNewFormat && !customGameDir.length && [installProfile[@"version"] isEqual:versionId] && [self hasVerifiedRuntime:versionId]) {
+                success = YES;
+            } else if (isOldFormat) {
+                NSLog(@"[ForgeDirect] Using old format installer");
+                success = [self installOldFormat:installProfile
+                                   installerPath:installerPath
+                                       versionId:versionId
+                                        gameDir:gameDir
+                                   librariesDir:librariesDir
+                                        progress:progress
+                                          error:error];
+            } else {
+                NSLog(@"[ForgeDirect] Using new format installer");
+                success = [self installNewFormat:installProfile
+                                   installerPath:installerPath
+                                       versionId:versionId
+                                        gameDir:gameDir
+                                   librariesDir:librariesDir
+                                        progress:progress
+                                          error:error];
+            }
         }
 
         if (!success) {
@@ -218,6 +222,14 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
 // 游戏目录：与 JavaLauncher.m 中 [launchTarget isKindOfClass:NSDictionary.class] 分支保持一致
 // 即 $POJAV_HOME/instances/<general.game_directory>/<profile.gameDir>
 // 但直装时还没有 profile，无法读 gameDir，使用默认 "."
++ (BOOL)hasVerifiedRuntime:(NSString *)versionId {
+    @synchronized (self) {
+        return ModpackCanReuseForge([self gameDirectory], versionId, ^NSString *(NSString *file) {
+            return [ForgeProcessorExecutor sha1OfFile:file];
+        });
+    }
+}
+
 + (NSString *)gameDirectory {
     const char *env = getenv("POJAV_GAME_DIR");
     if (env) {
@@ -741,6 +753,7 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
     }
 
     // Forge discovers these processor products dynamically; its version JSON cannot redownload them.
+    NSMutableSet<NSString *> *verifiedPaths = [NSMutableSet set];
     NSDictionary *data = installProfile[@"data"];
     for (NSString *key in @[@"MC_SRG", @"MC_EXTRA", @"PATCHED"]) {
         NSString *value = data[key][@"client"];
@@ -748,6 +761,7 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
         NSString *descriptor = [value substringWithRange:NSMakeRange(1, value.length - 2)];
         NSString *relative = [ForgeProcessorExecutor libraryPathFromDescriptor:descriptor error:error];
         if (!relative || !ModpackPrepareForgeJar(librariesDir, gameDir, relative, error)) return NO;
+        [verifiedPaths addObject:[@"libraries" stringByAppendingPathComponent:relative]];
     }
 
     // Step E (Task188)：后置产物验证 —— 与 NeoForgeDirectInstaller 同款。
@@ -784,6 +798,7 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
                 }
                 if (ame188_rel.length == 0) ame188_rel = [self mavenPathToRelativePath:ame188_name ?: @""];
                 if (ame188_rel.length == 0) continue;
+                [verifiedPaths addObject:[@"libraries" stringByAppendingPathComponent:ame188_rel]];
                 NSString *ame188_dest = [librariesDir stringByAppendingPathComponent:ame188_rel];
                 BOOL ame188_isDir = NO;
                 if (![NSFileManager.defaultManager fileExistsAtPath:ame188_dest isDirectory:&ame188_isDir] || ame188_isDir) {
@@ -863,6 +878,18 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
         }
     }
 
+    if ([installProfile[@"version"] isEqual:versionId]) {
+        [verifiedPaths addObject:[NSString stringWithFormat:@"versions/%@/%@.json", versionId, versionId]];
+        NSMutableDictionary *receipt = [NSMutableDictionary dictionary];
+        for (NSString *path in verifiedPaths) {
+            NSString *hash = [ForgeProcessorExecutor sha1OfFile:[mainGameDir stringByAppendingPathComponent:path]];
+            if (!hash) break;
+            receipt[path] = hash;
+        }
+        if (receipt.count == verifiedPaths.count) {
+            [receipt writeToFile:[versionDir stringByAppendingPathComponent:@".prismacubic-forge.plist"] atomically:YES];
+        }
+    }
     NSLog(@"[ForgeDirect] installNewFormat completed");
     return YES;
 }

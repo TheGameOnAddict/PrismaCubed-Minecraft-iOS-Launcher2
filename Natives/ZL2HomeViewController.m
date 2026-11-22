@@ -69,6 +69,7 @@
 #import "ZL2M3Kit.h"                 // ZL2M3BottomSheet（长按卡菜单）
 #import "authenticator/BaseAuthenticator.h"
 #import "PLProfiles.h"
+#import "ModpackImportService.h"
 #import "ModpackLayout.h"
 #import "installer/ForgeProcessorExecutor.h"
 #import "AvatarManager.h"            // ame185 头像三层回退链（账户页同款）
@@ -1591,11 +1592,20 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         NSDictionary *profile = PLProfiles.current.profiles[profileName];
         NSString *versionId = [profile isKindOfClass:NSDictionary.class] ? profile[@"lastVersionId"] : nil;
 
-        [PLProfiles.current.profiles removeObjectForKey:profileName];
-        if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
-            PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;
+        if ([profile[@"type"] isEqual:@"modpack"] && [profile[@"sharedForgeRuntime"] boolValue]) {
+            NSError *error = nil;
+            if (![[ModpackImportService new] deleteImportedProfileNamed:profileName error:&error]) {
+                [self showAlert:error.localizedDescription];
+                return;
+            }
+            versionId = nil; // The shared installation also serves other profiles.
+        } else {
+            [PLProfiles.current.profiles removeObjectForKey:profileName];
+            if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
+                PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;
+            }
+            [PLProfiles.current save];
         }
-        [PLProfiles.current save];
 
         if ([versionId isKindOfClass:[NSString class]] && versionId.length > 0) {
             BOOL stillReferenced = NO;

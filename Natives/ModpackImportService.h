@@ -52,6 +52,7 @@ typedef NS_ENUM(NSInteger, ModpackImportFormat) {
 - (NSArray<NSDictionary *> *)getImportedModpacks;
 
 /// 删除已导入的整合包
+- (BOOL)deleteImportedProfileNamed:(NSString *)name error:(NSError **)error;
 - (BOOL)deleteModpack:(NSDictionary *)modpackInfo error:(NSError **)error;
 
 /// 重置取消状态（在开始新导入前调用）

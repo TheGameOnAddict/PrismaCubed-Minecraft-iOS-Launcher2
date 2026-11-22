@@ -89,6 +89,24 @@ static inline NSString *ModpackInstalledRuntime(NSString *home, NSString *owner,
     return nil;
 }
 
+// A verified installation is reusable only for this version and these exact files.
+static inline BOOL ModpackCanReuseForge(NSString *root, NSString *version, NSString *(^digest)(NSString *)) {
+    if (!root.length || !version.length || ![version isEqual:version.lastPathComponent]) return NO;
+    NSString *directory = [NSString stringWithFormat:@"versions/%@", version];
+    NSString *manifest = [NSString stringWithFormat:@"%@/%@.json", directory, version];
+    NSString *receipt = [[root stringByAppendingPathComponent:directory] stringByAppendingPathComponent:@".prismacubic-forge.plist"];
+    NSDictionary *files = [NSDictionary dictionaryWithContentsOfFile:receipt];
+    if (files.count < 2 || !files[manifest]) return NO;
+    for (NSString *relative in files) {
+        if (![relative isKindOfClass:NSString.class] || [relative.pathComponents containsObject:@".."] ||
+            !([relative isEqual:manifest] || [relative hasPrefix:@"libraries/"])) return NO;
+        NSString *expected = files[relative];
+        if (![expected isKindOfClass:NSString.class] || expected.length != 40 ||
+            ![expected isEqual:digest([root stringByAppendingPathComponent:relative])]) return NO;
+    }
+    return YES;
+}
+
 static inline BOOL ModpackForgeError(NSError **error, NSString *path, NSString *reason) {
     if (error) *error = [NSError errorWithDomain:@"ModpackImportError" code:4010 userInfo:@{
         NSFilePathErrorKey:path, NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Forge library %@ — %@ (%@)", path.lastPathComponent, reason, path]}];

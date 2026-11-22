@@ -998,9 +998,10 @@ static BOOL ame269_sMigrationRunning = NO;
     NSString *modsDir = [gameDirAbsolute stringByAppendingPathComponent:@"mods"];
     [fm createDirectoryAtPath:modsDir withIntermediateDirectories:YES attributes:nil error:nil];
 
-    // 创建 versions 目录
-    NSString *versionsDir = [gameDirAbsolute stringByAppendingPathComponent:@"versions"];
-    [fm createDirectoryAtPath:versionsDir withIntermediateDirectories:YES attributes:nil error:nil];
+    if (![modpackInfo[@"loader"] isEqual:@"Forge"]) {
+        NSString *versionsDir = [gameDirAbsolute stringByAppendingPathComponent:@"versions"];
+        [fm createDirectoryAtPath:versionsDir withIntermediateDirectories:YES attributes:nil error:nil];
+    }
 
     // 取消检查点
     if ([self checkCancelledWithError:error]) {
@@ -1302,7 +1303,7 @@ static BOOL ame269_sMigrationRunning = NO;
     } else if ([loader isEqualToString:@"Quilt"]) {
         baseId = [NSString stringWithFormat:@"quilt-loader-%@-%@", loaderVersion, minecraftVersion];
     } else if ([loader isEqualToString:@"Forge"]) {
-        baseId = [NSString stringWithFormat:@"%@-forge-%@", minecraftVersion, loaderVersion];
+        return [NSString stringWithFormat:@"%@-forge-%@", minecraftVersion, loaderVersion];
     } else if ([loader isEqualToString:@"NeoForge"]) {
         // NeoForge 版本号本身已包含 MC 版本信息，例如 47.1.0 (对应 1.20.1)
         // 但在版本目录里仍用 <mc>-neoforge-<loader> 形式以便区分
@@ -2441,10 +2442,13 @@ if (hasRealFileName) {
     NSString *versionDir = mainVersionDir;
     NSString *versionJsonPath = [versionDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.json", versionId]];
     NSFileManager *fm = [NSFileManager defaultManager];
-    [fm createDirectoryAtPath:versionDir withIntermediateDirectories:YES attributes:nil error:nil];
-
-    // Fabric/Quilt: 直接从 meta API 拉 profile json
+    if ([loader isEqual:@"Forge"] && [ForgeDirectInstaller hasVerifiedRuntime:versionId]) {
+        DownloadTaskItem *task = [DownloadTaskManager.sharedManager taskWithId:self.currentImportTaskId];
+        [task appendActivity:[NSString stringWithFormat:@"Using installed Minecraft %@ · Forge %@", minecraftVersion, loaderVersion]];
+        return YES;
+    }
     if ([loader isEqualToString:@"Fabric"] || [loader isEqualToString:@"Quilt"]) {
+        [fm createDirectoryAtPath:versionDir withIntermediateDirectories:YES attributes:nil error:nil];
         NSDictionary *endpoints = FabricUtils.endpoints[loader];
         NSString *jsonURLTemplate = endpoints[@"json"];
         if (!jsonURLTemplate) {
@@ -2598,7 +2602,7 @@ if (hasRealFileName) {
         // Forge
         installSuccess = [ForgeDirectInstaller installForgeFromInstaller:tmpInstallerPath
                                                                versionId:versionId
-                                                           customGameDir:gameDirAbsolute
+                                                           customGameDir:nil
                                                      skipRegisterVersion:YES
                                                                 progress:loaderProgress
                                                                    error:&installError];
@@ -2876,6 +2880,7 @@ if (hasRealFileName) {
         ame269_prof[@"gameDir"] = gameDirRelative;
         ame269_prof[@"type"] = @"modpack";
         ame269_prof[@"runtimeRoot"] = relativeRuntime;
+        ame269_prof[@"sharedForgeRuntime"] = [modpackInfo[@"loader"] isEqual:@"Forge"] ? @YES : nil;
         NSString *ame269_mcVersion = modpackInfo[@"minecraftVersion"];
         if (ame269_mcVersion.length > 0) {
             NSInteger ame269_javaMajor = [self javaMajorVersionForMC:ame269_mcVersion];
@@ -2919,6 +2924,7 @@ if (hasRealFileName) {
     } mutableCopy];
 
     profile[@"runtimeRoot"] = relativeRuntime;
+    if ([modpackInfo[@"loader"] isEqual:@"Forge"]) profile[@"sharedForgeRuntime"] = @YES;
 
     // 修复（参照 FCL/HMCL）：写入 javaVersion 字段
     // MC 1.18+ 需要 Java 17，1.20.5+ 需要 Java 21，1.16.5- 用 Java 8
@@ -3423,6 +3429,17 @@ if (hasRealFileName) {
 
 #pragma mark - Delete Modpack
 
+- (BOOL)deleteImportedProfileNamed:(NSString *)name error:(NSError **)error {
+    NSDictionary *profile = PLProfiles.current.profiles[name];
+    NSString *folder = ModpackInstanceID(profile[@"gameDir"], self.customGameDir);
+    if (![profile[@"type"] isEqual:@"modpack"] || !folder) {
+        if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadInvalidFileNameError userInfo:nil];
+        return NO;
+    }
+    return [self deleteModpack:@{@"id":folder, @"profileName":name, @"versionId":profile[@"lastVersionId"] ?: @"",
+        @"gameDirAbsolute":[self.customGameDir stringByAppendingPathComponent:folder]} error:error];
+}
+
 - (BOOL)deleteModpack:(NSDictionary *)modpackInfo error:(NSError **)error {
     NSString *gameDirAbsolute = modpackInfo[@"gameDirAbsolute"];
     if (!gameDirAbsolute) {
@@ -3432,28 +3449,17 @@ if (hasRealFileName) {
     NSString *profileName = modpackInfo[@"profileName"];
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    if (gameDirAbsolute && [fm fileExistsAtPath:gameDirAbsolute]) {
-        if (![fm removeItemAtPath:gameDirAbsolute error:error]) {
-            return NO;
-        }
+    NSString *folder = modpackInfo[@"id"];
+    NSString *ownedDir = folder.length ? [self.customGameDir stringByAppendingPathComponent:folder] : nil;
+    BOOL sharesContent = NO;
+    for (NSString *otherName in PLProfiles.current.profiles) {
+        if ([otherName isEqual:profileName]) continue;
+        NSString *other = PLProfiles.current.profiles[otherName][@"gameDir"];
+        if (folder && [folder isEqual:ModpackInstanceID(other, self.customGameDir)]) sharesContent = YES;
     }
-    // ★ Task274-h S2（自愈兜底）：历史缺陷曾把 .ame269_stage-<id>-<ts> 死路径持久化进
-    //   账本 gameDirAbsolute——上方 fileExistsAtPath 必败 → 静默跳过 → mods/saves 整树
-    //   残留。按 gameDirRelative 反推规范目录（custom_gamedir/<id>）再清一次；幂等：
-    //   两条路径同目录（已删）或目录不存在时均为 no-op。
-    {
-        NSString *ame274_deadId = modpackInfo[@"id"];
-        if ([ame274_deadId isKindOfClass:[NSString class]] && ame274_deadId.length > 0) {
-            NSString *ame274_realDir = [self absoluteGameDirForModpackId:ame274_deadId];
-            if (ame274_realDir.length > 0 && [fm fileExistsAtPath:ame274_realDir]
-                && ![ame274_realDir isEqualToString:gameDirAbsolute]) {
-                NSLog(@"[ModpackImport] Task274-h S2: ledger gameDirAbsolute '%@' is dead -- removing real dir %@ (self-heal)",
-                      gameDirAbsolute ?: @"(nil)", ame274_realDir.lastPathComponent);
-                if (![fm removeItemAtPath:ame274_realDir error:error]) {
-                    return NO;
-                }
-            }
-        }
+    if (!sharesContent) {
+        NSString *target = [folder isEqual:ModpackInstanceID(ownedDir, self.customGameDir)] ? ownedDir : gameDirAbsolute;
+        if (target && [fm fileExistsAtPath:target] && ![fm removeItemAtPath:target error:error]) return NO;
     }
 
     if (profileName) {
@@ -3479,7 +3485,16 @@ if (hasRealFileName) {
     // 避免孤儿版本目录累积（仅清理 modpackInfo 中记录的带短 hash 后缀 versionId，
     // 不会误删用户单独安装的无后缀同名版本；旧数据无 versionId 字段时保持旧行为不清理）。
     NSString *versionId = modpackInfo[@"versionId"];
-    if ([versionId isKindOfClass:[NSString class]] && versionId.length > 0) {
+    BOOL privateVersion = [versionId isKindOfClass:NSString.class] && [versionId isEqual:versionId.lastPathComponent] &&
+        [versionId rangeOfString:@"-[0-9a-fA-F]{8}$" options:NSRegularExpressionSearch].location != NSNotFound;
+    BOOL referenced = NO;
+    for (NSDictionary *profile in PLProfiles.current.profiles.allValues) {
+        if ([profile isKindOfClass:NSDictionary.class] && [profile[@"lastVersionId"] isEqual:versionId]) {
+            referenced = YES;
+            break;
+        }
+    }
+    if (privateVersion && !referenced) {
         NSString *mainVersionDir = [NSString stringWithFormat:@"%s/versions/%@", getenv("POJAV_GAME_DIR"), versionId];
         if ([fm fileExistsAtPath:mainVersionDir]) {
             [fm removeItemAtPath:mainVersionDir error:nil];

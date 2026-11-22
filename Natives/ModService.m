@@ -725,6 +725,7 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
     for (NSString *ame329_name in ame329_profiles.allKeys) {
         NSDictionary *ame329_prof = ame329_profiles[ame329_name];
         if (![ame329_prof isKindOfClass:[NSDictionary class]]) continue;
+        if ([ame329_prof[@"sharedForgeRuntime"] boolValue]) continue;
         NSString *ame329_gd = ame329_prof[@"gameDir"];
         if (![ame329_gd isKindOfClass:[NSString class]] || ![ame329_gd isAbsolutePath]) continue;
         NSString *ame329_gdStd = [ame329_gd stringByStandardizingPath];
@@ -954,7 +955,9 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
         // ★ Task327：versions/ 真实文件物化（符号链接在文件 App/FileProvider
         //   视图不解析——装机两轮"空目录依旧"实锤；装机锚点 latestlog 搜
         //   "[Ame327] instance versions materialized"）
-        [ModService ame327_materializeInstanceVersions:ame325_gdComp fm:ame325_fm];
+        if (![ame325_prof[@"sharedForgeRuntime"] boolValue]) {
+            [ModService ame327_materializeInstanceVersions:ame325_gdComp fm:ame325_fm];
+        }
     }
     if (ame325_created > 0) {
         NSLog(@"[Ame325] instance-axis isolation skeleton ensured (%ld instance(s), %ld dir(s) created, FCL parity)",

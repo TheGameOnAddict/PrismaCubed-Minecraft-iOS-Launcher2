@@ -52,6 +52,7 @@
 #import "ZL2VersionsViewController.h"
 #import "ZL2Theme.h"
 #import "PLProfiles.h"
+#import "ModpackImportService.h"
 #import "ModLoaderIconHelper.h"
 #import "ModpackExportService.h"   // +parseVersionId:（lastVersionId 反解 MC 版本）
 #import "ProfileSettingsViewController.h"
@@ -913,11 +914,20 @@ static UIImage *ZL2VersionsSystemImage(NSString *name, NSString *fallback) {
         NSDictionary *profile = PLProfiles.current.profiles[profileName];
         NSString *versionId = [profile isKindOfClass:NSDictionary.class] ? profile[@"lastVersionId"] : nil;
 
-        [PLProfiles.current.profiles removeObjectForKey:profileName];
-        if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
-            PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;
+        if ([profile[@"type"] isEqual:@"modpack"] && [profile[@"sharedForgeRuntime"] boolValue]) {
+            NSError *error = nil;
+            if (![[ModpackImportService new] deleteImportedProfileNamed:profileName error:&error]) {
+                [self showAlert:error.localizedDescription];
+                return;
+            }
+            versionId = nil; // The shared installation also serves other profiles.
+        } else {
+            [PLProfiles.current.profiles removeObjectForKey:profileName];
+            if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
+                PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;
+            }
+            [PLProfiles.current save];
         }
-        [PLProfiles.current save];
 
         if ([versionId isKindOfClass:[NSString class]] && versionId.length > 0) {
             BOOL stillReferenced = NO;

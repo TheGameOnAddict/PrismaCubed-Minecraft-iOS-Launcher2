@@ -2128,6 +2128,14 @@ void gl_make_current(gl_render_window_t* bundle) {
                         : NULL;
                     const char *ame146_verDef = ame146_def ? ame146_def(0x1F02) : NULL;
                     const char *ame146_verRen = ame146_ren ? ame146_ren(0x1F02) : NULL;
+                    if (ame146_ren && ame146_verRen) {
+                        static dispatch_once_t backendLogged;
+                        dispatch_once(&backendLogged, ^{
+                            NSLog(@"[Renderer] EGL backend=%s GL_RENDERER=%s GL_VENDOR=%s GL_VERSION=%s",
+                                getenv("AMETHYST_RENDERER") ?: "unknown", ame146_ren(0x1F01) ?: "unknown",
+                                ame146_ren(0x1F00) ?: "unknown", ame146_verRen);
+                        });
+                    }
                     NSLog(@"[gl_bridge] Task146 glGetString tri-probe: "
                           @"default=%p ver=%s | renderer=%p ver=%s | %s",
                           (void *)ame146_def, ame146_verDef ?: "<NULL>",
