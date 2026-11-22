@@ -5,6 +5,7 @@
 - (instancetype)initWithFilePath:(NSString *)path {
     if (self = [super init]) {
         _filePath = [path copy];
+        _fileSize = [[NSFileManager.defaultManager attributesOfItemAtPath:path error:nil] fileSize];
         _fileName = [[path lastPathComponent] copy];
         [self refreshDisabledFlag];
         NSString *name = [_fileName copy];

@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ModItem : NSObject
 
 // --- Properties for Local Mods ---
+@property (nonatomic) unsigned long long fileSize;
 @property (nonatomic, copy, nullable) NSString *fileName;
 @property (nonatomic, copy, nullable) NSString *filePath;
 @property (nonatomic, assign) BOOL disabled;

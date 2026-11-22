@@ -20,6 +20,22 @@ static inline NSString *ModpackInstanceID(NSString *gameDir, NSString *instances
     return [[NSUUID alloc] initWithUUIDString:uuid] ? folder : nil;
 }
 
+static inline BOOL ModpackIsGeneratedFolder(NSString *folder) {
+    if (![folder hasPrefix:@"curseforge_"] && ![folder hasPrefix:@"modrinth_"]) return NO;
+    NSString *uuid = [folder substringFromIndex:NSMaxRange([folder rangeOfString:@"_"])];
+    return [[NSUUID alloc] initWithUUIDString:uuid] != nil;
+}
+
+// Reconciliation in older builds created these bare custom records for import working directories.
+static inline BOOL ModpackIsDirectoryCard(NSString *key, NSDictionary *profile, NSString *instances) {
+    if (!ModpackIsGeneratedFolder(key) || ![profile isKindOfClass:NSDictionary.class] || ![profile[@"type"] isEqual:@"custom"] || ![key isEqual:profile[@"name"]]) return NO;
+    NSString *dir = profile[@"gameDir"];
+    if (![dir isKindOfClass:NSString.class] ||
+        ![ModpackInstanceID(dir, instances) isEqual:key]) return NO;
+    NSSet *fields = [NSSet setWithArray:@[@"name", @"gameDir", @"type", @"created", @"lastVersionId", @"lastPlayed"]];
+    return [[NSSet setWithArray:profile.allKeys] isSubsetOfSet:fields];
+}
+
 // CurseForge exports inactive mod JARs with required=false. Keep them available to the profile toggle.
 static inline NSString *ModpackInstalledFileName(NSString *name, NSString *category, id required) {
     if ([category isEqual:@"mods"] && [name.pathExtension.lowercaseString isEqual:@"jar"] &&
@@ -50,6 +66,27 @@ static inline NSString *ModpackResolvedPath(NSString *path, NSError **error) {
     NSString *result = [NSFileManager.defaultManager stringWithFileSystemRepresentation:resolved length:strlen(resolved)];
     free(resolved);
     return result;
+}
+
+// The installer writes libraries and assets beside its versions directory. A pack also
+// has a private copy of the version JSON for its content folder.
+static inline NSString *ModpackInstalledRuntime(NSString *home, NSString *owner, NSString *preferred, NSString *version) {
+    if (!version.length || ![version isEqual:version.lastPathComponent] || !home.length) return nil;
+    NSMutableArray *candidates = [NSMutableArray array];
+    if ([owner isKindOfClass:NSString.class] && owner.length && !owner.isAbsolutePath &&
+        ![owner.pathComponents containsObject:@".."]) [candidates addObject:[home stringByAppendingPathComponent:owner]];
+    [candidates addObject:[home stringByAppendingPathComponent:@"Library/Application Support/minecraft"]];
+    if (preferred.length && [preferred isEqual:preferred.lastPathComponent]) {
+        [candidates addObject:[[home stringByAppendingPathComponent:@"instances"] stringByAppendingPathComponent:preferred]];
+    }
+    [candidates addObject:[home stringByAppendingPathComponent:@"shared_core"]];
+    NSString *json = [NSString stringWithFormat:@"versions/%@/%@.json", version, version];
+    for (NSString *path in candidates) {
+        BOOL directory = NO;
+        if ([NSFileManager.defaultManager fileExistsAtPath:[path stringByAppendingPathComponent:json] isDirectory:&directory] && !directory)
+            return ModpackResolvedPath(path, NULL);
+    }
+    return nil;
 }
 
 static inline BOOL ModpackForgeError(NSError **error, NSString *path, NSString *reason) {

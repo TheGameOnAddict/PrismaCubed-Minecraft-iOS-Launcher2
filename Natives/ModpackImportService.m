@@ -2865,12 +2865,17 @@ if (hasRealFileName) {
     // Task269：复用已有实例——更新原 profile（保键名/保留未知字段），绝不新建 "(2)"。
     // 与 importModpackInner 头部的复用改写成对：id 已换成已有实例的文件夹 id，
     // 这里把 lastVersionId/loader/javaVersion/icon 等刷新进原 profile 即完成"重导入=刷新"。
+    NSString *home = ModpackResolvedPath(@(getenv("POJAV_HOME") ?: ""), NULL);
+    NSString *runtime = ModpackResolvedPath(@(getenv("POJAV_GAME_DIR") ?: ""), NULL);
+    NSString *prefix = [home stringByAppendingString:@"/"];
+    NSString *relativeRuntime = prefix && [runtime hasPrefix:prefix] ? [runtime substringFromIndex:prefix.length] : nil;
     NSString *ame269_reuse = modpackInfo[@"ame269_reuseProfileName"];
     if (ame269_reuse.length > 0 && PLProfiles.current.profiles[ame269_reuse]) {
         NSMutableDictionary *ame269_prof = [PLProfiles.current.profiles[ame269_reuse] mutableCopy];
         ame269_prof[@"lastVersionId"] = versionId ?: @"";
         ame269_prof[@"gameDir"] = gameDirRelative;
         ame269_prof[@"type"] = @"modpack";
+        ame269_prof[@"runtimeRoot"] = relativeRuntime;
         NSString *ame269_mcVersion = modpackInfo[@"minecraftVersion"];
         if (ame269_mcVersion.length > 0) {
             NSInteger ame269_javaMajor = [self javaMajorVersionForMC:ame269_mcVersion];
@@ -2912,6 +2917,8 @@ if (hasRealFileName) {
         @"created": [self iso8601StringFromDate:[NSDate date]],
         @"type": @"modpack"
     } mutableCopy];
+
+    profile[@"runtimeRoot"] = relativeRuntime;
 
     // 修复（参照 FCL/HMCL）：写入 javaVersion 字段
     // MC 1.18+ 需要 Java 17，1.20.5+ 需要 Java 21，1.16.5- 用 Java 8

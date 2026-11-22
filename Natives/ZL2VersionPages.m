@@ -67,6 +67,7 @@
 #import "ModLoaderIconHelper.h"      // 7.0-UI-13-r1：加载器识别（详情头图标口径）
 #import "DataPackService.h"
 #import "ModpackExportService.h"     // 7.0-UI-13-r1：版本 id 反解（MC 版本口径）
+#import "DownloadTaskManager.h"
 #import "ModService.h"                 // ★ Task343：模组页数据层（scan/toggle/delete/metadata/隔离口径）
 #import "ModUpdateService.h"          // ★ Task343：检查更新全流程（双源限流）
 #import "PLDownloadClient.h"          // ★ Task343：更新下载（镜像候选 + SHA1 校验）
@@ -1083,6 +1084,10 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *ameV13_onlineIdByPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, ModUpdateResult *> *ameV13_updateResults;
 @property (nonatomic, strong) NSMutableSet<NSString *> *ameV13_selectedPaths;
+@property (nonatomic) BOOL scanningMods;
+@property (nonatomic) BOOL needsModRescan;
+@property (nonatomic) NSUInteger cardGeneration;
+@property (nonatomic, copy) NSString *cardLoader;
 @property (nonatomic, assign) BOOL ameV13_selectMode;
 @property (nonatomic, assign) BOOL ameV13_updateBusy;
 @end
@@ -1092,6 +1097,8 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(modDownloadFinished:)
+        name:DownloadTaskManagerTaskCompletedNotification object:nil];
     _ameV13_displayNameByPath = [NSMutableDictionary dictionary];
     _ameV13_onlineIdByPath = [NSMutableDictionary dictionary];
     _ameV13_updateResults = [NSMutableDictionary dictionary];
@@ -1166,39 +1173,41 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 #pragma mark 数据装载（ModService 全量接线）
 
-- (void)ameV13_reloadContent {
-    if (_ameV13_updateBusy) return;   // 更新流程持有数据快照，装载完再刷新
-    __weak typeof(self) wself = self;
-    NSString *profile = self.ameV13_profileName;
-    [[ModService sharedService] scanModsForProfile:profile completion:^(NSArray<ModItem *> *mods) {
-        __strong typeof(wself) strongSelf = wself;
-        if (!strongSelf) return;
-        strongSelf.ameV13_mods = mods ?: @[];
-        // 目录提示行随扫描刷新（Task264 生效目录实况）
-
-        // 修改时间缓存（排序档）+ 元数据补齐（显示名/onlineID，逐个异步）
-        [strongSelf ameV13_collectAuxForMods:strongSelf.ameV13_mods];
-        [strongSelf ameV13_applyFilter];
-    }];
+- (void)modDownloadFinished:(NSNotification *)notification {
+    DownloadTaskItem *item = notification.userInfo[DownloadTaskManagerTaskKey];
+    if (item.state != DownloadTaskStateCompleted || ![item.resourceType isEqual:DownloadTaskResourceTypeMod] ||
+        ![item.targetProfileName isEqual:self.ameV13_profileName]) return;
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(ameV13_reloadContent) object:nil];
+    [self performSelector:@selector(ameV13_reloadContent) withObject:nil afterDelay:0.12];
 }
 
-- (void)ameV13_collectAuxForMods:(NSArray<ModItem *> *)mods {
-    __weak typeof(self) wself = self;
-    for (ModItem *mod in mods) {
-        [[ModService sharedService] fetchMetadataForMod:mod completion:^(ModItem *item, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(wself) strongSelf = wself;
-                if (!strongSelf || !item.filePath.length) return;
-                if (item.displayName.length > 0) {
-                    strongSelf.ameV13_displayNameByPath[item.filePath] = item.displayName;
-                }
-                if (item.onlineID.length > 0) {
-                    strongSelf.ameV13_onlineIdByPath[item.filePath] = item.onlineID;
-                }
-                [strongSelf ameV13_applyFilter];   // 元数据到位即增量重排（卡片标题升级）
-            });
-        }];
+- (void)ameV13_reloadContent {
+    if (_scanningMods || _ameV13_updateBusy) {
+        _needsModRescan = YES;
+        return;
     }
+    _needsModRescan = NO;
+    _scanningMods = YES;
+    __weak typeof(self) weakSelf = self;
+    NSString *profile = self.ameV13_profileName;
+    [[ModService sharedService] scanModsForProfile:profile completion:^(NSArray<ModItem *> *mods) {
+        ZL2VersionModsPage *page = weakSelf;
+        if (!page) return;
+        page.scanningMods = NO;
+        if (page.needsModRescan || ![profile isEqual:page.ameV13_profileName]) {
+            [page ameV13_reloadContent];
+            return;
+        }
+        page.ameV13_mods = mods ?: @[];
+        [page.ameV13_displayNameByPath removeAllObjects];
+        [page.ameV13_onlineIdByPath removeAllObjects];
+        for (ModItem *mod in mods) {
+            if (!mod.filePath.length) continue;
+            if (mod.displayName.length) page.ameV13_displayNameByPath[mod.filePath] = mod.displayName;
+            if (mod.onlineID.length) page.ameV13_onlineIdByPath[mod.filePath] = mod.onlineID;
+        }
+        [page ameV13_applyFilter];
+    }];
 }
 
 #pragma mark 过滤 / 排序 / 重建
@@ -1238,6 +1247,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 #pragma mark 卡片重建
 
 - (void)ameV13_rebuildCards {
+    _cardGeneration++;
     [self ameV13_clearStack:_ameV13_cardsStack];
     if (_ameV13_viewMods.count == 0) {
         BOOL isFiltering = ([_ameV13_searchBar.text stringByTrimmingCharactersInSet:
@@ -1268,15 +1278,27 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         }
         return;
     }
-    for (ModItem *mod in _ameV13_viewMods) {
-        [_ameV13_cardsStack addArrangedSubview:[self ameV13_cardForMod:mod]];
+    self.cardLoader = [self ameV13_profileLoaderForDisplay];
+    [self appendModCardsFrom:0 generation:_cardGeneration];
+}
+
+- (void)appendModCardsFrom:(NSUInteger)index generation:(NSUInteger)generation {
+    if (generation != _cardGeneration) return;
+    NSUInteger end = MIN(index + 8, _ameV13_viewMods.count);
+    for (; index < end; index++) {
+        [_ameV13_cardsStack addArrangedSubview:[self ameV13_cardForMod:_ameV13_viewMods[index]]];
+    }
+    if (end < _ameV13_viewMods.count) {
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 60), dispatch_get_main_queue(), ^{
+            [weakSelf appendModCardsFrom:end generation:generation];
+        });
     }
 }
 
 - (UIView *)ameV13_cardForMod:(ModItem *)mod {
     NSString *name = [self ameV13_displayNameFor:mod];
-    NSString *sizeText = ZL2V13ByteCount([[[NSFileManager defaultManager]
-        attributesOfItemAtPath:mod.filePath error:nil] fileSize]);
+    NSString *sizeText = ZL2V13ByteCount(mod.fileSize);
     NSMutableArray<NSString *> *detailParts = [NSMutableArray arrayWithObjects:mod.fileName ?: @"–", sizeText, nil];
     if (mod.disabled) [detailParts addObject:localize(@"resman.common.disabled_tag", nil)];
     ModUpdateResult *upd = _ameV13_updateResults[mod.filePath];
@@ -1288,7 +1310,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     UIStackView *textStack = [self ameV13_textStackWithTitle:name
                                                       detail:[detailParts componentsJoinedByString:@" · "]];
     // 加载器错配徽标（ame288 同语义：橙档 tertiary 色 + 错配加载器名）
-    NSString *loader = [self ameV13_profileLoaderForDisplay];
+    NSString *loader = self.cardLoader;
     if (loader.length > 0 && [self ameV13_mod:mod mismatchesProfileLoader:loader]) {
         UILabel *badge = [[UILabel alloc] init];
         badge.font = [ZL2Theme fontLabelMedium];
@@ -1654,6 +1676,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     _ameV13_updateBusy = busy;
     _ameV13_busyLabel.hidden = !busy;
     _ameV13_busyLabel.text = text ?: @"";
+    if (!busy && _needsModRescan) [self ameV13_reloadContent];
 }
 
 - (void)ameV13_checkForUpdates {

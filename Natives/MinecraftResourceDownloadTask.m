@@ -983,7 +983,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
     // profile 引用该版本（lastVersionId 命中）不重复登记。
     {
         NSString *ame302_vid = version[@"id"];
-        if (!self.parentImportTaskId.length && [ame302_vid isKindOfClass:NSString.class] && ame302_vid.length > 0
+        if (![version[@"ame300_launchcheck"] boolValue] && !self.parentImportTaskId.length && [ame302_vid isKindOfClass:NSString.class] && ame302_vid.length > 0
             && ![ame302_vid hasPrefix:@"latest-"]) {
             BOOL ame302_needRegister = YES;
             for (NSString *ame302_key in PLProfiles.current.profiles) {
@@ -1023,7 +1023,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
     [manager setTaskWithId:taskId stages:PLTaskStagesVanilla()];
     self.stageReportingEnabled = YES;
     self.currentDownloadTaskItem.parentTaskId = self.parentImportTaskId;
-    self.currentDownloadTaskItem.autoPresentDetail = !self.parentImportTaskId.length;
+    self.currentDownloadTaskItem.autoPresentDetail = !self.parentImportTaskId.length && ![version[@"ame300_launchcheck"] boolValue];
     // 阶段0 版本清单：版本对象由调用方（版本列表/预装流程）解析提供，直接标记完成
     [manager updateTaskWithId:taskId stageAtIndex:kMCStageIndexFetchManifest status:PLTaskStageStatusCompleted];
     // 阶段2 下载客户端：iOS 启动器使用自有渲染管线，client.jar 由 Java 端启动时按需下载

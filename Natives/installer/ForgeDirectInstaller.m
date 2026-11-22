@@ -759,7 +759,14 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
     // 任一缺失 ⇒ 显式失败并列出缺件清单。
     {
         NSMutableArray<NSString *> *missingArtifacts = [NSMutableArray array];
-        NSArray *ame188_runtimeLibs = versionJson[@"libraries"];
+        NSMutableOrderedSet *runtimeEntries = [NSMutableOrderedSet orderedSet];
+        if ([allLibraries isKindOfClass:NSArray.class]) [runtimeEntries addObjectsFromArray:allLibraries];
+        // Modern Forge declares some launch modules only in install_profile.json.
+        for (NSDictionary *entry in processorLibraries) {
+            if ([entry isKindOfClass:NSDictionary.class] && [entry[@"name"] isKindOfClass:NSString.class] &&
+                [self isCriticalLibrary:entry[@"name"]]) [runtimeEntries addObject:entry];
+        }
+        NSArray *ame188_runtimeLibs = runtimeEntries.array;
         if ([ame188_runtimeLibs isKindOfClass:[NSArray class]]) {
             for (NSDictionary *ame188_lib in ame188_runtimeLibs) {
                 if (![ame188_lib isKindOfClass:[NSDictionary class]]) continue;
@@ -1063,6 +1070,8 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
         @"cpw.mods:modlauncher",
         @"net.minecraftforge.bootstraplauncher",
         @"net.minecraftforge:forge",
+        @"net.minecraftforge:fmlcore:",
+        @"net.minecraftforge:fmlearlydisplay:",
         @"net.minecraftforge:fmlloader",
         @"net.minecraftforge:javafmllanguage",
         @"net.minecraftforge:lowcodelanguage",

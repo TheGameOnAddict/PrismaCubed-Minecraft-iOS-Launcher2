@@ -42,6 +42,27 @@ int main(void) {
             assert(ModpackPrepareForgeJar(libraries, stage, product, NULL));
             assert(ModpackPrepareForgeJar(libraries, stage, product, NULL));
         }
+        NSDictionary *card = @{@"name":folder, @"gameDir":live, @"type":@"custom"};
+        assert(ModpackIsDirectoryCard(folder, card, instances));
+        assert(!ModpackIsDirectoryCard(@"THE GANG", card, instances));
+        NSMutableDictionary *configured = card.mutableCopy;
+        configured[@"gameDir"] = content;
+        assert(ModpackIsDirectoryCard(folder, configured, instances));
+        configured[@"icon"] = @"custom";
+        assert(!ModpackIsDirectoryCard(folder, configured, instances));
+        NSString *vid = content.lastPathComponent;
+        NSString *manifest = [NSString stringWithFormat:@"versions/%@/%@.json", vid, vid];
+        NSString *mainJSON = [installer stringByAppendingPathComponent:manifest];
+        assert([fm createDirectoryAtPath:mainJSON.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:NULL]);
+        assert([NSData.data writeToFile:mainJSON atomically:YES]);
+        assert([NSData.data writeToFile:[live stringByAppendingPathComponent:manifest] atomically:YES]);
+        assert([ModpackInstalledRuntime(instances, @"default", nil, vid) isEqual:ModpackResolvedPath(installer, NULL)]);
+        assert(!ModpackInstalledRuntime(instances, @"../default", nil, vid));
+        NSString *home = [instances stringByAppendingPathComponent:@"legacy-home"];
+        NSString *stable = [home stringByAppendingPathComponent:@"Library/Application Support/minecraft"];
+        assert([fm createDirectoryAtPath:stable.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:NULL]);
+        assert([fm createSymbolicLinkAtPath:stable withDestinationPath:installer error:NULL]);
+        assert([ModpackInstalledRuntime(home, nil, @"default", vid) isEqual:ModpackResolvedPath(installer, NULL)]);
         // A new profile reached through an alias has no libraries/net/... descendants yet.
         NSString *alias = [instances stringByAppendingPathComponent:@"game-dir"];
         assert([fm createSymbolicLinkAtPath:alias withDestinationPath:installer error:NULL]);

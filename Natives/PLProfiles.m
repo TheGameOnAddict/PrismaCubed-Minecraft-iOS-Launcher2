@@ -352,7 +352,7 @@ static NSString *_ame353_registryLastGoodPath = nil;
                     ([ame349_gd isEqualToString:ame349_path] || [ModpackInstanceID(ame349_gd, ame349_instancesDir) isEqual:ame349_name])) { ame349_known = YES; break; }
             }
         }
-        if (!ame349_known) [ame349_orphans addObject:ame349_name];
+        if (!ame349_known && !ModpackIsGeneratedFolder(ame349_name)) [ame349_orphans addObject:ame349_name];
     }
 
     // ---- 登记孤儿（lastVersionId 尽力从实例自带 launcher_profiles.json 回读）----
@@ -646,6 +646,12 @@ static NSString *_ame353_registryLastGoodPath = nil;
 
     NSString *ame353_home = @(getenv("POJAV_HOME") ?: "");
     if (ame353_home.length == 0) return nil;
+
+    if ([ame353_p[@"type"] isEqual:@"modpack"]) {
+        NSString *runtime = ModpackInstalledRuntime(ame353_home, ame353_p[@"runtimeRoot"],
+            getPrefObject(@"general.game_directory") ?: @"default", ame353_vid);
+        if (runtime) return runtime;
+    }
 
     // gameDir 展开（Task275 ame275 同口径：绝对原样；相对按
     // instances/<偏好目录>/ 拼接；缺失 = 当前实例根）

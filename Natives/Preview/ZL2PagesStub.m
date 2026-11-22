@@ -389,6 +389,13 @@ NSMutableArray *localVersionList = nil;
 
 // DownloadTaskManager.h 声明（DownloadTaskManager.m L7-8 原值）。manager 本体
 // 在 main TU 是空桩、永不 post，值仅保真
+@interface ForgeProcessorExecutor : NSObject
++ (BOOL)jvmUsedThisProcess;
+@end
+@implementation ForgeProcessorExecutor
++ (BOOL)jvmUsedThisProcess { return NO; }
+@end
+NSString * const DownloadTaskManagerTaskCompletedNotification = @"com.amethyst.DownloadTaskManager.TaskCompleted";
 NSString * const DownloadTaskManagerTaskKey = @"DownloadTaskManagerTaskKey";
 NSString * const DownloadTaskManagerDidUpdateTaskNotification = @"com.amethyst.DownloadTaskManager.DidUpdateTask";
 NSString * const DownloadTaskManagerAggregateStateDidChangeNotification = @"com.amethyst.DownloadTaskManager.AggregateStateDidChange";
@@ -631,6 +638,7 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 //（结果卡点击→版本页配置 + 下载前 selectedVersionDownloadURL/fileName/fileSHA1 回填）
 
 @interface ModItem : NSObject
+@property (nonatomic) unsigned long long fileSize;
 @property (nonatomic, copy) NSString *filePath;
 @property (nonatomic, copy) NSString *basename;
 @property (nonatomic) BOOL disabled, isForge, isNeoForge, isFabric;
@@ -828,6 +836,7 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
             [[NSMutableData dataWithLength:131072] writeToFile:item.filePath atomically:YES];
         }
         item.isForge = YES;
+        item.fileSize = 131072;
         [mods addObject:item];
     }
     completion(mods);

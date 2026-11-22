@@ -69,6 +69,8 @@
 #import "ZL2M3Kit.h"                 // ZL2M3BottomSheet（长按卡菜单）
 #import "authenticator/BaseAuthenticator.h"
 #import "PLProfiles.h"
+#import "ModpackLayout.h"
+#import "installer/ForgeProcessorExecutor.h"
 #import "AvatarManager.h"            // ame185 头像三层回退链（账户页同款）
 #import "ModLoaderIconHelper.h"
 #import "CubicDownloadsController.h"
@@ -475,6 +477,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
 // 启动链状态（1:1 旧链）
 @property (nonatomic, strong) MinecraftResourceDownloadTask *task;
+@property (nonatomic, weak) NSProgress *completedLaunchProgress;
 // FCL 风格：无账号点启动 → 挂标记切账户页，登录成功（UpdateAccountInfo）自动续启动
 @property (nonatomic, assign) BOOL ame_pendingLaunchAfterLogin;
 // 启动链进行中（FindVersionInRemoteList 反查 → 下载就绪的窗口期防双击；
@@ -1331,7 +1334,9 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         [installNames addObject:task.displayName];
         [rows addObject:@{@"name":task.displayName, @"install":task}];
     }
+    NSString *instances = [@(getenv("POJAV_HOME") ?: "") stringByAppendingPathComponent:@"instances"];
     for (NSString *name in sorted) {
+        if (ModpackIsDirectoryCard(name, profiles[name], instances)) continue;
         if ([installNames containsObject:name]) continue;
         NSDictionary *profile = profiles[name];
         if (![profile isKindOfClass:[NSDictionary class]]) continue;
@@ -1867,6 +1872,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         return;
     }
     self.ame_pendingLaunchAfterLogin = NO;
+    if ([ForgeProcessorExecutor jvmUsedThisProcess]) {
+        [self showAlert:localize(@"i18n_str_214", nil) message:localize(@"i18n_str_215", nil)];
+        return;
+    }
 
     // 旧契约：启动链发生在主页语境（Task261 判例：点启动 → 确定性秒回主页）
     [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowHomePage" object:nil];
@@ -1999,12 +2008,12 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
     // 强持有 progress 快照：即便 task 在异步落地前被 handleError 清空，
     // removeObserver 的对象依然存活（wild-pointer 双保险）
-    NSProgress *progress = self.task.progress;
-    if (!progress) return;
-    NSInteger percent = (NSInteger)(progress.fractionCompleted * 100.0 + 0.5);
-
+    NSProgress *progress = object;
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (percent >= 100) {
+        if (self.task.progress != progress || self.completedLaunchProgress == progress || progress.cancelled) return;
+        NSInteger percent = (NSInteger)(progress.fractionCompleted * 100.0);
+        if (progress.finished) {
+            self.completedLaunchProgress = progress;
             // 下载完成：统一进度页由任务内部接管（autoPresentDetail）。
             // KVO 野指针纪律：task=nil 之前先移除观察者（旧链完成分支同款）。
             @try {
@@ -2162,7 +2171,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     [alert addAction:[UIAlertAction actionWithTitle:localize(@"i18n_str_44", nil)
                                               style:UIAlertActionStyleDefault
                                             handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [(self.navigationController.topViewController ?: self) presentViewController:alert animated:YES completion:nil];
 }
 
 @end
