@@ -292,6 +292,7 @@ static UIViewController *ZL2M3TopmostViewController(void) {
 #pragma mark - ③ MD3 开关
 
 @interface ZL2M3Switch ()
+@property (nonatomic, assign) BOOL modRow;
 @property (nonatomic, strong) UIView *trackView;
 @property (nonatomic, strong) UIView *thumbView;
 @property (nonatomic, strong) NSLayoutConstraint *thumbSizeConstraint;
@@ -304,8 +305,17 @@ static UIViewController *ZL2M3TopmostViewController(void) {
 + (CGFloat)switchHeight { return 32.0; }
 
 - (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:CGRectZero];
+    return [self initWithFrame:frame modRow:NO];
+}
+
+- (instancetype)initForModRow {
+    return [self initWithFrame:CGRectZero modRow:YES];
+}
+
+- (instancetype)initWithFrame:(CGRect)frame modRow:(BOOL)modRow {
+    self = [super initWithFrame:frame];
     if (self) {
+        _modRow = modRow;
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.isAccessibilityElement = YES;
         self.accessibilityTraits = UIAccessibilityTraitButton;
@@ -320,20 +330,23 @@ static UIViewController *ZL2M3TopmostViewController(void) {
         _thumbView.userInteractionEnabled = NO;
         [self addSubview:_thumbView];
 
-        [_trackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor].active = YES;
-        [_trackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor].active = YES;
-        [_trackView.topAnchor constraintEqualToAnchor:self.topAnchor].active = YES;
-        [_trackView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor].active = YES;
+        CGFloat trackWidth = modRow ? 37 : ZL2M3Switch.switchWidth;
+        CGFloat trackHeight = modRow ? 24 : ZL2M3Switch.switchHeight;
+        [NSLayoutConstraint activateConstraints:@[
+            [_trackView.widthAnchor constraintEqualToConstant:trackWidth],
+            [_trackView.heightAnchor constraintEqualToConstant:trackHeight],
+            [_trackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+            [_trackView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [self.widthAnchor constraintEqualToConstant:modRow ? 44 : trackWidth],
+            [self.heightAnchor constraintEqualToConstant:modRow ? 44 : trackHeight],
+        ]];
 
         _thumbSizeConstraint = [_thumbView.widthAnchor constraintEqualToConstant:16];
         [_thumbSizeConstraint setActive:YES];
         [_thumbView.heightAnchor constraintEqualToAnchor:_thumbView.widthAnchor].active = YES;
-        _thumbLeadingConstraint = [_thumbView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:18];
+        _thumbLeadingConstraint = [_thumbView.leadingAnchor constraintEqualToAnchor:_trackView.leadingAnchor constant:4];
         [_thumbLeadingConstraint setActive:YES];
         [_thumbView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor].active = YES;
-
-        [self.widthAnchor constraintEqualToConstant:[ZL2M3Switch switchWidth]].active = YES;
-        [self.heightAnchor constraintEqualToConstant:[ZL2M3Switch switchHeight]].active = YES;
 
         [self addTarget:self
                  action:@selector(ame_toggle)
@@ -362,34 +375,25 @@ static UIViewController *ZL2M3TopmostViewController(void) {
 - (void)ame_applyAppearanceAnimated:(BOOL)animated {
     BOOL checked = _on;
     void (^apply)(void) = ^{
-        // MD3 三态尺寸：未选 16pt 拇指 + 2pt 描边；选中 24pt 拇指无描边
-        CGFloat thumb = checked ? 24.0 : 16.0;
-        // ★ Task331：拨动行程语义修复（用户："MD3 滑块怎么变成按压按钮了"）
-        //   —— 旧值 lead = checked ? 14 : 18 与尺寸 24/16 组合下，拇指中心
-        //   恒 = 26pt（52/2），两态只原地缩放零行程 = 带圆点的按压按钮观感，
-        //   开关语义完全不可读。真 M3 行程几何：OFF 拇指 16pt 左嵌 4pt
-        //   （占位 4..20），ON 拇指 24pt 右嵌 4pt（占位 24..48），行程 20pt
-        //   + 弹簧动画（既有）= 拨动语言一眼可读；轨道 52x32/圆角/配色
-        //   令牌全部不动，五消费方零布局影响（总宽不变）。
-        CGFloat lead = checked ? 24.0 : 4.0;
+        CGFloat thumb = self.modRow ? 14 : (checked ? 24 : 16);
         self.thumbSizeConstraint.constant = thumb;
-        self.thumbLeadingConstraint.constant = lead;
-        // ★ Task330：拇指圆形化 —— 旋钮此前从未设 cornerRadius，16/24pt
-        //   方形色块直接怼在轨道上（用户："为什么 md3 的滑块张这样"）。
-        //   圆形 = iOS 视觉母语；MD3 轨道几何与主题令牌配色保持不动。
-        self.thumbView.layer.cornerRadius = thumb / 2.0;
-
-        if (checked) {
-            self.trackView.backgroundColor = [ZL2Theme primary];
-            self.trackView.layer.borderWidth = 0.0;
-            self.thumbView.backgroundColor = [ZL2Theme onPrimary];
+        self.thumbLeadingConstraint.constant = self.modRow ? (checked ? 18 : 5) : (checked ? 24 : 4);
+        self.thumbView.layer.cornerRadius = thumb / 2;
+        if (self.modRow) {
+            self.trackView.backgroundColor = checked ? [UIColor colorWithRed:0.66 green:0.31 blue:0.16 alpha:1]
+                                                    : [UIColor colorWithRed:0.275 green:0.26 blue:0.275 alpha:1];
+            self.trackView.layer.borderWidth = 1;
+            self.trackView.layer.borderColor = (checked ? [UIColor colorWithRed:0.745 green:0.427 blue:0.26 alpha:1] : ZL2Theme.outlineVariant).CGColor;
+            self.thumbView.backgroundColor = checked ? [UIColor colorWithRed:1 green:0.945 blue:0.894 alpha:1]
+                                                    : [UIColor colorWithRed:0.831 green:0.808 blue:0.808 alpha:1];
+            self.trackView.layer.cornerRadius = 12;
         } else {
-            self.trackView.backgroundColor = [ZL2Theme surfaceVariant];
-            self.trackView.layer.borderWidth = 2.0;
-            self.trackView.layer.borderColor = [ZL2Theme outline].CGColor;
-            self.thumbView.backgroundColor = [ZL2Theme outline];
+            self.trackView.backgroundColor = checked ? ZL2Theme.primary : ZL2Theme.surfaceVariant;
+            self.trackView.layer.borderWidth = checked ? 0 : 2;
+            self.trackView.layer.borderColor = ZL2Theme.outline.CGColor;
+            self.thumbView.backgroundColor = checked ? ZL2Theme.onPrimary : ZL2Theme.outline;
+            self.trackView.layer.cornerRadius = ZL2M3Switch.switchHeight / 2;
         }
-        self.trackView.layer.cornerRadius = [ZL2M3Switch switchHeight] / 2.0;
         self.accessibilityValue = checked ? @"1" : @"0";
         // ★ Task332：动画事务内显式布局 —— 用户装机 c711f745 实测"md3 开关
         //   怎么没有动画"。根因：本 block 改的是 NSLayoutConstraint.constant

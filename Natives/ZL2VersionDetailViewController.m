@@ -275,11 +275,15 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
 
     // 「完成」（dismiss 语义：pop 优先，无 nav 时 dismiss 兜底）
     UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    doneButton.tintColor = [ZL2Theme primary];
+    doneButton.tintColor = ZL2Theme.onSurface;
+    doneButton.backgroundColor = ZL2Theme.surfaceContainerHigh;
+    doneButton.layer.cornerRadius = 8;
+    doneButton.layer.borderWidth = 1;
+    doneButton.layer.borderColor = ZL2Theme.outlineVariant.CGColor;
     doneButton.translatesAutoresizingMaskIntoConstraints = NO;
     doneButton.accessibilityLabel = NSLocalizedString(@"Profile menu", nil);
-    [doneButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
-    doneButton.contentEdgeInsets = UIEdgeInsetsMake(8, 12, 8, 12);
+    [doneButton setImage:[UIImage systemImageNamed:@"ellipsis" withConfiguration:
+        [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightBold]] forState:UIControlStateNormal];
     doneButton.showsMenuAsPrimaryAction = YES;
     __weak typeof(self) weakSelf = self;
     UIAction *folder = [UIAction actionWithTitle:NSLocalizedString(@"Open Folder", nil)
@@ -332,7 +336,8 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     [self.view addSubview:assistant];
     UIButton *play = [UIButton buttonWithType:UIButtonTypeSystem];
     play.accessibilityLabel = NSLocalizedString(@"Play", nil);
-    [play setImage:[UIImage systemImageNamed:@"play.fill"] forState:UIControlStateNormal];
+    [play setImage:[UIImage systemImageNamed:@"play.fill" withConfiguration:
+        [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightSemibold]] forState:UIControlStateNormal];
     play.backgroundColor = [ZL2Theme primary];
     play.tintColor = [ZL2Theme onPrimary];
     play.layer.cornerRadius = 8;
@@ -364,8 +369,10 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
         [textStack.centerYAnchor constraintEqualToAnchor:_headerCard.centerYAnchor],
         [textStack.bottomAnchor constraintLessThanOrEqualToAnchor:_headerCard.bottomAnchor constant:-12],
         [doneButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:textStack.trailingAnchor constant:8],
-        [doneButton.trailingAnchor constraintEqualToAnchor:play.leadingAnchor],
-        [play.trailingAnchor constraintEqualToAnchor:_headerCard.trailingAnchor constant:-8],
+        [doneButton.widthAnchor constraintEqualToConstant:34],
+        [doneButton.heightAnchor constraintEqualToAnchor:play.heightAnchor],
+        [doneButton.trailingAnchor constraintEqualToAnchor:play.leadingAnchor constant:-6],
+        [play.trailingAnchor constraintEqualToAnchor:_headerCard.trailingAnchor constant:-14],
         [play.centerYAnchor constraintEqualToAnchor:doneButton.centerYAnchor],
         [play.widthAnchor constraintEqualToConstant:36],
         [play.heightAnchor constraintEqualToConstant:36],

@@ -1319,7 +1319,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     }
 
     // 启用/禁用开关（ModService.toggleEnableForMod：Task217 失败弹窗 + 201 自愈重扫）
-    ZL2M3Switch *toggle = [[ZL2M3Switch alloc] init];
+    ZL2M3Switch *toggle = [[ZL2M3Switch alloc] initForModRow];
     toggle.translatesAutoresizingMaskIntoConstraints = NO;
     toggle.accessibilityLabel = name;
     toggle.on = !mod.disabled;

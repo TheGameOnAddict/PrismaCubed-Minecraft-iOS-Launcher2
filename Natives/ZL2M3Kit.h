@@ -70,6 +70,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ZL2M3Switch : UIControl
 
+- (instancetype)initForModRow;
+
 /// 开关态（程序赋值不动画；UI 点击自动翻转并发 ValueChanged）
 @property (nonatomic, assign) BOOL on;
 - (void)setOn:(BOOL)on animated:(BOOL)animated;

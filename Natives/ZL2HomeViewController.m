@@ -256,7 +256,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         _playButton.accessibilityTraits = UIAccessibilityTraitButton;
         [_cardBody addSubview:_playButton];
 
-        UIImage *playImage = ZL2HomeSizedImage(@"play.fill", @"play", 16);
+        UIImage *playImage = ZL2HomeSizedImage(@"play.fill", @"play", 18);
         _playIconView = [[UIImageView alloc] initWithImage:[playImage imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
         _playIconView.tintColor = [ZL2Theme onPrimary];
         _playButton.backgroundColor = [ZL2Theme primary];
@@ -295,14 +295,14 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
             [_infoLabel.leadingAnchor constraintEqualToAnchor:_nameLabel.leadingAnchor],
             [_infoLabel.trailingAnchor constraintEqualToAnchor:_playButton.leadingAnchor constant:-4],
             [_infoLabel.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:2],
-            [_playButton.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor constant:-6],
+            [_playButton.trailingAnchor constraintEqualToAnchor:_cardBody.trailingAnchor constant:-12],
             [_playButton.bottomAnchor constraintEqualToAnchor:_cardBody.bottomAnchor constant:-10],
             [_playButton.widthAnchor constraintEqualToConstant:40],
             [_playButton.heightAnchor constraintEqualToConstant:34],
             [_playIconView.centerXAnchor constraintEqualToAnchor:_playButton.centerXAnchor],
             [_playIconView.centerYAnchor constraintEqualToAnchor:_playButton.centerYAnchor],
-            [_playIconView.widthAnchor constraintEqualToConstant:15],
-            [_playIconView.heightAnchor constraintEqualToConstant:15],
+            [_playIconView.widthAnchor constraintEqualToConstant:18],
+            [_playIconView.heightAnchor constraintEqualToAnchor:_playIconView.widthAnchor],
         ]];
     }
     return self;

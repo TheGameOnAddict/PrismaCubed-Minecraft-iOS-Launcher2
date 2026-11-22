@@ -697,7 +697,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     [account.heightAnchor constraintEqualToConstant:40].active = YES;
     account.layer.cornerRadius = 11;
     account.layer.borderWidth = 1;
-    account.layer.borderColor = [ZL2Theme outlineVariant].CGColor;
+    account.layer.borderColor = [UIColor colorWithRed:0.78 green:0.51 blue:0.36 alpha:1].CGColor;
     account.backgroundColor = [ZL2Theme surfaceContainerHigh];
     [self.rightCluster addArrangedSubview:account];
     self.cubicAccountButton = account;
@@ -795,7 +795,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
             avatar.clipsToBounds = YES;
             avatar.contentMode = UIViewContentModeScaleAspectFill;
             avatar.tintColor = ZL2Theme.primary;
-            UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"]];
+            UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right" withConfiguration:
+                [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightSemibold]]];
             chevron.tintColor = ZL2Theme.primary;
             chevron.contentMode = UIViewContentModeScaleAspectFit;
             UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[avatar, labels, chevron]];
@@ -806,7 +807,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
             [item addSubview:row];
             [NSLayoutConstraint activateConstraints:@[
                 [avatar.widthAnchor constraintEqualToConstant:42], [avatar.heightAnchor constraintEqualToAnchor:avatar.widthAnchor],
-                [chevron.widthAnchor constraintEqualToConstant:14],
+                [chevron.widthAnchor constraintEqualToConstant:9],
+                [chevron.heightAnchor constraintEqualToConstant:13],
                 [row.leadingAnchor constraintEqualToAnchor:item.leadingAnchor constant:10],
                 [row.trailingAnchor constraintEqualToAnchor:item.trailingAnchor constant:-12],
                 [row.topAnchor constraintEqualToAnchor:item.topAnchor constant:10],
@@ -815,9 +817,11 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
             item.accessibilityLabel = [@[name.text, provider.text, manage] componentsJoinedByString:@", "];
         } else {
             [item setTitle:title forState:UIControlStateNormal];
-            [item setImage:[UIImage systemImageNamed:icons[index]] forState:UIControlStateNormal];
-            item.tintColor = ZL2Theme.onSurface;
-            item.backgroundColor = ZL2Theme.surfaceContainer;
+            [item setImage:[UIImage systemImageNamed:icons[index] withConfiguration:
+                [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightRegular]] forState:UIControlStateNormal];
+            item.tintColor = ZL2Theme.primary;
+            [item setTitleColor:ZL2Theme.onSurfaceVariant forState:UIControlStateNormal];
+            item.backgroundColor = UIColor.clearColor;
             item.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
             item.contentEdgeInsets = UIEdgeInsetsMake(12, 12, 12, 12);
             item.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, -8);
