@@ -242,17 +242,9 @@ NSString *localize(NSString *key, NSString *comment) {
 @end
 
 // DownloadTaskManager 最小桩：预览无真实任务
-@interface DownloadTaskItem : NSObject
-@property(nonatomic, copy) NSString *taskId;
-@property(nonatomic, weak) id rawTask;
-// 7.0-UI-9-e：下载页任务胶囊消费的缺口属性（state 恒 0=Pending 且 manager
-// 空桩 allTasks 恒空数组，胶囊 hidden 派生不变）
-@property(nonatomic, assign) NSInteger state;
-@property(nonatomic, assign) double progress;
-@end
-
-@implementation DownloadTaskItem
-@end
+#import "DownloadTaskItem.h"
+#import "PLTaskStages.h"
+#import "CubicDownloadsController.h"
 
 @interface DownloadTaskManager : NSObject
 + (instancetype)sharedManager;
@@ -269,11 +261,33 @@ NSString *localize(NSString *key, NSString *comment) {
     return m;
 }
 
-- (NSArray<DownloadTaskItem *> *)allTasks { return @[]; }
-- (BOOL)hasActiveTasks { return NO; }
-// 7.0-UI-9-e：下载页活动任务计数消费（空数组恒 0，胶囊保持隐藏）
-- (NSArray<DownloadTaskItem *> *)tasksWithStates:(NSArray<NSNumber *> *)states { return @[]; }
-
+- (NSArray<DownloadTaskItem *> *)allTasks {
+    NSString *route = [NSUserDefaults.standardUserDefaults stringForKey:@"route"];
+    if (![@[@"installing",@"downloads",@"download-log"] containsObject:route ?: @""]) return @[];
+    static DownloadTaskItem *demo;
+    if (!demo) {
+        demo = [[DownloadTaskItem alloc] initWithResourceType:DownloadTaskResourceTypeModpack resourceName:@"test-pack" displayName:@"Workshop Survival" downloadSource:@"CurseForge" rawTask:nil supportsResume:NO iconURL:nil];
+        demo.stages = PLTaskStagesModpack();
+        demo.currentStageIndex = 2;
+        demo.stages[0].status = demo.stages[1].status = PLTaskStageStatusCompleted;
+        demo.currentStage.status = PLTaskStageStatusRunning;
+        demo.currentStage.progress = 0.6;
+        demo.currentStage.completedFileCount = 18;
+        demo.currentStage.totalFileCount = 30;
+        demo.currentStage.message = @"Downloading AmbientSounds";
+        demo.state = DownloadTaskStateDownloading;
+        [demo appendActivity:@"Minecraft 1.20.1 · Forge 47.4.28"];
+        [demo appendActivity:@"Extract files · Finished"];
+        [demo appendActivity:@"Downloading AmbientSounds"];
+    }
+    return @[demo];
+}
+- (BOOL)hasActiveTasks { return self.allTasks.count > 0; }
+- (NSInteger)countOfTasksWithState:(NSInteger)state { return state == DownloadTaskStateDownloading ? self.allTasks.count : 0; }
+- (DownloadTaskItem *)taskWithId:(NSString *)taskId { return self.allTasks.firstObject; }
+- (NSArray<DownloadTaskItem *> *)tasksWithStates:(NSArray<NSNumber *> *)states {
+    return [states containsObject:@(DownloadTaskStateDownloading)] ? self.allTasks : @[];
+}
 @end
 
 // PLTaskProgressViewController 最小桩：预览不真呈现
@@ -741,6 +755,10 @@ static void PreviewScreens(UIWindow *window) {
     UINavigationController *nav = [shell ame_currentNav];
     ZL2HomeViewController *home = (id)nav.topViewController;
     NSCAssert([home isKindOfClass:ZL2HomeViewController.class], @"Home route unavailable");
+    if ([route isEqual:@"downloads"] || [route isEqual:@"download-log"]) {
+        DownloadTaskItem *task = [route isEqual:@"download-log"] ? DownloadTaskManager.sharedManager.allTasks.firstObject : nil;
+        [CubicDownloadsController showFrom:shell task:task];
+    }
     if ([route isEqual:@"browse"]) [home cubicBrowseModpacks];
     if ([route isEqual:@"profile"] || [route isEqual:@"mods"]) {
         [NSNotificationCenter.defaultCenter postNotificationName:@"ZL2OpenVersionDetail" object:nil userInfo:@{@"profile":@"The Gang"}];

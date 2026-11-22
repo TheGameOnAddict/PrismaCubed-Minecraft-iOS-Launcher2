@@ -622,8 +622,6 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 // 收藏模式（7.0-UI-14）：数据源 = ZL2FavoritesStore，其余全链同构复用
 @property (nonatomic, assign) BOOL favoritesMode;
 
-// 整合包安装流的原版预装任务句柄（旧页 vanillaPreinstallTask 语义）
-@property (nonatomic, strong) MinecraftResourceDownloadTask *vanillaPreinstallTask;
 
 @end
 
@@ -2630,80 +2628,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                         // 不强制下载 icon，保留原整合包内的（旧页同款注释）
                     }
 
-                    // 阶段14增强（参照 FCL/ZL2/HMCL）：安装整合包前先安装对应的原版
-                    // Minecraft——否则启动时 Java 端 Tools.getVersionInfo() 因
-                    // FileNotFoundException 崩溃（旧页同款）
-                    NSString *mcVersion = mutableInfo[@"minecraftVersion"];
-                    if (![mcVersion isKindOfClass:[NSString class]] || mcVersion.length == 0) {
-                        mcVersion = mutableInfo[@"dependencies"][@"minecraft"];
-                    }
-                    if ([mcVersion isKindOfClass:[NSString class]] && mcVersion.length > 0) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            __strong typeof(weakSelf) strongSelf3 = weakSelf;
-                            if (!strongSelf3) return;
-                            // 解析 + 解压完成，进入原版预装（阶段4 下载游戏文件）
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:0 status:PLTaskStageStatusCompleted];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:1 status:PLTaskStageStatusCompleted];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:4 status:PLTaskStageStatusRunning];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:4
-                                                                         progress:-1
-                                                                          message:[NSString stringWithFormat:localize(@"i18n_str_257", nil), mcVersion]];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId currentStageIndex:4];
-
-                            // 原版预装（已安装则直接跳过）
-                            NSDictionary *vanillaVersion = @{@"id": mcVersion};
-                            [strongSelf3 ame_ensureVanillaInstalled:vanillaVersion completion:^(BOOL vanillaSuccess) {
-                                __strong typeof(weakSelf) strongSelf4 = weakSelf;
-                                if (!strongSelf4) return;
-                                if (!vanillaSuccess) {
-                                    dispatch_async(dispatch_get_main_queue(), ^{
-                                        [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                                 stageAtIndex:4
-                                                                                     status:PLTaskStageStatusFailed];
-                                        [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId
-                                                                          completedWithError:[NSError errorWithDomain:@"DownloadError" code:-1
-                                                                                                               userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_258", nil), mcVersion]}]];
-                                        [strongSelf4 ame_showError:[NSString stringWithFormat:localize(@"i18n_str_194", nil), mcVersion]];
-                                    });
-                                    return;
-                                }
-                                // 原版安装完成，继续导入整合包（进入阶段2 下载依赖文件）
-                                dispatch_async(dispatch_get_main_queue(), ^{
-                                    [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                             stageAtIndex:4 status:PLTaskStageStatusCompleted];
-                                    [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                             stageAtIndex:2 status:PLTaskStageStatusRunning];
-                                    [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                             stageAtIndex:2
-                                                                                 progress:-1
-                                                                                message:localize(@"i18n_str_259", nil)];
-                                    [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId currentStageIndex:2];
-                                });
-                                // 在后台线程执行整合包导入
-                                dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-                                    [weakSelf ame_importModpackWithService:importService info:mutableInfo taskId:taskItem.taskId tempPath:tempPath];
-                                });
-                            }];
-                        });
-                    } else {
-                        // 无法提取游戏版本，跳过原版预安装（阶段4 标记 Skipped），直接导入
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:0 status:PLTaskStageStatusCompleted];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:1 status:PLTaskStageStatusCompleted];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:4 status:PLTaskStageStatusSkipped];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                     stageAtIndex:2 status:PLTaskStageStatusRunning];
-                            [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId currentStageIndex:2];
-                        });
-                        [weakSelf ame_importModpackWithService:importService info:mutableInfo taskId:taskItem.taskId tempPath:tempPath];
-                    }
+                    [strongSelf2 ame_importModpackWithService:importService info:mutableInfo taskId:taskItem.taskId tempPath:tempPath];
                 });
             });
         }];
@@ -2757,42 +2682,8 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                             tempPath:(NSString *)tempPath {
     NSError *importError = nil;
     __weak typeof(self) weakSelf = self;
-    BOOL success = [importService importModpack:info
-                                       progress:^(double p, NSString *stage) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            DownloadTaskManager *manager = [DownloadTaskManager sharedManager];
-            if (p < 0.3) {
-                // 阶段2 下载依赖文件进行中
-                [manager updateTaskWithId:taskId
-                             stageAtIndex:2
-                                 progress:p / 0.3
-                                  message:stage];
-            } else if (p < 0.7) {
-                // 阶段2 完成，阶段3 安装加载器进行中
-                [manager updateTaskWithId:taskId stageAtIndex:2 status:PLTaskStageStatusCompleted];
-                [manager updateTaskWithId:taskId
-                             stageAtIndex:3
-                                 progress:(p - 0.3) / 0.4
-                                  message:stage];
-                [manager updateTaskWithId:taskId currentStageIndex:3];
-            } else if (p < 1.0) {
-                // 阶段3 完成，阶段5 完成配置进行中
-                [manager updateTaskWithId:taskId stageAtIndex:3 status:PLTaskStageStatusCompleted];
-                [manager updateTaskWithId:taskId
-                             stageAtIndex:5
-                                 progress:(p - 0.7) / 0.3
-                                  message:stage];
-                [manager updateTaskWithId:taskId currentStageIndex:5];
-            } else {
-                // 全部阶段完成
-                [manager updateTaskWithId:taskId stageAtIndex:2 status:PLTaskStageStatusCompleted];
-                [manager updateTaskWithId:taskId stageAtIndex:3 status:PLTaskStageStatusCompleted];
-                [manager updateTaskWithId:taskId stageAtIndex:5 status:PLTaskStageStatusCompleted];
-            }
-        });
-    } error:&importError];
+    importService.archiveTaskId = taskId;
+    BOOL success = [importService importModpack:info progress:nil error:&importError];
 
     // 清理临时文件
     [[NSFileManager defaultManager] removeItemAtPath:tempPath error:nil];
@@ -2808,140 +2699,16 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
             // 唯一化版本（旧页 L5007-5018 同款）
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ReloadProfileList" object:nil];
             NSLog(@"[ModpackImport] Task72 ReloadProfileList posted after online modpack install");
-            NSString *loader = info[@"loader"];
             NSString *msg = [NSString stringWithFormat:localize(@"i18n_str_261", nil), info[@"name"]];
-            if ([loader isEqualToString:@"Forge"] || [loader isEqualToString:@"NeoForge"]) {
-                msg = [msg stringByAppendingFormat:localize(@"i18n_str_262", nil), loader, info[@"loaderVersion"]];
-            }
             [strongSelf ame_showSuccess:msg];
         } else {
-            // 失败时将当前运行中的阶段（2/3/5）标记为 Failed
-            [manager updateTaskWithId:taskId stageAtIndex:2 status:PLTaskStageStatusFailed];
-            [manager updateTaskWithId:taskId stageAtIndex:3 status:PLTaskStageStatusFailed];
-            [manager updateTaskWithId:taskId stageAtIndex:5 status:PLTaskStageStatusFailed];
             [manager setTaskWithId:taskId completedWithError:importError];
             [strongSelf ame_showError:importError.localizedDescription ?: localize(@"i18n_str_263", nil)];
         }
     });
 }
 
-// 旧页 ensureVanillaInstalled:completion:（L3161-3286）+ ensureVanillaVersionJSONExists:
-// （L3111-3152）合并等价移植：JSON 缺失时走 ForgeDirectInstaller.ensureParentVersionExists
-// （与 Forge 直装/ModpackImportService 同一条已验证路径），再 MinecraftResourceDownloadTask
-// 下载完整原版（轮询等待，进度页由任务内部阶段上报自动弹出）
-- (void)ame_ensureVanillaInstalled:(NSDictionary *)version completion:(void (^)(BOOL success))completion {
-    if (![version isKindOfClass:[NSDictionary class]]) {
-        if (completion) completion(NO);
-        return;
-    }
-    // ★ Task318：预装语义键——本链是整合包触发的自动预装（下方 ensureParentVersionExists
-    //   刚写出 versions/<id>/<id>.json json-only 半成品），同版本复用续传禁弹改名窗
-    //   （ame300_preinstall 门禁放行，见 MinecraftResourceDownloadTask downloadVersion:）
-    NSMutableDictionary *ame318_preinstallVersion = [version mutableCopy];
-    ame318_preinstallVersion[@"ame300_preinstall"] = @YES;
-    version = ame318_preinstallVersion;
-    NSString *versionId = version[@"id"];
-    if (![versionId isKindOfClass:[NSString class]] || versionId.length == 0) {
-        if (completion) completion(NO);
-        return;
-    }
 
-    // 用 POJAV_GAME_DIR（与 MinecraftResourceDownloadTask 一致），而非 POJAV_HOME
-    NSString *gameDir = @(getenv("POJAV_GAME_DIR"));
-    if (gameDir.length == 0) {
-        gameDir = @(getenv("POJAV_HOME"));
-    }
-    NSString *versionJsonPath = [gameDir stringByAppendingPathComponent:
-                                 [NSString stringWithFormat:@"versions/%@/%@.json", versionId, versionId]];
-
-    // 精细化跳过（旧页同款）：JSON 存在不代表安装完整——client.jar 缺失则继续
-    // 预装补全；MinecraftResourceDownloadTask 对已存在且 SHA1 正确的文件自动跳过
-    if ([NSFileManager.defaultManager fileExistsAtPath:versionJsonPath]) {
-        NSString *clientJarPath = [[gameDir stringByAppendingPathComponent:
-                                    [NSString stringWithFormat:@"versions/%@", versionId]]
-                                   stringByAppendingPathComponent:
-                                   [NSString stringWithFormat:@"%@.jar", versionId]];
-        if ([NSFileManager.defaultManager fileExistsAtPath:clientJarPath]) {
-            NSLog(@"[ZL2AssetSearch] Vanilla %@ already installed (JSON + jar exist), skip preinstall", versionId);
-            if (completion) completion(YES);
-            return;
-        }
-        NSLog(@"[ZL2AssetSearch] Vanilla %@ JSON exists but client.jar missing, resuming preinstall", versionId);
-    }
-
-    NSLog(@"[ZL2AssetSearch] Vanilla %@ not installed, preinstalling...", versionId);
-
-    // 1. 确保 version JSON 存在（Task70 收敛路径：PLMirrorCenter GameFile 候选 + 重试）
-    __weak typeof(self) weakSelf = self;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSError *fetchError = nil;
-        BOOL ok = [ForgeDirectInstaller ensureParentVersionExists:versionId error:&fetchError];
-        if (!ok) {
-            NSLog(@"[ZL2AssetSearch] ensureVanillaVersionJSONExists: %@ failed: %@",
-                  versionId, fetchError.localizedDescription ?: @"unknown");
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(NO);
-            });
-            return;
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) s = weakSelf;
-            if (!s) {
-                if (completion) completion(NO);
-                return;
-            }
-
-            // 2. 创建下载任务（进度页由任务内部阶段上报自动弹出）
-            MinecraftResourceDownloadTask *task = [MinecraftResourceDownloadTask new];
-            task.maxRetryCount = 3;
-            s.vanillaPreinstallTask = task;
-
-            task.handleError = ^{
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong typeof(weakSelf) ss = weakSelf;
-                    if (!ss) return;
-                    ss.vanillaPreinstallTask = nil;
-                    if (completion) completion(NO);
-                });
-            };
-
-            // 3. 后台线程启动下载 + 轮询等待完成（最长 30 分钟；旧页同款——
-            //    downloadVersion: 内部 prepareForDownload 会重建 progress，KVO 会悬空，
-            //    轮询访问最新 progress.finished 才可靠）
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                __strong typeof(weakSelf) ss2 = weakSelf;
-                if (!ss2) {
-                    if (completion) completion(NO);
-                    return;
-                }
-                MinecraftResourceDownloadTask *waitTask = ss2.vanillaPreinstallTask;
-                [waitTask downloadVersion:version];
-
-                NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:30 * 60];
-                BOOL succeeded = NO;
-                while ([deadline timeIntervalSinceNow] > 0) {
-                    NSProgress *p = waitTask.progress;
-                    if (p && p.finished) {
-                        succeeded = !p.cancelled;
-                        break;
-                    }
-                    [NSThread sleepForTimeInterval:0.5];
-                }
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong typeof(weakSelf) ss3 = weakSelf;
-                    if (!ss3) return;
-                    ss3.vanillaPreinstallTask = nil;
-                    if (completion) completion(succeeded);
-                });
-            });
-        });
-    });
-}
-
-#pragma mark - 空态 / 加载 / 提示
-
-// 空态派生：初始未搜索 → 类型引导；已搜索无结果 → 类型无结果文案；
-// 结果非空 → 隐藏。加载指示仅在"加载中且无结果"时显示（分页追加不打断列表）
 - (void)ame_refreshEmptyAndLoading {
     BOOL hasResults = (self.results.count > 0);
     self.emptyContainer.hidden = hasResults;

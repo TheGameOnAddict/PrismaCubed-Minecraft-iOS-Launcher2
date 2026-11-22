@@ -134,6 +134,7 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
                                                              supportsResume:supportsResume
                                                                     iconURL:iconURL];
     [self.lock lock];
+    [item appendActivity:item.displayName];
     self.tasks[item.taskId] = item;
     [self.lock unlock];
 
@@ -893,6 +894,7 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
     }
 
     item.state = state;
+    if (oldState != state) [item appendActivity:item.stateLabel];
     [self removeFromWaitQueueLocked:taskId];
     self.holdCounts[taskId] = nil;
 
@@ -920,6 +922,9 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
     // DownloadTaskManagerTaskCompletedNotification 只在 setTaskWithId:completedWithError:
     // 路径发出，导致资源管理页无法感知"文件已落盘"而不刷新。
     // 此处统一在进入 Completed 终态时补发完成通知，供资源管理页监听后重载列表。
+    if (!item.parentTaskId.length && state != oldState && (state == DownloadTaskStateCompleted || state == DownloadTaskStateFailed || state == DownloadTaskStateCancelled)) {
+        [self.historyStore recordEntryWithDictionary:item.historyDictionary];
+    }
     if (state == DownloadTaskStateCompleted && oldState != DownloadTaskStateCompleted) {
         [self postCompletionForTask:item];
     }
@@ -968,6 +973,7 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
         item.estimatedTimeRemaining = 0.0;
     }
 
+    [item appendActivity:error ? [NSString stringWithFormat:@"%@ (%@ %ld)", error.localizedDescription, error.domain, (long)error.code] : item.stateLabel];
     BOOL didReleaseSlot = NO;
     if (wasDownloading) {
         // 幂等释放：rawTask=nil 任务未持槽位则跳过，避免信号量超发
@@ -982,9 +988,8 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
         [self.lock unlock];
     }
 
+    if (!item.parentTaskId.length) [self.historyStore recordEntryWithDictionary:item.historyDictionary];
     if (!error) {
-        // 成功完成：写一条下载历史
-        [self.historyStore recordEntryWithDictionary:[item historyDictionary]];
         [self deleteResumeDataForItem:item];
     } else if ([error.domain isEqualToString:NSURLErrorDomain] && error.code == PLNSURLErrorCannotResume) {
         // 断点续传失效：自动清除断点数据并回退 retryHandler 从头下载
@@ -1053,7 +1058,11 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
     [self.lock lock];
     DownloadTaskItem *item = self.tasks[taskId];
     PLTaskStage *stage = [self stageForItem:item atIndex:index];
-    if (stage) stage.status = status;
+    if (stage && stage.status != status) {
+        stage.status = status;
+        [item appendActivity:[NSString stringWithFormat:@"%@ · %@", NSLocalizedString(stage.title, nil),
+            (@[@"Pending", @"Started", @"Finished", @"Failed", @"Skipped"])[status]]];
+    }
     [self.lock unlock];
 
     if (stage) {
@@ -1075,7 +1084,10 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
     PLTaskStage *stage = [self stageForItem:item atIndex:index];
     if (stage) {
         stage.progress = progress;
-        if (message) stage.message = [message copy]; // nil 表示保留原文案
+        if (message && ![stage.message isEqual:message]) {
+            stage.message = [message copy];
+            [item appendActivity:message];
+        } // nil 表示保留原文案
     }
     [self.lock unlock];
 
@@ -1394,7 +1406,11 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
             switch (item.state) {
                 case DownloadTaskStateDownloading:
                 case DownloadTaskStatePending:
-                    item.state = DownloadTaskStatePaused;
+                    item.state = item.isProfileInstall ? DownloadTaskStateFailed : DownloadTaskStatePaused;
+                    if (item.isProfileInstall) {
+                        item.errorInfo = [NSError errorWithDomain:@"ModpackImport" code:2 userInfo:@{NSLocalizedDescriptionKey:@"The app closed before installation finished. Import the pack again to retry."}];
+                        [item appendActivity:item.errorInfo.localizedDescription];
+                    }
                     item.speed = 0.0;
                     item.needsRecreate = YES;
                     item.retryHandler = nil;
@@ -1423,7 +1439,7 @@ static const NSTimeInterval kUIProgressNotifyThrottleInterval = 0.2;
 
     // Completed 项转入历史 store
     for (DownloadTaskItem *item in completedItems) {
-        [self.historyStore recordEntryWithDictionary:[item historyDictionary]];
+        if (!item.parentTaskId.length) [self.historyStore recordEntryWithDictionary:item.historyDictionary];
     }
 
     // 恢复活动任务并立即重写快照（移除已完成/已取消项）

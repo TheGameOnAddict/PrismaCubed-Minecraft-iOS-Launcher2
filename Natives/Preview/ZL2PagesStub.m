@@ -389,12 +389,13 @@ NSMutableArray *localVersionList = nil;
 
 // DownloadTaskManager.h 声明（DownloadTaskManager.m L7-8 原值）。manager 本体
 // 在 main TU 是空桩、永不 post，值仅保真
+NSString * const DownloadTaskManagerTaskKey = @"DownloadTaskManagerTaskKey";
 NSString * const DownloadTaskManagerDidUpdateTaskNotification = @"com.amethyst.DownloadTaskManager.DidUpdateTask";
 NSString * const DownloadTaskManagerAggregateStateDidChangeNotification = @"com.amethyst.DownloadTaskManager.AggregateStateDidChange";
 
 // 7.0-UI-14：资源类型常量（DownloadTaskItem.h 声明，Addons 屏 OptiFine 补丁流
 // registerTaskWithResourceType 消费；值照抄真实 .m 口径的 token 字符串）
-NSString * const DownloadTaskResourceTypeModloader = @"modloader";
+
 
 // AFNetworking.h 声明（AFURLResponseSerialization.m 原值照抄）。预览无网络层，
 // 该键仅出现在登录失败弹窗的 userInfo 取值路径（nil 字典 → nil，空安全）
@@ -1009,34 +1010,7 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
 // 本 TU 属性以 NSInteger 承载（同 ABI），阶段数据仅统一进度页渲染（本 harness 为
 // presentForTaskId 空桩，不触达）
 
-@interface PLTaskStage : NSObject
-@property (nonatomic, copy, nullable) NSString *title;
-@property (nonatomic, copy, nullable) NSString *iconName;
-@property (nonatomic, assign) NSInteger status;
-@property (nonatomic, copy, nullable) NSString *message;
-@property (nonatomic, assign) double progress;
-+ (instancetype)stageWithTitle:(NSString *)title iconName:(NSString *)iconName;
-- (instancetype)initWithTitle:(NSString *)title iconName:(NSString *)iconName;
-@end
-
-@implementation PLTaskStage
-
-+ (instancetype)stageWithTitle:(NSString *)title iconName:(NSString *)iconName {
-    return [[PLTaskStage alloc] initWithTitle:title iconName:iconName];
-}
-
-- (instancetype)initWithTitle:(NSString *)title iconName:(NSString *)iconName {
-    self = [super init];
-    if (self) {
-        _title = [title copy];
-        _iconName = [iconName copy];
-        _status = 0;    // PLTaskStageStatusPending
-        _progress = -1; // 不确定进度（UI 流动动画约定）
-    }
-    return self;
-}
-
-@end
+#import "DownloadTaskItem.h"
 
 #pragma mark 镜像中心（PLMirrorCenter.h；Task218 下载来源展示 token）
 
@@ -1218,27 +1192,6 @@ typedef NS_ENUM(NSInteger, InlineMessageType) {
 // ── DownloadTaskItem：补 autoPresentDetail（整合包注册后置 YES，manager 在
 //    首次状态更新时自动弹进度页——本 harness manager 桩 no-op，属性仅落盘）。
 //    category 无法自动合成 → 关联对象存储
-@interface DownloadTaskItem : NSObject
-@property (nonatomic, copy) NSString *taskId;
-@end
-
-@interface DownloadTaskItem (PreviewAssetSearchStubs)
-@property (nonatomic, assign) BOOL autoPresentDetail;
-@end
-
-@implementation DownloadTaskItem (PreviewAssetSearchStubs)
-
-- (BOOL)autoPresentDetail {
-    return [objc_getAssociatedObject(self, @selector(autoPresentDetail)) boolValue];
-}
-
-- (void)setAutoPresentDetail:(BOOL)autoPresentDetail {
-    objc_setAssociatedObject(self, @selector(autoPresentDetail), @(autoPresentDetail),
-                             OBJC_ASSOCIATION_RETAIN);
-}
-
-@end
-
 // ── DownloadTaskManager：补七参注册 + setTask 三变体 + updateTask 三变体
 //   （ZL2AssetSearch 整合包 6 阶段任务上报面；与 7.0-UI-10-a 汇报的签名清单
 //   逐条对 DownloadTaskManager.h 核对）。返回的 item 携带非 nil taskId（消费方
@@ -1361,7 +1314,7 @@ typedef NS_ENUM(NSInteger, InlineMessageType) {
 
 // DownloadTaskItem.h 声明（DownloadTaskItem.m L9 原值照抄）。整合包注册任务
 // 时消费；manager 桩不读值，仅保真。已 grep 本 TU 与 main TU 确认无重复定义
-NSString * const DownloadTaskResourceTypeModpack = @"modpack";
+
 
 #pragma mark - ZL2VersionIndex 桩（7.0-UI-12：游戏下载页清单数据源）
 
@@ -1615,4 +1568,8 @@ void ame230_setViewTreeStrokeExempt(UIView *view, BOOL exempt) {}
 @interface AIViewController : NSObject
 @end
 @implementation AIViewController
+@end
+
+#import "DownloadTasksViewController.h"
+@implementation DownloadTasksViewController
 @end

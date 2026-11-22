@@ -90,18 +90,6 @@ static const double kInnerProcessorsStart = 0.45;
 
     if (error) *error = nil;
 
-    // 前置防御：本进程已创建过 JVM（跑过游戏或跑过一次 processors），
-    // 再次 JLI_Launch 必然崩溃，引导用户重启 app。
-    if (JVMUsedInProcess()) {
-        NSLog(@"[ForgeProcExec] JVM already created in this process, restart required");
-        if (error) {
-            *error = [NSError errorWithDomain:ForgeProcessorExecutorErrorDomain
-                                         code:ForgeProcessorExecutorErrorJvmAlreadyUsed
-                                     userInfo:@{NSLocalizedDescriptionKey: localize(@"i18n_str_1143", nil)}];
-        }
-        return NO;
-    }
-
     NSArray *processors = [installProfile[@"processors"] isKindOfClass:[NSArray class]]
         ? installProfile[@"processors"] : @[];
     if (processors.count == 0) {
@@ -143,7 +131,7 @@ static const double kInnerProcessorsStart = 0.45;
         [NSString stringWithFormat:@"versions/%@/%@.jar", minecraftVersion, minecraftVersion]];
     vars[@"SIDE"] = @"client";
     vars[@"MINECRAFT_JAR"] = vanillaJarPath;
-    vars[@"MINECRAFT_VERSION"] = vanillaJarPath;
+    vars[@"MINECRAFT_VERSION"] = minecraftVersion;
     vars[@"ROOT"] = mainGameDir;
     vars[@"INSTALLER"] = installerPath;
     vars[@"LIBRARY_DIR"] = librariesDir;
@@ -193,6 +181,18 @@ static const double kInnerProcessorsStart = 0.45;
     }
 
     // ------------------------------------------------------------------
+    // 前置防御：本进程已创建过 JVM（跑过游戏或跑过一次 processors），
+    // 再次 JLI_Launch 必然崩溃，引导用户重启 app。
+    if (JVMUsedInProcess()) {
+        NSLog(@"[ForgeProcExec] JVM already created in this process, restart required");
+        if (error) {
+            *error = [NSError errorWithDomain:ForgeProcessorExecutorErrorDomain
+                                         code:ForgeProcessorExecutorErrorJvmAlreadyUsed
+                                     userInfo:@{NSLocalizedDescriptionKey: localize(@"i18n_str_1143", nil)}];
+        }
+        return NO;
+    }
+
     // 5. 写 commands.json 并执行（headless JVM + 状态轮询）
     // ------------------------------------------------------------------
     NSString *commandsPath = [cacheDir stringByAppendingPathComponent:@"commands.json"];
@@ -331,6 +331,11 @@ static const double kInnerProcessorsStart = 0.45;
                                          code:ForgeProcessorExecutorErrorProcessingFailed
                                      userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_1162", nil), statusPath]}];
         }
+        return NO;
+    }
+    if ([finalStatus[@"ok"] boolValue] &&
+        ([finalStatus[@"completed"] unsignedIntegerValue] != commands.count || [finalStatus[@"total"] unsignedIntegerValue] != commands.count)) {
+        if (error) *error = [NSError errorWithDomain:ForgeProcessorExecutorErrorDomain code:ForgeProcessorExecutorErrorProcessingFailed userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Forge stopped during %@ (%ld of %lu processors finished).", finalStatus[@"current"] ?: @"setup", (long)[finalStatus[@"completed"] integerValue], (unsigned long)commands.count]}];
         return NO;
     }
     if (![finalStatus[@"ok"] boolValue]) {

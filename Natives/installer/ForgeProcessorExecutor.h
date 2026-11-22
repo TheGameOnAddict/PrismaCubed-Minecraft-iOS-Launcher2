@@ -37,6 +37,7 @@ typedef NS_ENUM(NSInteger, ForgeProcessorExecutorErrorCode) {
 
 @interface ForgeProcessorExecutor : NSObject
 
++ (nullable NSString *)sha1OfFile:(NSString *)path;
 + (nullable NSString *)libraryPathFromDescriptor:(NSString *)descriptor error:(NSError **)error;
 
 /// 执行新格式 Forge/NeoForge 的 install_profile processors（仅 client side）。

@@ -206,6 +206,8 @@ jobs:
         run: |
           xcrun --sdk macosx clang -fobjc-arc -framework Foundation -I Natives scripts/test_modpack_layout.m -o "$RUNNER_TEMP/test-modpack-layout"
           "$RUNNER_TEMP/test-modpack-layout"
+          xcrun --sdk macosx clang -fobjc-arc -framework Foundation -I Natives scripts/test_download_activity.m Natives/DownloadTaskItem.m Natives/PLTaskStage.m -o "$RUNNER_TEMP/test-download-activity"
+          "$RUNNER_TEMP/test-download-activity"
 
       - name: Validate Localizable.strings syntax (Task228 gate)
         # 病历：Task191 与 Task228（Task227 引入）两次因值内引号未转义把

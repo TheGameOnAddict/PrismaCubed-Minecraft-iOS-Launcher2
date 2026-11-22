@@ -3,6 +3,7 @@
 #import "DownloadHistoryStore.h"
 #import "AmeTheme.h"            // 7.0-UI-3b：Fluent 设计令牌（下载簇换肤）
 #import "DownloadTaskItem.h"
+#import "CubicDownloadsController.h"
 #import "BackgroundManager.h"
 
 static NSString * const kHistoryCellReuseIdentifier = @"DownloadHistoryCell";
@@ -249,6 +250,9 @@ static NSString * const kHistoryCellReuseIdentifier = @"DownloadHistoryCell";
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    NSDictionary *entry = self.entries[indexPath.row];
+    DownloadTaskItem *task = [[DownloadTaskItem alloc] initWithSnapshotDictionary:entry[@"snapshot"]];
+    if (task) [CubicDownloadsController showFrom:self task:task];
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {

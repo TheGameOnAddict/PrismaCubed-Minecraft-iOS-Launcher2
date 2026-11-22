@@ -8,6 +8,7 @@ SCREENS = {
     "home": "My Profiles", "browse": "Browse Modpacks", "profile": "Active Profile",
     "mods": "Add Mods", "menu": "Account Menu", "accounts": "Manage Accounts",
     "create": "New Profile", "import": "Import",
+    "installing": "Installing profile", "downloads": "Downloads", "download-log": "Download log",
 }
 folder = Path(sys.argv[1])
 screens = {}

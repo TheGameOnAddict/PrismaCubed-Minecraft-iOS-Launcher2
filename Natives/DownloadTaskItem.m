@@ -20,7 +20,55 @@ static NSString *PLSnapshotString(id value, NSString *fallback) {
     return fallback;
 }
 
+@interface DownloadTaskItem ()
+@property(nonatomic, strong) NSMutableArray<NSString *> *events;
+@property(nonatomic, copy) NSString *lastEvent;
+@end
+
 @implementation DownloadTaskItem
+
+- (BOOL)isProfileInstall {
+    return [self.resourceType isEqual:DownloadTaskResourceTypeModpack] &&
+        [self.stages.firstObject.title isEqual:@"taskStage.title.parseModpack"];
+}
+
+- (double)installProgress {
+    if (self.state == DownloadTaskStateCompleted) return 1;
+    if (!self.stages.count) return MAX(0, MIN(1, self.progress));
+    double done = 0;
+    for (PLTaskStage *stage in self.stages) {
+        done += (stage.status == PLTaskStageStatusCompleted || stage.status == PLTaskStageStatusSkipped)
+            ? 1 : MAX(0, MIN(1, stage.progress));
+    }
+    return done / self.stages.count;
+}
+
+- (NSString *)stateLabel {
+    switch (self.state) {
+        case DownloadTaskStatePending: return @"Queued";
+        case DownloadTaskStateDownloading: return self.isProfileInstall ? @"Installing" : @"Downloading";
+        case DownloadTaskStateCompleted: return @"Completed";
+        case DownloadTaskStateCancelled: return @"Cancelled";
+        case DownloadTaskStatePaused: return @"Paused";
+        case DownloadTaskStateFailed: return @"Failed";
+    }
+    return @"Unknown";
+}
+
+- (void)appendActivity:(NSString *)message {
+    if (!message.length) return;
+    @synchronized (self) {
+        if ([message isEqual:self.lastEvent]) return;
+        self.lastEvent = message;
+        NSString *time = [NSDateFormatter localizedStringFromDate:NSDate.date dateStyle:NSDateFormatterNoStyle timeStyle:NSDateFormatterMediumStyle];
+        if (!self.events) self.events = [NSMutableArray array];
+        [self.events addObject:[NSString stringWithFormat:@"%@  %@", time, message]];
+        if (self.events.count > 2048) [self.events removeObjectAtIndex:0];
+    }
+}
+- (NSArray<NSString *> *)activityLines {
+    @synchronized (self) { return self.events.copy ?: @[]; }
+}
 
 - (instancetype)initWithResourceType:(NSString *)resourceType
                         resourceName:(NSString *)resourceName
@@ -81,6 +129,11 @@ static NSString *PLSnapshotString(id value, NSString *fallback) {
     }
     return @{
         @"taskId": self.taskId ?: @"",
+        @"activity": self.activityLines,
+        @"parentTaskId": self.parentTaskId ?: @"",
+        @"errorText": self.errorInfo.localizedDescription ?: @"",
+        @"errorDomain": self.errorInfo.domain ?: @"",
+        @"errorCode": @(self.errorInfo.code),
         @"resourceType": self.resourceType ?: @"",
         @"resourceName": self.resourceName ?: @"",
         @"displayName": self.displayName ?: @"",
@@ -119,6 +172,13 @@ static NSString *PLSnapshotString(id value, NSString *fallback) {
 
     // 沿用原 taskId（保持与持久化快照/断点数据文件的对应关系）
     _taskId = [taskId copy];
+    _parentTaskId = PLSnapshotString(snapshot[@"parentTaskId"], nil);
+    if ([snapshot[@"activity"] isKindOfClass:NSArray.class]) {
+        _events = [NSMutableArray array];
+        for (id line in snapshot[@"activity"]) if ([line isKindOfClass:NSString.class]) [_events addObject:line];
+    }
+    NSString *description = PLSnapshotString(snapshot[@"errorText"], nil);
+    if (description) _errorInfo = [NSError errorWithDomain:PLSnapshotString(snapshot[@"errorDomain"], @"Download") code:[snapshot[@"errorCode"] integerValue] userInfo:@{NSLocalizedDescriptionKey:description}];
     _state = [snapshot[@"state"] integerValue];
     _progress = [snapshot[@"progress"] doubleValue];
     _totalSize = [snapshot[@"totalBytes"] longLongValue];
@@ -168,7 +228,8 @@ static NSString *PLSnapshotString(id value, NSString *fallback) {
         @"type": self.resourceType ?: @"",
         @"size": @(self.totalSize),
         @"received": @(self.downloadedSize),
-        @"result": @"success",
+        @"result": self.state == DownloadTaskStateCompleted ? @"success" : self.stateLabel.lowercaseString,
+        @"snapshot": self.snapshotDictionary,
         @"source": self.downloadSource ?: @"",
         @"time": @([[NSDate date] timeIntervalSince1970]),
     };

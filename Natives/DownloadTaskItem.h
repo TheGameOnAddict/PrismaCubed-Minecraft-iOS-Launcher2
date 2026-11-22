@@ -149,6 +149,12 @@ typedef id _Nullable (^DownloadRetryHandler)(DownloadTaskItem *item);
 /// 导出可 JSON 序列化的任务快照（taskId、resourceType、name、displayName、iconURL、state、
 /// totalBytes、receivedBytes、downloadSource、timestamp、downloadURL 等字段）
 - (NSDictionary *)snapshotDictionary;
+@property (atomic, copy, nullable) NSString *parentTaskId;
+@property (nonatomic, readonly) BOOL isProfileInstall;
+@property (nonatomic, readonly) double installProgress;
+@property (nonatomic, readonly) NSString *stateLabel;
+- (void)appendActivity:(NSString *)message;
+- (NSArray<NSString *> *)activityLines;
 
 /// 从快照重建任务（沿用原 taskId；rawTask/retryHandler 不可恢复）。
 /// 快照非法（缺 taskId / 类型不符）时返回 nil。

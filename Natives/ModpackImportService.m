@@ -829,7 +829,16 @@ static BOOL ame269_sMigrationRunning = NO;
     }
     [ModpackImportService ame269_setImportBusy:YES];
     @try {
-        return [self ame269_importModpackInner:modpackInfo progress:progress error:error];
+        NSError *innerError = nil;
+        BOOL ok = [self ame269_importModpackInner:modpackInfo progress:progress error:&innerError];
+        if (!ok && error) *error = innerError;
+        return ok;
+    } @catch (NSException *exception) {
+        NSError *failure = [NSError errorWithDomain:@"ModpackImport" code:9998 userInfo:@{NSLocalizedDescriptionKey:exception.reason ?: @"The importer stopped unexpectedly."}];
+        [DownloadTaskManager.sharedManager setTaskWithId:self.currentImportTaskId completedWithError:failure];
+        self.currentImportTaskId = nil;
+        if (error) *error = failure;
+        return NO;
     } @finally {
         [ModpackImportService ame269_setImportBusy:NO];
     }
@@ -900,7 +909,7 @@ static BOOL ame269_sMigrationRunning = NO;
     //   → PLMirrorCenter legacySourceTokenForType（Task218 收敛口径，对齐四资源服务）。
     NSString *downloadSource = [PLMirrorCenter legacySourceTokenForType:PLMirrorResourceTypeAssetDownload];
     DownloadTaskManager *manager = [DownloadTaskManager sharedManager];
-    DownloadTaskItem *mainTask = [manager registerTaskWithResourceType:DownloadTaskResourceTypeModpack
+    DownloadTaskItem *mainTask = [manager taskWithId:self.archiveTaskId] ?: [manager registerTaskWithResourceType:DownloadTaskResourceTypeModpack
                                                           resourceName:modpackId ?: displayName
                                                            displayName:displayName
                                                         downloadSource:downloadSource
@@ -908,16 +917,21 @@ static BOOL ame269_sMigrationRunning = NO;
                                                         supportsResume:NO
                                                                iconURL:iconURL];
     NSString *taskId = mainTask.taskId;
+    if (self.archiveTaskId) {
+        mainTask.displayName = displayName;
+        mainTask.supportsResume = NO;
+        mainTask.retryHandler = nil;
+    }
     self.currentImportTaskId = taskId;
     [manager setTaskWithId:taskId stages:PLTaskStagesModpack()];
-    mainTask.autoPresentDetail = YES;
+    [mainTask appendActivity:[NSString stringWithFormat:@"Minecraft %@ · %@ %@", modpackInfo[@"minecraftVersion"] ?: @"–", modpackInfo[@"loader"] ?: @"Vanilla", modpackInfo[@"loaderVersion"] ?: @""]];
     [manager setTaskWithId:taskId state:DownloadTaskStateDownloading];
     [manager updateTaskWithId:taskId currentStageIndex:0];
     [manager updateTaskWithId:taskId stageAtIndex:0 status:PLTaskStageStatusRunning];
     [manager updateTaskWithId:taskId progress:0.0 totalBytes:0 downloadedBytes:0];
 
     if ([self checkCancelledWithError:error]) {
-        [self cleanupAbortedImportWithGameDir:nil mainTaskFailed:NO];
+        [self cleanupAbortedImportWithGameDir:nil mainTaskFailed:NO error:nil];
         return NO;
     }
 
@@ -976,7 +990,7 @@ static BOOL ame269_sMigrationRunning = NO;
                         attributes:nil
                              error:&dirError]) {
         if (error) *error = dirError;
-        [self cleanupAbortedImportWithGameDir:nil mainTaskFailed:YES];
+        [self cleanupAbortedImportWithGameDir:nil mainTaskFailed:YES error:(error ? *error : nil)];
         return NO;
     }
 
@@ -990,7 +1004,7 @@ static BOOL ame269_sMigrationRunning = NO;
 
     // 取消检查点
     if ([self checkCancelledWithError:error]) {
-        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO];
+        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO error:nil];
         return NO;
     }
 
@@ -1007,13 +1021,13 @@ static BOOL ame269_sMigrationRunning = NO;
         if (error) *error = extractError;
         [manager updateTaskWithId:taskId stageAtIndex:1 status:PLTaskStageStatusFailed];
         [manager updateTaskWithId:taskId error:extractError];
-        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES];
+        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES error:(error ? *error : nil)];
         return NO;
     }
 
     // 取消检查点
     if ([self checkCancelledWithError:error]) {
-        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO];
+        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO error:nil];
         return NO;
     }
 
@@ -1036,7 +1050,7 @@ static BOOL ame269_sMigrationRunning = NO;
                 if (error) *error = downloadError; // 已含 failedFiles 快照（code=5004）
                 [manager updateTaskWithId:taskId stageAtIndex:2 status:PLTaskStageStatusFailed];
                 [manager updateTaskWithId:taskId error:downloadError];
-                [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES];
+                [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES error:(error ? *error : nil)];
                 return NO;
             }
         }
@@ -1044,7 +1058,7 @@ static BOOL ame269_sMigrationRunning = NO;
 
     // 取消检查点
     if ([self checkCancelledWithError:error]) {
-        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO];
+        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO error:nil];
         return NO;
     }
 
@@ -1073,7 +1087,7 @@ static BOOL ame269_sMigrationRunning = NO;
         [manager updateTaskWithId:taskId stageAtIndex:3 progress:0.0 message:loaderError.localizedDescription];
         if ([loader isEqual:@"Forge"] || [loader isEqual:@"NeoForge"]) {
             if (error) *error = loaderError;
-            [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES];
+            [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES error:(error ? *error : nil)];
             return NO;
         }
     } else {
@@ -1096,26 +1110,21 @@ static BOOL ame269_sMigrationRunning = NO;
                                                  progress:progress
                                                     error:&versionDLError];
     if (!versionDLOK) {
-        NSLog(@"[ModpackImport] Warning: Full version download failed: %@", versionDLError.localizedDescription);
-        // 不阻断导入：用户可能已手动下载过原版文件，或者后续启动时按需下载
-        // 但要把失败信息记入 failedFiles 让用户知晓
-        @synchronized(self) {
-            [self.failedFilesInternal addObject:@{
-                @"fileName": [NSString stringWithFormat:localize(@"i18n_str_540", nil), versionId],
-                @"url": @"",
-                @"reason": versionDLError.localizedDescription ?: localize(@"i18n_str_541", nil),
-                @"format": @"version"
-            }];
+        if ([self checkCancelledWithError:error]) {
+            [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO error:nil];
+            return NO;
         }
+        if (error) *error = versionDLError;
         [manager updateTaskWithId:taskId stageAtIndex:4 status:PLTaskStageStatusFailed];
-        [manager updateTaskWithId:taskId stageAtIndex:4 progress:0.0 message:versionDLError.localizedDescription];
+        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:YES error:versionDLError];
+        return NO;
     } else {
         [manager updateTaskWithId:taskId stageAtIndex:4 status:PLTaskStageStatusCompleted];
     }
 
     // 取消检查点
     if ([self checkCancelledWithError:error]) {
-        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO];
+        [self cleanupAbortedImportWithGameDir:gameDirAbsolute mainTaskFailed:NO error:nil];
         return NO;
     }
 
@@ -1138,12 +1147,12 @@ static BOOL ame269_sMigrationRunning = NO;
             if ([fm fileExistsAtPath:target]) {
                 if ([item isEqual:@"config"]) continue;  // Pack defaults take precedence; original remains in backup.
                 if (![fm removeItemAtPath:target error:error]) {
-                    [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
+                    [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES error:(error ? *error : nil)];
                     return NO;
                 }
             }
             if (![fm copyItemAtPath:source toPath:target error:error]) {
-                [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
+                [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES error:(error ? *error : nil)];
                 return NO;
             }
         }
@@ -1152,7 +1161,7 @@ static BOOL ame269_sMigrationRunning = NO;
             if (![fm moveItemAtPath:ame269_realDir toPath:ame269_backupDir error:&ame269_bkErr]) {
                 NSLog(@"[ModpackImport] Task269-r3: live instance move-aside FAILED (%@) -- abort import, live instance untouched",
                       ame269_bkErr.localizedDescription ?: @"?");
-                [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
+                [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES error:(error ? *error : nil)];
                 return NO;
             }
         }
@@ -1163,7 +1172,7 @@ static BOOL ame269_sMigrationRunning = NO;
             if ([fm fileExistsAtPath:ame269_backupDir]) {
                 [fm moveItemAtPath:ame269_backupDir toPath:ame269_realDir error:nil];
             }
-            [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES];
+            [self cleanupAbortedImportWithGameDir:ame269_stageDir mainTaskFailed:YES error:(error ? *error : nil)];
             return NO;
         }
         NSLog(@"[ModpackImport] Task269-r3: staged re-import promoted into live instance %@ (old copy kept at %@)",
@@ -1185,7 +1194,7 @@ static BOOL ame269_sMigrationRunning = NO;
         // ★ Task274-h S2：换装成功后 gameDirAbsolute 已复位为 realDir——profile 写失败
         //   不得整删刚上位的活实例（Task269-r3 保护语义）。复用路径清理对象只能是
         //   staging 残迹（已不存在，幂等 no-op）；全新路径维持原口径。
-        [self cleanupAbortedImportWithGameDir:(ame269_isReuse ? ame269_stageDir : gameDirAbsolute) mainTaskFailed:YES];
+        [self cleanupAbortedImportWithGameDir:(ame269_isReuse ? ame269_stageDir : gameDirAbsolute) mainTaskFailed:YES error:(error ? *error : nil)];
         return NO;
     }
 
@@ -1250,7 +1259,7 @@ static BOOL ame269_sMigrationRunning = NO;
 ///   3. 残留的临时 installer jar（installModLoader 中断时）
 /// mainTaskFailed=YES 时主任务标记失败，否则（取消路径）标记取消。
 - (void)cleanupAbortedImportWithGameDir:(nullable NSString *)gameDirAbsolute
-                         mainTaskFailed:(BOOL)mainTaskFailed {
+                         mainTaskFailed:(BOOL)mainTaskFailed error:(NSError *)error {
     NSFileManager *fm = [NSFileManager defaultManager];
     if (gameDirAbsolute.length > 0) {
         [fm removeItemAtPath:gameDirAbsolute error:nil];
@@ -1266,7 +1275,9 @@ static BOOL ame269_sMigrationRunning = NO;
     if (self.currentImportTaskId.length > 0) {
         DownloadTaskManager *manager = [DownloadTaskManager sharedManager];
         if (mainTaskFailed) {
-            [[DownloadTaskManager sharedManager] setTaskWithId:self.currentImportTaskId state:DownloadTaskStateFailed];
+            DownloadTaskItem *item = [manager taskWithId:self.currentImportTaskId];
+            NSError *reason = error ?: item.errorInfo ?: [NSError errorWithDomain:@"ModpackImport" code:1 userInfo:@{NSLocalizedDescriptionKey:item.currentStage.message ?: @"Installation could not finish."}];
+            [manager setTaskWithId:self.currentImportTaskId completedWithError:reason];
         } else {
             [[DownloadTaskManager sharedManager] setTaskWithId:self.currentImportTaskId state:DownloadTaskStateCancelled];
         }
@@ -1650,6 +1661,7 @@ static BOOL ame269_sMigrationRunning = NO;
                              rawTask:nil
                       supportsResume:NO
                              iconURL:nil];
+    aggregateTask.parentTaskId = self.currentImportTaskId;
     [[DownloadTaskManager sharedManager] setTaskWithId:aggregateTask.taskId state:DownloadTaskStateDownloading];
     if (total > 0) {
         [[DownloadTaskManager sharedManager] updateTaskWithId:aggregateTask.taskId
@@ -1935,6 +1947,9 @@ if (hasRealFileName) {
                                      rawTask:nil
                               supportsResume:NO
                                      iconURL:iconURL];
+            taskItem.parentTaskId = self.currentImportTaskId;
+            DownloadTaskItem *packTask = [[DownloadTaskManager sharedManager] taskWithId:self.currentImportTaskId];
+            [packTask appendActivity:[@"Downloading " stringByAppendingString:fileName]];
             [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId state:DownloadTaskStateDownloading];
 
             PLDownloadRequest *request = [PLDownloadRequest new];
@@ -2045,6 +2060,10 @@ if (hasRealFileName) {
                               (unsigned long)completedNow, (unsigned long)total, fileName]);
                 }
 
+                NSString *event = success ? [@"Installed " stringByAppendingString:fileName] :
+                    [NSString stringWithFormat:@"%@ — %@", fileName, dlError.localizedDescription ?: @"Download failed"];
+                [[DownloadTaskManager sharedManager] updateTaskWithId:packTask.taskId stageAtIndex:2 progress:(double)completedNow / MAX(1.0, (double)total) message:event];
+                [[DownloadTaskManager sharedManager] updateTaskWithId:packTask.taskId stageAtIndex:2 fileCount:completedNow totalFileCount:total];
                 // Task 6.1：同步推进整合包聚合卡片（文件计数 + 累计字节双维度）
                 [[DownloadTaskManager sharedManager] updateTaskWithId:aggregateTask.taskId
                                                   completedFileCount:(NSInteger)completedNow
@@ -2054,6 +2073,7 @@ if (hasRealFileName) {
                                                             totalBytes:0
                                                        downloadedBytes:ame274_bytesNow];
 
+                [DownloadTaskManager.sharedManager updateTaskWithId:packTask.taskId progress:packTask.installProgress totalBytes:0 downloadedBytes:ame274_bytesNow];
                 // 释放并发槽位并离开 group（与提交侧的 wait/enter 配对）
                 dispatch_semaphore_signal(slotSemaphore);
                 dispatch_group_leave(group);
@@ -2184,7 +2204,7 @@ if (hasRealFileName) {
                                                        code:5001
                                                    userInfo:@{NSLocalizedDescriptionKey: localize(@"i18n_str_254", nil)}];
         if (outError) *outError = invalidURLError;
-        if (taskId) [[DownloadTaskManager sharedManager] setTaskWithId:taskId completedWithError:invalidURLError];
+
         return NO;
     }
 
@@ -2219,10 +2239,8 @@ if (hasRealFileName) {
     // 阻塞调用线程（后台线程）直至完成——同步门面语义
     dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
 
-    if (taskId) {
-        [[DownloadTaskManager sharedManager] setTaskWithId:taskId completedWithError:(ok ? nil : blockError)];
-    }
-    if (!ok && outError) *outError = blockError;
+
+    if (!ok && outError) *outError = blockError ?: [NSError errorWithDomain:@"ModpackImport" code:5001 userInfo:@{NSLocalizedDescriptionKey:@"The download did not produce a file."}];
     return ok;
 }
 
@@ -2463,8 +2481,10 @@ if (hasRealFileName) {
                                  iconURL:nil];
         [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId state:DownloadTaskStateDownloading];
 
+        taskItem.parentTaskId = self.currentImportTaskId;
         NSError *dlError = nil;
         if (![self downloadFileFromURL:jsonURL toPath:versionJsonPath taskId:taskItem.taskId resourceType:PLMirrorResourceTypeModLoader error:&dlError]) {
+            [DownloadTaskManager.sharedManager setTaskWithId:taskItem.taskId completedWithError:dlError];
             if (error) *error = dlError;
             return NO;
         }
@@ -2495,6 +2515,7 @@ if (hasRealFileName) {
         } else {
             NSLog(@"[ModpackImport] Task71 could not re-parse loader profile json for id rewrite (non-fatal)");
         }
+        [DownloadTaskManager.sharedManager setTaskWithId:taskItem.taskId completedWithError:nil];
         return YES;
     }
 
@@ -2530,6 +2551,10 @@ if (hasRealFileName) {
                              rawTask:nil
                       supportsResume:NO
                              iconURL:nil];
+    installerItem.parentTaskId = self.currentImportTaskId;
+    DownloadTaskManager *manager = DownloadTaskManager.sharedManager;
+    NSString *packId = self.currentImportTaskId;
+    [manager updateTaskWithId:packId stageAtIndex:3 progress:0 message:installerDisplayName];
     [[DownloadTaskManager sharedManager] setTaskWithId:installerItem.taskId state:DownloadTaskStateDownloading];
     NSString *installerTaskId = installerItem.taskId;
 
@@ -2548,6 +2573,7 @@ if (hasRealFileName) {
               ame175_candidate, ame175_candError.localizedDescription ?: @"unknown");
     }
     if (!installerDownloaded) {
+        [manager setTaskWithId:installerTaskId completedWithError:dlError];
         if (error) *error = dlError ?: [NSError errorWithDomain:@"ModpackImportService" code:1001
             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_556", nil), loader]}];
         return NO;
@@ -2557,13 +2583,16 @@ if (hasRealFileName) {
 
     // 调用直装器，写入 modpack 的 gameDirAbsolute（不注册 profile，由 createProfileForModpack 统一注册）
     NSError *installError = nil;
+    void (^loaderProgress)(double, NSString *) = ^(double fraction, NSString *message) {
+        [manager updateTaskWithId:packId stageAtIndex:3 progress:fraction message:message];
+    };
     BOOL installSuccess = NO;
     if ([loader isEqualToString:@"NeoForge"]) {
         installSuccess = [NeoForgeDirectInstaller installNeoForgeFromInstaller:tmpInstallerPath
                                                                      versionId:versionId
                                                                  customGameDir:gameDirAbsolute
                                                            skipRegisterVersion:YES
-                                                                      progress:nil
+                                                                      progress:loaderProgress
                                                                          error:&installError];
     } else {
         // Forge
@@ -2571,7 +2600,7 @@ if (hasRealFileName) {
                                                                versionId:versionId
                                                            customGameDir:gameDirAbsolute
                                                      skipRegisterVersion:YES
-                                                                progress:nil
+                                                                progress:loaderProgress
                                                                    error:&installError];
     }
 
@@ -2579,12 +2608,14 @@ if (hasRealFileName) {
     [[NSFileManager defaultManager] removeItemAtPath:tmpInstallerPath error:nil];
 
     if (!installSuccess) {
-        if (installerTaskId) [[DownloadTaskManager sharedManager] setTaskWithId:installerTaskId completedWithError:installError];
-        if (error) *error = installError ?: [NSError errorWithDomain:@"ModpackImportService" code:1002
+        installError = installError ?: [NSError errorWithDomain:@"ModpackImportService" code:1002
             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_558", nil), loader, @"unknown error"]}];
+        [manager setTaskWithId:installerTaskId completedWithError:installError];
+        if (error) *error = installError;
         return NO;
     }
 
+    [manager setTaskWithId:installerTaskId completedWithError:nil];
     NSLog(@"[ModpackImport] %@ direct install succeeded, version.json written to: %@", loader, versionJsonPath);
     return YES;
 }
@@ -2635,6 +2666,7 @@ if (hasRealFileName) {
     // 不注册到 DownloadTaskManager（整合包导入已有自己的进度卡片，避免重复显示）
     MinecraftResourceDownloadTask *downloader = [MinecraftResourceDownloadTask new];
     downloader.maxRetryCount = 3;
+    downloader.parentImportTaskId = self.currentImportTaskId;
 
     // 同步等待：用轮询检查 progress.finished，避免 KVO 悬空问题
     // （downloadVersion: 内部的 prepareForDownload 会重建 self.progress，
@@ -2670,6 +2702,9 @@ if (hasRealFileName) {
         }
         // 检查 progress 完成度（每次访问 downloader.progress 都是最新的）
         NSProgress *currentProg = downloader.progress;
+        if (currentProg && !currentProg.finished) {
+            [DownloadTaskManager.sharedManager updateTaskWithId:self.currentImportTaskId stageAtIndex:4 progress:currentProg.fractionCompleted message:downloader.textProgress.localizedDescription];
+        }
         if (currentProg && currentProg.finished) {
             downloadSucceeded = !currentProg.cancelled;
             break;
@@ -2686,7 +2721,7 @@ if (hasRealFileName) {
     NSProgress *finalProg = downloader.progress;
     if (finalProg && finalProg.finished && !finalProg.cancelled) {
         downloadSucceeded = YES;
-    } else if (finalProg && !finalProg.finished) {
+    } else if (finalProg && !finalProg.finished && !errorOccurred && !self.cancelled) {
         // 超时
         [finalProg cancel];
         if (error) {

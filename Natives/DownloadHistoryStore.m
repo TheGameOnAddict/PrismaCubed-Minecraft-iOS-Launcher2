@@ -44,10 +44,10 @@ static const NSUInteger kDownloadHistoryMaxEntries = 200;
 
 - (void)ensureLoaded {
     [self.lock lock];
-    BOOL needLoad = !self.loaded;
-    self.loaded = YES;
-    [self.lock unlock];
-    if (!needLoad) return;
+    if (self.loaded) {
+        [self.lock unlock];
+        return;
+    }
 
     // 首次访问：在串行队列上同步读取（读取完成后队列继续处理后续写入，保证顺序一致）
     dispatch_sync(self.ioQueue, ^{
@@ -68,11 +68,11 @@ static const NSUInteger kDownloadHistoryMaxEntries = 200;
                 [valid addObject:entry];
             }
         }
-        [self.lock lock];
         [self.entries removeAllObjects];
         [self.entries addObjectsFromArray:valid];
-        [self.lock unlock];
     });
+    self.loaded = YES;
+    [self.lock unlock];
 }
 
 #pragma mark - 公开接口
@@ -89,17 +89,23 @@ static const NSUInteger kDownloadHistoryMaxEntries = 200;
 
     [self.lock lock];
     // 新条目插头部，超出上限裁尾（LRU）
+    NSString *taskId = mutableEntry[@"taskId"];
+    if (taskId.length) {
+        NSIndexSet *duplicates = [self.entries indexesOfObjectsPassingTest:^BOOL(NSDictionary *old, NSUInteger index, BOOL *stop) {
+            return [old[@"taskId"] isEqual:taskId];
+        }];
+        [self.entries removeObjectsAtIndexes:duplicates];
+    }
     [self.entries insertObject:[mutableEntry copy] atIndex:0];
     if (self.entries.count > kDownloadHistoryMaxEntries) {
         [self.entries removeObjectsInRange:NSMakeRange(kDownloadHistoryMaxEntries,
                                                         self.entries.count - kDownloadHistoryMaxEntries)];
     }
     NSArray *snapshot = [self.entries copy];
-    [self.lock unlock];
-
     dispatch_async(self.ioQueue, ^{
         [self writeEntriesToDisk:snapshot];
     });
+    [self.lock unlock];
 }
 
 - (NSArray<NSDictionary *> *)allEntries {
@@ -114,11 +120,10 @@ static const NSUInteger kDownloadHistoryMaxEntries = 200;
     [self.lock lock];
     self.loaded = YES;
     [self.entries removeAllObjects];
-    [self.lock unlock];
-
     dispatch_async(self.ioQueue, ^{
         [[NSFileManager defaultManager] removeItemAtPath:[self historyFilePath] error:nil];
     });
+    [self.lock unlock];
 }
 
 #pragma mark - 写盘

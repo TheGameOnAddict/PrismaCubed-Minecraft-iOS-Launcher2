@@ -9,6 +9,7 @@ extern NSString * const kMinecraftResourceDownloadBackgroundSessionIdentifier;
 
 + (AFURLSessionManager *)sharedBackgroundSessionManager;
 
+@property(nonatomic, copy) NSString *parentImportTaskId;
 @property NSProgress *progress, *textProgress;
 @property NSMutableArray *fileList, *progressList;
 @property NSMutableDictionary* metadata;

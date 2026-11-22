@@ -71,6 +71,8 @@
 #import "PLProfiles.h"
 #import "AvatarManager.h"            // ame185 头像三层回退链（账户页同款）
 #import "ModLoaderIconHelper.h"
+#import "CubicDownloadsController.h"
+#import "DownloadTaskManager.h"
 #import "CubicProfileArtwork.h"      // 加载器识别 + 图标（版本页同款契约）
 #import "ModpackExportService.h"     // +parseVersionId:（lastVersionId 反解 MC 版本）
 #import "MinecraftResourceDownloadTask.h"
@@ -165,11 +167,32 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 // 2pt 描边。内容 = 实例图标 40 + 实例名 + 信息行（MC 版本/加载器）+ 右下
 // 小启动钮。点卡 = 选实例（ame_onCard）；播放键 = 选实例并直接启动
 // （ame_onPlay）；长按 = M3 底部菜单（由 VC 的网格长按手势统一处理）。
+@interface CubicInstallRing : UIView
+@property(nonatomic) double fraction;
+@end
+@implementation CubicInstallRing
+- (void)drawRect:(CGRect)rect {
+    CGPoint center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    UIBezierPath *track = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(self.bounds, 3, 3)];
+    [[UIColor colorWithWhite:0.06 alpha:0.82] setFill];
+    [track fill];
+    track.lineWidth = 3;
+    [UIColor.lightGrayColor setStroke];
+    [track stroke];
+    UIBezierPath *arc = [UIBezierPath bezierPathWithArcCenter:center radius:center.x - 3 startAngle:-M_PI_2 endAngle:-M_PI_2 + 2 * M_PI * self.fraction clockwise:YES];
+    arc.lineWidth = 3;
+    arc.lineCapStyle = kCGLineCapRound;
+    [UIColor.whiteColor setStroke];
+    [arc stroke];
+}
+@end
+
 @interface ZL2HomeVersionCardCell : UICollectionViewCell
 
 @property (nonatomic, strong) UILabel *versionBadge;
 @property (nonatomic, strong) ZL2HomeTapControl *cardBody;
 @property (nonatomic, strong) UIView *iconBg;
+@property (nonatomic, strong) CubicInstallRing *installRing;
 @property (nonatomic, strong) UIImageView *iconView;
 @property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, strong) UILabel *infoLabel;
@@ -215,6 +238,16 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         _iconView.userInteractionEnabled = NO;
         [_iconBg addSubview:_iconView];
 
+        _installRing = [CubicInstallRing new];
+        _installRing.opaque = NO;
+        _installRing.backgroundColor = UIColor.clearColor;
+        _installRing.translatesAutoresizingMaskIntoConstraints = NO;
+        [_iconBg addSubview:_installRing];
+        [NSLayoutConstraint activateConstraints:@[
+            [_installRing.centerXAnchor constraintEqualToAnchor:_iconBg.centerXAnchor],
+            [_installRing.centerYAnchor constraintEqualToAnchor:_iconBg.centerYAnchor],
+            [_installRing.widthAnchor constraintEqualToConstant:44], [_installRing.heightAnchor constraintEqualToConstant:44]
+        ]];
         _versionBadge = [UILabel new];
         _versionBadge.font = [UIFont boldSystemFontOfSize:11];
         _versionBadge.textColor = UIColor.whiteColor;
@@ -318,6 +351,23 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 // loader/mcVersion/valid/isSelected）
 - (void)ame_configureWithRow:(NSDictionary *)row {
     NSString *profileName = row[@"name"];
+    DownloadTaskItem *install = row[@"install"];
+    self.installRing.hidden = !install;
+    self.playButton.hidden = install != nil;
+    self.iconView.alpha = install ? 0.55 : 1;
+    if (install) {
+        self.nameLabel.text = profileName;
+        self.iconView.image = CubicProfileArtwork(PLProfiles.current.profiles[profileName], profileName);
+        self.installRing.fraction = install.installProgress;
+        [self.installRing setNeedsDisplay];
+        self.versionBadge.text = [NSString stringWithFormat:@"  %@  ", install.stateLabel];
+        self.infoLabel.text = [NSString stringWithFormat:@"%.0f%% · %@",100 * install.installProgress,NSLocalizedString(install.currentStage.title ?: @"Queued",nil)];
+        self.infoLabel.textColor = ZL2Theme.onSurfaceVariant;
+        self.cardBody.layer.borderColor = ZL2Theme.primary.CGColor;
+        self.cardBody.layer.borderWidth = 1;
+        self.cardBody.accessibilityLabel = [NSString stringWithFormat:@"%@, %@, open download log",profileName,self.infoLabel.text];
+        return;
+    }
     NSString *versionId = row[@"versionId"]; // ★ Task351 r1：行模型键注释链含 versionId（@334 未选择版本分支引用），CI 首轮实锤漏声明
     NSString *loader = row[@"loader"];
     NSString *mcVersion = row[@"mcVersion"];
@@ -381,6 +431,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 @property (nonatomic, strong) UIButton *profilesTab;
 @property (nonatomic, strong) UIButton *browseTab;
 @property (nonatomic, strong) ZL2AssetSearchViewController *packBrowser;
+@property (nonatomic) BOOL installRefreshPending;
 @property (nonatomic, strong) UICollectionView *gridView;
 @property (nonatomic, strong) UIView *emptyStateView;
 @property (nonatomic, strong) UIView *actionMenu;
@@ -475,6 +526,8 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
                                              selector:@selector(profileListDidChange)
                                                  name:@"ReloadProfileList"
                                                object:nil];
+
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(installUpdated:) name:DownloadTaskManagerDidUpdateTaskNotification object:nil];
 
     // 长按菜单卡 = 切换 ActionMenu 停靠边（ZL2 ActionMenuDrag 简化等价）
     UILongPressGestureRecognizer *menuLongPress =
@@ -1204,6 +1257,11 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
     [cell ame_configureWithRow:row];
     __weak ZL2HomeViewController *weakSelf = self;
+    if (row[@"install"]) {
+        cell.ame_onPlay = nil;
+        cell.ame_onCard = ^{ [CubicDownloadsController showFrom:weakSelf task:row[@"install"]]; };
+        return cell;
+    }
     cell.ame_onCard = ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2OpenVersionDetail"
                                                             object:nil userInfo:@{@"profile": profileName}];
@@ -1247,6 +1305,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
     NSIndexPath *target = [self.gridView indexPathForItemAtPoint:location];
     if (!target || target.item >= (NSInteger)self.ame_rows.count) return;
     NSDictionary *row = self.ame_rows[(NSUInteger)target.item];
+    if (row[@"install"]) return;
     [self ame_showActionSheetForProfile:row[@"name"]];
 }
 
@@ -1265,7 +1324,15 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
     NSString *selected = PLProfiles.current.selectedProfileName;
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
+    NSMutableSet *installNames = [NSMutableSet set];
+    NSArray *downloads = [DownloadTaskManager.sharedManager.allTasks sortedArrayUsingDescriptors:@[[NSSortDescriptor sortDescriptorWithKey:@"createdDate" ascending:NO]]];
+    for (DownloadTaskItem *task in downloads) {
+        if (!task.isProfileInstall || (task.state != DownloadTaskStateDownloading && task.state != DownloadTaskStatePending)) continue;
+        [installNames addObject:task.displayName];
+        [rows addObject:@{@"name":task.displayName, @"install":task}];
+    }
     for (NSString *name in sorted) {
+        if ([installNames containsObject:name]) continue;
         NSDictionary *profile = profiles[name];
         if (![profile isKindOfClass:[NSDictionary class]]) continue;
 
@@ -1722,6 +1789,17 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 }
 
 // 实例表变化（版本页选用/删除、本页删除链、下载完成）：网格与选择卡刷新
+- (void)installUpdated:(NSNotification *)note {
+    DownloadTaskItem *item = note.userInfo[DownloadTaskManagerTaskKey];
+    if (!item.isProfileInstall || !self.view.window || self.installRefreshPending) return;
+    self.installRefreshPending = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC/3),dispatch_get_main_queue(), ^{
+        self.installRefreshPending = NO;
+        [self ame_rebuildData];
+        [self ame_rebuildGrid];
+    });
+}
+
 - (void)profileListDidChange {
     [self refreshLaunchState];
 }

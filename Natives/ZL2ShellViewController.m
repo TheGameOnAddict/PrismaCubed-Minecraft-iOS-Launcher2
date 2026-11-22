@@ -86,6 +86,7 @@
 #import "ZL2VersionDetailViewController.h"  // 7.0-UI-13：版本详情容器（主页卡/版本列表设置钮 push 目标）
 #import "MultiplayerViewController.h"      // 7.0-UI-14：多人联机页（顶栏联机项，页面 5）
 #import "FolderBrowserViewController.h"    // 7.0-UI-14：文件浏览器（顶栏文件夹项 PageSheet）
+#import "CubicDownloadsController.h"
 #import "DownloadTaskManager.h"           // manager 单例 + DownloadTaskItem + 更新通知常量
 #import "PLTaskProgressViewController.h"  // 统一进度页（胶囊点开）
 #import "AI/AIViewController.h"          // Task318：AI 助手入口恢复（7.0-UI-8 旧壳退役后
@@ -411,6 +412,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 @end
 
 @interface ZL2ShellTaskPill ()
+@property(nonatomic, strong) UILabel *idleLabel;
 @property(nonatomic, strong) UIProgressView *progressView;
 @property(nonatomic, strong) UIImageView *iconView;
 @property(nonatomic, strong) UILabel *countLabel;
@@ -422,8 +424,9 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     self = [super initWithFrame:CGRectZero];
     if (self) {
         self.backgroundColor = [ZL2Theme surfaceContainerHigh];
-        // radiusXL（28）> 高/2：CoreAnimation 渲染收敛为全圆胶囊（ZL2Download 同判例）
-        self.layer.cornerRadius = [ZL2Theme radiusXL];
+        self.layer.cornerRadius = ZL2ShellPillHeight / 2.0;
+        self.layer.cornerCurve = kCACornerCurveCircular;
+        self.clipsToBounds = YES;
         self.hidden = YES;   // 显隐由壳侧 ame_refreshTaskPill 按 hasActiveTasks 派生
         self.alpha = 0.0;
 
@@ -450,6 +453,13 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         _countLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_countLabel];
 
+        _idleLabel = [UILabel new];
+        _idleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+        _idleLabel.textColor = ZL2Theme.onSurface;
+        _idleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:_idleLabel];
+        [_idleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12].active = YES;
+        [_idleLabel.centerYAnchor constraintEqualToAnchor:self.centerYAnchor].active = YES;
         [NSLayoutConstraint activateConstraints:@[
             [self.widthAnchor constraintEqualToConstant:ZL2ShellPillWidth],
             [self.heightAnchor constraintEqualToConstant:ZL2ShellPillHeight],
@@ -1456,62 +1466,27 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     if (!self.isViewLoaded) return;
 
     DownloadTaskManager *manager = [DownloadTaskManager sharedManager];
-    BOOL active = [manager hasActiveTasks];
-
-    // 活动任务数（Downloading + Pending，ZL2DownloadViewController 同口径）+
-    // 首个活动任务 progress（0~1；负值=未知 → 截 0）
-    NSInteger count = 0;
-    double progress = 0.0;
-    if (active) {
-        count = (NSInteger)[manager tasksWithStates:@[
-            @(DownloadTaskStateDownloading),
-            @(DownloadTaskStatePending),
-        ]].count;
-        for (DownloadTaskItem *item in [manager allTasks]) {
-            if (item.state == DownloadTaskStateDownloading ||
-                item.state == DownloadTaskStatePending) {
-                progress = item.progress;
-                break;
-            }
-        }
-        if (progress < 0.0) progress = 0.0;
+    NSArray *active = [manager tasksWithStates:@[@(DownloadTaskStateDownloading), @(DownloadTaskStatePending)]];
+    DownloadTaskItem *focus = active.firstObject;
+    for (DownloadTaskItem *task in active) if (task.isProfileInstall) { focus = task; break; }
+    BOOL failed = [manager countOfTasksWithState:DownloadTaskStateFailed] > 0;
+    ZL2ShellTaskPill *pill = self.taskPill;
+    pill.hidden = NO;
+    pill.alpha = 1;
+    [pill ame_setProgress:focus.installProgress count:active.count];
+    pill.progressView.hidden = !focus;
+    pill.iconView.image = [UIImage systemImageNamed:focus ? @"doc.plaintext" : failed ? @"exclamationmark.circle.fill" : @"arrow.down.circle"];
+    pill.iconView.tintColor = !focus && failed ? UIColor.systemRedColor : ZL2Theme.onSurfaceVariant;
+    if (!focus) {
+        pill.countLabel.text = nil;
+        pill.accessibilityLabel = failed ? @"Downloads · Failed" : @"Downloads";
     }
-    [self.taskPill ame_setProgress:progress count:count];
-
-    BOOL visibleNow = !self.taskPill.hidden;
-    if (visibleNow == active) return;  // 显隐未变：内容已刷新到位
-
-    void (^apply)(void) = ^{
-        self.taskPill.hidden = !active;
-        self.taskPill.alpha = active ? 1.0 : 0.0;
-        // ★ Task347：动画上下文按骨架择一（topbar / nav 内容区头）
-        (self.topBar ?: self.contentHeader).layoutIfNeeded;
-    };
-    if ((self.topBar ?: self.contentHeader).window) {
-        [UIView animateWithDuration:ZL2ShellAnimateDuration animations:apply];
-    } else {
-        apply();
-    }
+    pill.idleLabel.hidden = focus != nil;
+    pill.idleLabel.text = failed ? @"Failed" : @"Downloads";
 }
 
 - (void)ame_openTaskProgress {
-    // ZL2Home/ZL2Download 同款用法：遍历 allTasks 取第一个活动任务的 taskId
-    // → 统一进度页（presentForTaskId: 自带同屏去重/替换）
-    DownloadTaskManager *manager = [DownloadTaskManager sharedManager];
-    NSString *taskId = nil;
-    for (DownloadTaskItem *item in [manager allTasks]) {
-        if (item.state == DownloadTaskStateDownloading ||
-            item.state == DownloadTaskStatePending) {
-            taskId = item.taskId;
-            break;
-        }
-    }
-    if (taskId.length == 0) {
-        taskId = [manager allTasks].firstObject.taskId;  // 兜底（hasActiveTasks 恒真时不可达）
-    }
-    if (taskId.length > 0) {
-        [PLTaskProgressViewController presentForTaskId:taskId];
-    }
+    [CubicDownloadsController showFrom:self task:nil];
 }
 
 #pragma mark - Child 管理（懒建缓存 + 首显 attach，7.0-UI-8/9 机制平移不变）

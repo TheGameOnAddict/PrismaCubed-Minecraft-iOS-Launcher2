@@ -25,6 +25,8 @@ typedef NS_ENUM(NSInteger, ModpackImportFormat) {
 };
 
 @interface ModpackImportService : NSObject
+/// Continue an archive download in its existing Downloads entry.
+@property(nonatomic, copy, nullable) NSString *archiveTaskId;
 
 /// 取消信号：外部置为 YES 后，正在进行的 importModpack 会在下一个检查点停止
 @property (nonatomic, assign, getter=isCancelled) BOOL cancelled;

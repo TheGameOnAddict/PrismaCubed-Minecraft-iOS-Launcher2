@@ -659,6 +659,8 @@
 #pragma mark - 导入流程
 
 - (void)startModpackImport:(NSDictionary *)modpackInfo temporaryDirectory:(NSURL *)temporaryDirectory {
+    // Return to the library as soon as the user confirms. The background block retains this controller.
+    if (self.profileImportForm) [self dismissViewControllerAnimated:YES completion:nil];
     // 重置取消状态
     [self.importService resetCancelState];
 
@@ -686,6 +688,11 @@
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.profileImportForm) {
+                self.currentImportingModpack = nil;
+                if (success) [NSNotificationCenter.defaultCenter postNotificationName:@"ReloadProfileList" object:nil];
+                return;
+            }
             // 检测是否被取消
             BOOL wasCancelled = [error.domain isEqualToString:@"ModpackImportError"] && error.code == 9999;
             NSString *localizedDesc = error.localizedDescription ?: @"";
@@ -734,13 +741,8 @@
 }
 
 - (void)showImportSuccess:(NSDictionary *)modpackInfo {
-    NSString *loader = modpackInfo[@"loader"];
     NSString *name = modpackInfo[@"name"];
     NSMutableString *msg = [NSMutableString stringWithFormat:localize(@"i18n_str_588", nil), name];
-    if ([loader isEqualToString:@"Forge"] || [loader isEqualToString:@"NeoForge"]) {
-        [msg appendFormat:localize(@"i18n_str_589", nil), loader, modpackInfo[@"loaderVersion"]];
-    }
-
     // Task 5.2：成功结果中明确列出被跳过的文件（404/server-only 等），
     // 让用户知晓整合包可能不完整（此前仅在控制台日志可见）。
     NSArray<NSDictionary *> *skipped = [self.importService skippedDownloadFiles];

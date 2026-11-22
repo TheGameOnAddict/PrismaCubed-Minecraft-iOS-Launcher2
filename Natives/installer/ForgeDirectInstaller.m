@@ -972,8 +972,10 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
 
         NSString *destPath = [librariesDir stringByAppendingPathComponent:relativePath];
 
-        // 已存在则跳过
-        if ([fm fileExistsAtPath:destPath]) {
+        NSDictionary *artifact = [downloads isKindOfClass:NSDictionary.class] ? downloads[@"artifact"] : nil;
+        NSString *expected = [artifact isKindOfClass:NSDictionary.class] ? artifact[@"sha1"] : nil;
+        if (![expected isKindOfClass:NSString.class] || expected.length != 40) expected = nil;
+        if ([fm fileExistsAtPath:destPath] && (!expected || [[ForgeProcessorExecutor sha1OfFile:destPath].lowercaseString isEqual:expected.lowercaseString])) {
             skipped++;
             processed++;
             continue;
@@ -1008,33 +1010,31 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
             progress(p, [NSString stringWithFormat:localize(@"i18n_str_1127", nil), (unsigned long)(processed + 1), (unsigned long)total, name]);
         }
 
-        NSError *downloadError = nil;
-        if ([self downloadFileFromURL:url toPath:destPath error:&downloadError]) {
-            downloaded++;
-            NSLog(@"[ForgeDirect] Downloaded library: %@", name);
-        } else {
-            // 主源失败：尝试 fallback 源（BMCLAPI ↔ 官方源）
-            NSLog(@"[ForgeDirect] Primary source failed for %@, trying fallback: %@", name, downloadError.localizedDescription ?: @"unknown");
-            NSString *fallbackURL = [self buildFallbackURLForLibrary:name relativePath:relativePath];
-            if (fallbackURL && ![fallbackURL isEqualToString:url]) {
-                NSError *fallbackError = nil;
-                if ([self downloadFileFromURL:fallbackURL toPath:destPath error:&fallbackError]) {
-                    downloaded++;
-                    NSLog(@"[ForgeDirect] Downloaded library via fallback: %@", name);
-                    processed++;
-                    continue;
+        NSMutableOrderedSet *sources = [NSMutableOrderedSet orderedSetWithObject:url];
+        NSString *fallback = [self buildFallbackURLForLibrary:name relativePath:relativePath];
+        if (fallback.length) [sources addObject:fallback];
+        if (expected) {
+            for (NSString *root in @[@"https://repo.maven.apache.org/maven2/", @"https://maven.neoforged.net/releases/"]) {
+                [sources addObject:[root stringByAppendingString:relativePath]];
+            }
+        }
+        BOOL installed = NO;
+        for (NSString *candidate in sources) {
+            NSError *downloadError = nil;
+            if ([self downloadFileFromURL:candidate toPath:destPath error:&downloadError]) {
+                if (!expected || [[ForgeProcessorExecutor sha1OfFile:destPath].lowercaseString isEqual:expected.lowercaseString]) {
+                    installed = YES;
+                    break;
                 }
-                NSLog(@"[ForgeDirect] Fallback also failed for %@: %@", name, fallbackError.localizedDescription ?: @"unknown");
+                [fm removeItemAtPath:destPath error:nil];
             }
+            if (progress) progress(base + span * (double)processed / total,
+                [NSString stringWithFormat:@"%@ · %@ · %@", name, [NSURL URLWithString:candidate].host, downloadError.localizedDescription ?: @"Checksum mismatch"]);
+        }
+        if (installed) downloaded++;
+        else {
             failed++;
-            // 关键库（modlauncher、bootstraplauncher、mixin、asm、forge/neoforged 自家库）失败会启动崩溃，记录警告
-            if ([self isCriticalLibrary:name]) {
-                [criticalFailures addObject:name];
-                NSLog(@"[ForgeDirect] Warning: critical library download failed (app will crash on launch): %@", name);
-            } else {
-                NSLog(@"[ForgeDirect] Failed to download library %@ (both sources failed)", name);
-            }
-            // 不中断流程，部分库可能不重要或可由游戏启动时再次下载
+            if ([self isCriticalLibrary:name]) [criticalFailures addObject:name];
         }
         processed++;
     }

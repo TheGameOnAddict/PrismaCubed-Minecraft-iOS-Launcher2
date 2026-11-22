@@ -1,5 +1,6 @@
 #import "utils.h"
 #import "PLTaskProgressViewController.h"
+#import "CubicDownloadsController.h"
 #import "DownloadTaskItem.h"
 #import "DownloadTaskManager.h"
 #import "PLTaskStages.h"
@@ -588,7 +589,18 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
     [self.contentStack addArrangedSubview:self.stagesStack];
 }
 
+- (void)viewDownloadLog {
+    DownloadTaskItem *item = [DownloadTaskManager.sharedManager taskWithId:self.taskId];
+    if (item) {
+        self.autoDismissOnCompletion = NO;
+        [CubicDownloadsController showFrom:self task:item];
+    }
+}
 - (void)setupErrorSection {
+    UIButton *log = [UIButton buttonWithType:UIButtonTypeSystem];
+    [log setTitle:@"View download log" forState:UIControlStateNormal];
+    [log addTarget:self action:@selector(viewDownloadLog) forControlEvents:UIControlEventTouchUpInside];
+    [self.contentStack addArrangedSubview:log];
     // 失败摘要（多行，始终随失败态显示）
     self.errorSummaryLabel = [[UILabel alloc] init];
     self.errorSummaryLabel.font = [UIFont systemFontOfSize:13];
@@ -1056,7 +1068,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
     if (terminalFailed) {
         self.errorSummaryLabel.text = (error.localizedDescription.length > 0)
             ? error.localizedDescription
-            : [self stateTextForTask:task];
+            : (task.currentStage.message ?: [self stateTextForTask:task]);
         self.errorSummaryLabel.hidden = NO;
     } else {
         self.errorSummaryLabel.text = nil;
