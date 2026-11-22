@@ -736,7 +736,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     dismiss.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [overlay addSubview:dismiss];
     UIView *panel = [UIView new];
-    panel.backgroundColor = [ZL2Theme surfaceContainerLow];
+    panel.backgroundColor = self.topBar.backgroundColor;
     panel.translatesAutoresizingMaskIntoConstraints = NO;
     [overlay addSubview:panel];
     UIStackView *items = [UIStackView new];
