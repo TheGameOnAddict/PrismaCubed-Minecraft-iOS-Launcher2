@@ -101,7 +101,7 @@ preview_mode() {
     FluentButton FluentCard FluentListCell FluentTextField
     FluentToast FluentSegmentedControl FluentProgress FluentBanner
     ZL2Theme ZL2RailView ZL2HomeViewController CubicDownloadsController DownloadTaskItem PLTaskStage DownloadHistoryStore
-    ZL2DownloadViewController ZL2VersionsViewController
+    ZL2SettingCards ZL2DownloadViewController ZL2VersionsViewController
     ZL2AccountsViewController ZL2SettingsViewController
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
     ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
