@@ -3,6 +3,12 @@
 
 int main(void) {
     @autoreleasepool {
+        NSString *mod = @"oculus-mc1.20.1-1.8.0.jar";
+        assert([ModpackInstalledFileName(mod, @"mods", @NO) isEqual:[mod stringByAppendingPathExtension:@"disabled"]]);
+        assert([ModpackInstalledFileName(mod, @"mods", @YES) isEqual:mod]);
+        assert([ModpackInstalledFileName(mod, @"mods", nil) isEqual:mod]);
+        assert([ModpackInstalledFileName(@"shaders.zip", @"shaderpacks", @NO) isEqual:@"shaders.zip"]);
+
         NSFileManager *fm = NSFileManager.defaultManager;
         NSString *instances = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
         NSString *folder = @"curseforge_45307D42-B213-4497-A9EF-F8B82CF40182";

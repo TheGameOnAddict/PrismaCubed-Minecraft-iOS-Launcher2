@@ -15,6 +15,15 @@ static inline NSString *ModpackInstanceID(NSString *gameDir, NSString *instances
     return [[NSUUID alloc] initWithUUIDString:uuid] ? folder : nil;
 }
 
+// CurseForge exports inactive mod JARs with required=false. Keep them available to the profile toggle.
+static inline NSString *ModpackInstalledFileName(NSString *name, NSString *category, id required) {
+    if ([category isEqual:@"mods"] && [name.pathExtension.lowercaseString isEqual:@"jar"] &&
+        [required isKindOfClass:NSNumber.class] && ![required boolValue]) {
+        return [name stringByAppendingPathExtension:@"disabled"];
+    }
+    return name;
+}
+
 // A plain install verifies in place. A pack gets its own copy in its staged launch root.
 static inline BOOL ModpackPrepareForgeJar(NSString *libraries, NSString *instance, NSString *relative, NSError **error) {
     NSFileManager *fm = NSFileManager.defaultManager;

@@ -1757,7 +1757,7 @@ static BOOL ame269_sMigrationRunning = NO;
                     }
                     fileName = ame275_safeName;
                 }
-                destPath = [categoryDir stringByAppendingPathComponent:fileName];
+                destPath = [categoryDir stringByAppendingPathComponent:ModpackInstalledFileName(fileName, categoryDirName, fileInfo[@"required"])];
 
                 // 候选列表（按尝试顺序）——★ Task272 重建（2026-10 实测 + 装机 fc10409
                 //   日志 12/12 依赖 404 实锤：旧 1/3 两级端点已死，文件名又永不解析 =
@@ -1997,6 +1997,7 @@ if (hasRealFileName) {
                         if (isCurseForge) {
                             ame272_skipEntry[@"projectID"] = fileInfo[@"projectID"] ?: @0;
                             ame272_skipEntry[@"fileID"] = fileInfo[@"fileID"] ?: @0;
+                            ame272_skipEntry[@"fileName"] = destPath.lastPathComponent;
                         }
                         @synchronized(self) {
                             [self.failedFilesInternal addObject:ame272_skipEntry];
@@ -2016,6 +2017,7 @@ if (hasRealFileName) {
                     if (isCurseForge) {
                         failedEntry[@"projectID"] = fileInfo[@"projectID"] ?: @0;
                         failedEntry[@"fileID"] = fileInfo[@"fileID"] ?: @0;
+                        failedEntry[@"fileName"] = destPath.lastPathComponent;
                     }
                     @synchronized(self) {
                         [self.failedFilesInternal addObject:failedEntry];
