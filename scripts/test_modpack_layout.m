@@ -42,6 +42,34 @@ int main(void) {
             assert(ModpackPrepareForgeJar(libraries, stage, product, NULL));
             assert(ModpackPrepareForgeJar(libraries, stage, product, NULL));
         }
+        // A new profile reached through an alias has no libraries/net/... descendants yet.
+        NSString *alias = [instances stringByAppendingPathComponent:@"game-dir"];
+        assert([fm createSymbolicLinkAtPath:alias withDestinationPath:installer error:NULL]);
+        NSString *sourceAlias = [alias stringByAppendingPathComponent:@"libraries"];
+        NSString *newPack = [instances stringByAppendingPathComponent:@"new-pack"];
+        assert([fm createDirectoryAtPath:newPack withIntermediateDirectories:YES attributes:nil error:NULL]);
+        NSString *packAlias = [instances stringByAppendingPathComponent:@"pack-alias"];
+        assert([fm createSymbolicLinkAtPath:packAlias withDestinationPath:newPack error:NULL]);
+        NSString *product = products.firstObject;
+        NSString *target = [[newPack stringByAppendingPathComponent:@"libraries"] stringByAppendingPathComponent:product];
+        assert([ModpackResolvedPath([[packAlias stringByAppendingPathComponent:@"libraries"] stringByAppendingPathComponent:product], NULL)
+            isEqual:[ModpackResolvedPath(newPack, NULL) stringByAppendingPathComponent:[@"libraries" stringByAppendingPathComponent:product]]]);
+        assert(ModpackPrepareForgeJar(sourceAlias, packAlias, product, NULL));
+        assert([NSData.data writeToFile:target atomically:YES]);
+        assert(ModpackPrepareForgeJar(sourceAlias, packAlias, product, NULL));
+        assert([[NSData dataWithContentsOfFile:target] isEqual:header]);
+        NSString *sharedPack = [instances stringByAppendingPathComponent:@"shared-pack"];
+        assert([fm createDirectoryAtPath:sharedPack withIntermediateDirectories:YES attributes:nil error:NULL]);
+        NSString *sharedLibraries = [sharedPack stringByAppendingPathComponent:@"libraries"];
+        assert([fm createSymbolicLinkAtPath:sharedLibraries withDestinationPath:libraries error:NULL]);
+        assert(ModpackPrepareForgeJar(sourceAlias, sharedPack, product, NULL));
+        assert([fm removeItemAtPath:sharedLibraries error:NULL]);
+        assert([fm createSymbolicLinkAtPath:sharedLibraries withDestinationPath:newPack error:NULL]);
+        assert(!ModpackPrepareForgeJar(sourceAlias, sharedPack, product, NULL));
+        assert(![fm fileExistsAtPath:[newPack stringByAppendingPathComponent:product]]);
+        NSError *missing = nil;
+        assert(!ModpackPrepareForgeJar(sourceAlias, packAlias, @"net/minecraft/missing.jar", &missing));
+        assert([missing.localizedDescription containsString:@"cannot read processor output"] && missing.userInfo[NSFilePathErrorKey]);
         assert(!ModpackPrepareForgeJar(libraries, stage, @"../elsewhere", NULL));
         assert([fm moveItemAtPath:live toPath:[live stringByAppendingString:@"-backup-12345"] error:NULL]);
         assert([fm moveItemAtPath:stage toPath:live error:NULL]);

@@ -124,8 +124,9 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
         // 原因：Minecraft 启动器（Java 端 Tools.java）的 DIR_HOME_VERSION 和 DIR_HOME_LIBRARY
         // 固定指向 POJAV_GAME_DIR/versions 和 POJAV_GAME_DIR/libraries，不从 profile gameDir 读取。
         // 之前把 versionDir/librariesDir 放到 customGameDir 下会导致启动时"找不到版本信息"。
-        NSString *gameDir = customGameDir.length > 0 ? customGameDir : [self gameDirectory];
-        NSString *mainGameDir = [self gameDirectory];  // 始终用主目录存放 versions 和 libraries
+        NSString *mainGameDir = ModpackResolvedPath([self gameDirectory], error);
+        if (!mainGameDir) return NO;
+        NSString *gameDir = customGameDir.length > 0 ? customGameDir : mainGameDir;
         NSString *librariesDir = [mainGameDir stringByAppendingPathComponent:@"libraries"];
         NSLog(@"[ForgeDirect] Game directory (user.dir): %@", gameDir);
         NSLog(@"[ForgeDirect] Main game directory (versions/libraries): %@", mainGameDir);
@@ -675,7 +676,8 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
     // Prepare version directory
     // 版本 JSON 必须写入 POJAV_GAME_DIR/versions/（主目录），而非 profile gameDir。
     // Minecraft 启动器 Java 端固定从 POJAV_GAME_DIR/versions 加载版本 JSON。
-    NSString *versionDir = [[self gameDirectory] stringByAppendingPathComponent:[NSString stringWithFormat:@"versions/%@", versionId]];
+    NSString *mainGameDir = librariesDir.stringByDeletingLastPathComponent;
+    NSString *versionDir = [mainGameDir stringByAppendingPathComponent:[NSString stringWithFormat:@"versions/%@", versionId]];
     NSString *versionJsonPath = [versionDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.json", versionId]];
     NSLog(@"[ForgeDirect] Version directory: %@", versionDir);
     [[NSFileManager defaultManager] createDirectoryAtPath:versionDir
@@ -729,7 +731,7 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
     if (![ForgeProcessorExecutor runProcessorsWithProfile:installProfile
                                              installerPath:installerPath
                                           minecraftVersion:minecraftVersion
-                                                mainGameDir:[self gameDirectory]
+                                                mainGameDir:mainGameDir
                                                baseProgress:0.55
                                               progressSpan:0.3
                                                    progress:progress
@@ -812,14 +814,18 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
     NSLog(@"[ForgeDirect] Writing version JSON to: %@", versionJsonPath);
     reportProgress(0.9, localize(@"i18n_str_1263", nil));
     NSError *writeError = saveJSONToFile(versionJson, versionJsonPath);
-    if (!writeError && ![gameDir.stringByResolvingSymlinksInPath isEqual:[self gameDirectory].stringByResolvingSymlinksInPath]) {
-        // The launch root may switch to this instance, including after a staged reimport.
-        NSString *localVersion = [[gameDir stringByAppendingPathComponent:@"versions"] stringByAppendingPathComponent:versionId];
-        NSString *localJson = [localVersion stringByAppendingPathComponent:versionJsonPath.lastPathComponent];
-        if (![localJson.stringByResolvingSymlinksInPath hasPrefix:[gameDir.stringByResolvingSymlinksInPath stringByAppendingString:@"/"]]) {
-            writeError = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteInvalidFileNameError userInfo:nil];
-        } else if ([NSFileManager.defaultManager createDirectoryAtPath:localVersion withIntermediateDirectories:YES attributes:nil error:&writeError]) {
-            writeError = saveJSONToFile(versionJson, localJson);
+    if (!writeError) {
+        NSString *root = ModpackResolvedPath(gameDir, &writeError);
+        NSString *sharedJSON = ModpackResolvedPath(versionJsonPath, &writeError);
+        NSString *localPath = [[[root stringByAppendingPathComponent:@"versions"] stringByAppendingPathComponent:versionId]
+            stringByAppendingPathComponent:versionJsonPath.lastPathComponent];
+        NSString *localJSON = root ? ModpackResolvedPath(localPath, &writeError) : nil;
+        if (!writeError && ![localJSON isEqualToString:sharedJSON]) {
+            if (![localJSON hasPrefix:[root stringByAppendingString:@"/"]]) {
+                writeError = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteInvalidFileNameError userInfo:@{NSFilePathErrorKey:localJSON}];
+            } else if ([NSFileManager.defaultManager createDirectoryAtPath:localJSON.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:&writeError]) {
+                writeError = saveJSONToFile(versionJson, localJSON);
+            }
         }
     }
     if (writeError) {

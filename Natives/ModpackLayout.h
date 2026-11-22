@@ -1,4 +1,9 @@
 #import <Foundation/Foundation.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
 
 // An imported profile may point at the instance itself or its isolated version directory.
 static inline NSString *ModpackInstanceID(NSString *gameDir, NSString *instancesDir) {
@@ -24,28 +29,71 @@ static inline NSString *ModpackInstalledFileName(NSString *name, NSString *categ
     return name;
 }
 
+// Resolve the existing ancestor before appending a missing suffix. Foundation can
+// return the original spelling for a missing leaf under an iOS container alias.
+static inline NSString *ModpackResolvedPath(NSString *path, NSError **error) {
+    if (!path.isAbsolutePath) {
+        if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadInvalidFileNameError userInfo:@{NSFilePathErrorKey:path ?: @""}];
+        return nil;
+    }
+    struct stat entry;
+    if (lstat(path.fileSystemRepresentation, &entry) == -1 && errno == ENOENT) {
+        NSString *parent = ModpackResolvedPath(path.stringByDeletingLastPathComponent, error);
+        return [parent stringByAppendingPathComponent:path.lastPathComponent];
+    }
+    char *resolved = realpath(path.fileSystemRepresentation, NULL);
+    if (!resolved) {
+        int code = errno;
+        if (error) *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:code userInfo:@{NSFilePathErrorKey:path}];
+        return nil;
+    }
+    NSString *result = [NSFileManager.defaultManager stringWithFileSystemRepresentation:resolved length:strlen(resolved)];
+    free(resolved);
+    return result;
+}
+
+static inline BOOL ModpackForgeError(NSError **error, NSString *path, NSString *reason) {
+    if (error) *error = [NSError errorWithDomain:@"ModpackImportError" code:4010 userInfo:@{
+        NSFilePathErrorKey:path, NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Forge library %@ — %@ (%@)", path.lastPathComponent, reason, path]}];
+    return NO;
+}
+
 // A plain install verifies in place. A pack gets its own copy in its staged launch root.
 static inline BOOL ModpackPrepareForgeJar(NSString *libraries, NSString *instance, NSString *relative, NSError **error) {
+    if (!relative.length || relative.isAbsolutePath || [relative.pathComponents containsObject:@".."])
+        return ModpackForgeError(error, relative ?: @"", @"invalid library path");
+
     NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *source = [libraries stringByAppendingPathComponent:relative];
-    NSString *packLibraries = [instance stringByAppendingPathComponent:@"libraries"];
-    NSString *target = [packLibraries stringByAppendingPathComponent:relative];
-    BOOL sameFile = [source.stringByResolvingSymlinksInPath isEqual:target.stringByResolvingSymlinksInPath];
-    BOOL safe = !relative.isAbsolutePath && ![relative.pathComponents containsObject:@".."] &&
-        [source.stringByResolvingSymlinksInPath hasPrefix:[libraries.stringByResolvingSymlinksInPath stringByAppendingString:@"/"]] &&
-        (sameFile || [target.stringByResolvingSymlinksInPath hasPrefix:[instance.stringByResolvingSymlinksInPath stringByAppendingString:@"/"]]);
-    BOOL directory = NO;
-    BOOL regular = safe && [fm fileExistsAtPath:source isDirectory:&directory] && !directory;
-    NSFileHandle *file = regular ? [NSFileHandle fileHandleForReadingAtPath:source] : nil;
+    NSString *sourceRoot = ModpackResolvedPath(libraries, error);
+    NSString *packRoot = ModpackResolvedPath(instance, error);
+    if (!sourceRoot || !packRoot) return NO;
+    NSString *source = ModpackResolvedPath([sourceRoot stringByAppendingPathComponent:relative], error);
+    NSString *target = ModpackResolvedPath([[packRoot stringByAppendingPathComponent:@"libraries"] stringByAppendingPathComponent:relative], error);
+    if (!source || !target) return NO;
+    if (![source hasPrefix:[sourceRoot stringByAppendingString:@"/"]])
+        return ModpackForgeError(error, source, @"source resolves outside the installer library folder");
+    BOOL sameFile = [source isEqualToString:target];
+    if (!sameFile && ![target hasPrefix:[packRoot stringByAppendingString:@"/"]])
+        return ModpackForgeError(error, target, @"destination resolves outside the selected profile");
+
+    struct stat info;
+    if (stat(source.fileSystemRepresentation, &info) == -1)
+        return ModpackForgeError(error, source, [NSString stringWithFormat:@"cannot read processor output (%s)", strerror(errno)]);
+    if (!S_ISREG(info.st_mode)) return ModpackForgeError(error, source, @"processor output is not a regular file");
+    NSFileHandle *file = [NSFileHandle fileHandleForReadingFromURL:[NSURL fileURLWithPath:source] error:error];
+    if (!file) return NO;
     NSData *magic = [file readDataOfLength:4];
     [file closeFile];
-    if (![magic isEqual:[NSData dataWithBytes:"PK\003\004" length:4]]) {
-        if (error) *error = [NSError errorWithDomain:@"ModpackImportError" code:4010 userInfo:@{
-            NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Forge could not verify the generated client library %@.", relative.lastPathComponent]}];
-        return NO;
-    }
-    if (sameFile) return YES;
-    if ([fm fileExistsAtPath:target] && [fm contentsEqualAtPath:source andPath:target]) return YES;
-    if (![fm createDirectoryAtPath:target.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:error]) return NO;
-    return [fm copyItemAtPath:source toPath:target error:error];
+    if (![magic isEqual:[NSData dataWithBytes:"PK\003\004" length:4]])
+        return ModpackForgeError(error, source, [NSString stringWithFormat:@"invalid JAR header %@ in %lld bytes", magic, (long long)info.st_size]);
+    if (sameFile || ([fm fileExistsAtPath:target] && [fm contentsEqualAtPath:source andPath:target])) return YES;
+    NSString *parent = target.stringByDeletingLastPathComponent;
+    if (![fm createDirectoryAtPath:parent withIntermediateDirectories:YES attributes:nil error:error]) return NO;
+    // Publish a complete copy in one rename, including when repairing a stale staged copy.
+    NSString *temporary = [parent stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    if (![fm copyItemAtPath:source toPath:temporary error:error]) return NO;
+    if (rename(temporary.fileSystemRepresentation, target.fileSystemRepresentation) == 0) return YES;
+    int code = errno;
+    [fm removeItemAtPath:temporary error:nil];
+    return ModpackForgeError(error, target, [NSString stringWithFormat:@"could not publish the library (%s)", strerror(code)]);
 }
