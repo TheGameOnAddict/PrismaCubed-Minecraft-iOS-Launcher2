@@ -530,16 +530,6 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 // 7.0-UI-14：按ID搜索页单项目直查（同步端点；预览返回单条 demo 项目卡数据）
 - (id)getEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
     if ([endpoint isEqual:@"project/book-of-dragons"]) return @{@"id":@"book-of-dragons", @"title":@"Book of Dragons", @"gallery":@[@{@"title":@"Flight", @"url":@"preview:CubicProfileCover2"}]};
-    if ([endpoint hasSuffix:@"/changelog"]) return @{@"data":@"<p>Dragon flight notes</p>"};
-    if ([endpoint isEqual:@"mods/12345/files"]) return @{@"data":@[
-        @{@"id":@3, @"modId":@12345, @"fileDate":@"2026-09-01T00:00:00Z", @"gameVersions":@[@"Fabric", @"1.21.1"],
-          @"fileName":@"fabric.jar", @"downloadUrl":@"https://example.invalid/fabric.jar"},
-        @{@"id":@2, @"modId":@12345, @"fileDate":@"2026-07-01T00:00:00.123Z", @"gameVersions":@[@"Forge", @"1.20.1"],
-          @"fileName":@"dragons-2.jar", @"downloadUrl":@"https://example.invalid/dragons-2.jar"},
-        @{@"id":@1, @"modId":@12345, @"fileDate":@"2026-06-01T00:00:00Z", @"gameVersions":@[@"Forge", @"1.20.1"],
-          @"hashes":@[@{@"algo":@1, @"value":@"abcd"}], @"fileName":@"dragons.jar", @"downloadUrl":@"https://example.invalid/dragons.jar"}]};
-    if ([endpoint isEqual:@"mods/12345"]) return @{@"data":@{@"id":@12345, @"name":@"Book of Dragons",
-        @"screenshots":@[@{@"title":@"Wings", @"url":@"preview:CubicProfileCover2"}]}};
     return @{
         @"project_id": @"demo-project",
         @"slug": @"demo-project",
@@ -632,6 +622,16 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 
 // 7.0-UI-14：按ID搜索页单项目直查（同步端点；CurseForge 返回 data 包裹形态）
 - (id)getEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
+    if ([endpoint hasSuffix:@"/changelog"]) return @{@"data":@"<p>Dragon flight notes</p>"};
+    if ([endpoint isEqual:@"mods/12345/files"]) return @{@"data":@[
+        @{@"id":@3, @"modId":@12345, @"fileDate":@"2026-09-01T00:00:00Z", @"gameVersions":@[@"Fabric", @"1.21.1"],
+          @"fileName":@"fabric.jar", @"downloadUrl":@"https://example.invalid/fabric.jar"},
+        @{@"id":@2, @"modId":@12345, @"fileDate":@"2026-07-01T00:00:00.123Z", @"gameVersions":@[@"Forge", @"1.20.1"],
+          @"fileName":@"dragons-2.jar", @"downloadUrl":@"https://example.invalid/dragons-2.jar"},
+        @{@"id":@1, @"modId":@12345, @"fileDate":@"2026-06-01T00:00:00Z", @"gameVersions":@[@"Forge", @"1.20.1"],
+          @"hashes":@[@{@"algo":@1, @"value":@"abcd"}], @"fileName":@"dragons.jar", @"downloadUrl":@"https://example.invalid/dragons.jar"}]};
+    if ([endpoint isEqual:@"mods/12345"]) return @{@"data":@{@"id":@12345, @"name":@"Book of Dragons",
+        @"screenshots":@[@{@"title":@"Wings", @"url":@"preview:CubicProfileCover2"}]}};
     return @{
         @"data": @{
             @"id": @"12345",
