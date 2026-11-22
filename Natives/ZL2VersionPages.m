@@ -70,6 +70,7 @@
 #import "ModpackExportService.h"     // 7.0-UI-13-r1：版本 id 反解（MC 版本口径）
 #import "DownloadTaskManager.h"
 #import "ModService.h"                 // ★ Task343：模组页数据层（scan/toggle/delete/metadata/隔离口径）
+#import "ModVersionViewController.h"
 #import "ModUpdateService.h"          // ★ Task343：检查更新全流程（双源限流）
 #import "PLDownloadClient.h"          // ★ Task343：更新下载（镜像候选 + SHA1 校验）
 #import "PLMirrorCenter.h"
@@ -1079,7 +1080,7 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     return hex;
 }
 
-@interface ZL2VersionModsPage () <UIDocumentPickerDelegate, UIGestureRecognizerDelegate>
+@interface ZL2VersionModsPage () <UIDocumentPickerDelegate, UIGestureRecognizerDelegate, ModVersionViewControllerDelegate>
 @property (nonatomic, strong) UIStackView *ameV13_contentStack;
 @property (nonatomic, strong) UIStackView *ameV13_cardsStack;
 @property (nonatomic, strong) UILabel *ameV13_countLabel;
@@ -1092,7 +1093,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 @property (nonatomic, copy) NSArray<ModItem *> *ameV13_mods;      // ModService 全量
 @property (nonatomic, copy) NSArray<ModItem *> *ameV13_viewMods;  // 搜索+筛选+排序后
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *ameV13_displayNameByPath;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *ameV13_onlineIdByPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, ModUpdateResult *> *ameV13_updateResults;
 @property (nonatomic, strong) NSMutableSet<NSString *> *ameV13_selectedPaths;
 @property (nonatomic) BOOL scanningMods;
@@ -1111,7 +1111,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(modDownloadFinished:)
         name:DownloadTaskManagerTaskCompletedNotification object:nil];
     _ameV13_displayNameByPath = [NSMutableDictionary dictionary];
-    _ameV13_onlineIdByPath = [NSMutableDictionary dictionary];
     _ameV13_updateResults = [NSMutableDictionary dictionary];
     _ameV13_selectedPaths = [NSMutableSet set];
 
@@ -1211,11 +1210,9 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         }
         page.ameV13_mods = mods ?: @[];
         [page.ameV13_displayNameByPath removeAllObjects];
-        [page.ameV13_onlineIdByPath removeAllObjects];
         for (ModItem *mod in mods) {
             if (!mod.filePath.length) continue;
             if (mod.displayName.length) page.ameV13_displayNameByPath[mod.filePath] = mod.displayName;
-            if (mod.onlineID.length) page.ameV13_onlineIdByPath[mod.filePath] = mod.onlineID;
         }
         [page ameV13_applyFilter];
     }];
@@ -1442,15 +1439,47 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
         }
         return;
     }
-    NSString *onlineId = _ameV13_onlineIdByPath[path];
-    if (onlineId.length > 0) {
-        NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"https://modrinth.com/mod/%@", onlineId]];
-        if (url) {
-            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-            return;
-        }
+    for (ModItem *mod in _ameV13_viewMods) {
+        if (![mod.filePath isEqual:path]) continue;
+        ModVersionViewController *page = [[ModVersionViewController alloc] init];
+        page.modItem = mod;
+        page.showsInstalledFile = YES;
+        page.delegate = self;
+        page.targetProfileName = self.ameV13_profileName;
+        NSString *versionID = [self ameV13_profileDict][@"lastVersionId"];
+        NSDictionary *parsed = versionID.length ? [ModpackExportService parseVersionId:versionID] : nil;
+        NSString *minecraft = parsed[@"minecraft"] ?: versionID;
+        NSString *loader = parsed[@"loader"];
+        page.preferredGameVersion = minecraft;
+        page.preferredLoader = loader;
+        [self.navigationController pushViewController:page animated:YES];
+
+        __weak ModVersionViewController *weakPage = page;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            if (!mod.fileSHA1.length) mod.fileSHA1 = ZL2V13ModSHA1ForFile(path);
+            [[ModUpdateService sharedService] checkUpdateForMod:mod gameVersion:minecraft ?: @"" loader:loader
+                                                   projectType:@"mod" completion:^(ModUpdateResult *result) {
+                ModVersionViewController *detail = weakPage;
+                if (!detail) return;
+                objc_setAssociatedObject(detail, @selector(ameV13_cardTapped:), result, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                NSMutableArray *compatible = [NSMutableArray array];
+                for (ModVersion *version in result.allVersions) {
+                    if (minecraft.length && ![version.gameVersions containsObject:minecraft]) continue;
+                    if (loader.length && version.loaders.count && ![version.loaders containsObject:loader.lowercaseString]) continue;
+                    [compatible addObject:version];
+                }
+                [detail displayInstalledVersions:compatible source:result.apiSource.integerValue];
+            }];
+        });
+        return;
     }
-    [self ameV13_showAlertMessage:localize(@"resman.mods.link_unavailable_message", nil)];
+}
+
+- (void)modVersionViewController:(ModVersionViewController *)page didSelectVersion:(ModVersion *)version {
+    ModUpdateResult *lookup = objc_getAssociatedObject(page, @selector(ameV13_cardTapped:));
+    if (!lookup || ![page.targetProfileName isEqual:self.ameV13_profileName]) return;
+    lookup.candidateVersions = @[version];
+    [self ameV13_performUpdatesWithResults:@[lookup] skipped:0];
 }
 
 - (void)ameV13_toggleChanged:(ZL2M3Switch *)sender {
@@ -1475,7 +1504,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     }
     [_ameV13_updateResults removeObjectForKey:path];
     [_ameV13_displayNameByPath removeObjectForKey:path];
-    [_ameV13_onlineIdByPath removeObjectForKey:path];
     [self ameV13_reloadContent];
     NSLog(@"[ZL2VersionPages] Task343 mod toggle: %@ -> %@", target.fileName, target.disabled ? @"disabled" : @"enabled");
 }

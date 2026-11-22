@@ -749,6 +749,8 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
 @end
 
 @interface ModVersionViewController : UIViewController
+@property (nonatomic, copy) NSString *targetProfileName;
+@property (nonatomic) BOOL showsInstalledFile;
 @property (nonatomic, strong, nullable) ModItem *modItem;
 @property (nonatomic, weak, nullable) id<ModVersionViewControllerDelegate> delegate;
 @property (nonatomic, copy, nullable) NSString *preferredGameVersion;
@@ -757,6 +759,7 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
 @end
 
 @implementation ModVersionViewController
+- (void)displayInstalledVersions:(NSArray *)versions source:(NSInteger)source {}
 @end
 
 @protocol ShaderVersionViewControllerDelegate <NSObject>

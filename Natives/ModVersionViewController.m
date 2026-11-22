@@ -156,10 +156,15 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.backgroundView = nil;
 
-    [self fetchVersionsFromCurrentSource];
+    if (self.showsInstalledFile) {
+        [self.activityIndicator startAnimating];
+    } else {
+        [self fetchVersionsFromCurrentSource];
+    }
 }
 
 - (UIColor *)accentForSource:(NSInteger)source {
+    if (source == 0) return [AmeTheme brandPrimary];
     return source == kSourceCurseForge ? [UIColor colorWithRed:1 green:0.43 blue:0.24 alpha:1]
                                        : [UIColor colorWithRed:0.11 green:0.85 blue:0.44 alpha:1];
 }
@@ -169,8 +174,9 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 /// 创建并配置项目详情头部视图，设置为 tableView.tableHeaderView
 /// 补齐之前版本页缺少的项目封面图/标题/作者/下载量/标签/描述等信息显示
 - (void)setupDetailHeader {
+    BOOL localFile = self.showsInstalledFile && self.apiSource == 0;
     BOOL curseForge = self.selectedSource == kSourceCurseForge;
-    UIColor *accent = [self accentForSource:self.selectedSource];
+    UIColor *accent = [self accentForSource:localFile ? 0 : self.selectedSource];
     UIColor *surface = curseForge ? [UIColor colorWithWhite:0.145 alpha:1] : [UIColor colorWithRed:0.15 green:0.18 blue:0.20 alpha:1];
     self.view.backgroundColor = curseForge ? [UIColor colorWithWhite:0.095 alpha:1] : [UIColor colorWithRed:0.10 green:0.13 blue:0.15 alpha:1];
     self.detailHeaderView = [[AssetDetailHeaderView alloc] initWithProjectAccent:accent surface:surface cornerRadius:curseForge ? 5 : 15];
@@ -195,11 +201,16 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
                                placeholderColor:accent];
 
     UIImageView *mark = [[UIImageView alloc] initWithImage:[UIImage imageNamed:curseForge ? @"CubicCurseForge" : @"CubicModrinth"]];
+    if (localFile) {
+        mark.image = [UIImage systemImageNamed:@"shippingbox"];
+        mark.tintColor = accent;
+    }
+    if (self.showsInstalledFile && self.modItem.icon) [self.detailHeaderView showLocalIcon:self.modItem.icon];
     mark.contentMode = UIViewContentModeScaleAspectFit;
     [mark.widthAnchor constraintEqualToConstant:24].active = YES;
     [mark.heightAnchor constraintEqualToConstant:24].active = YES;
     UILabel *providerName = [[UILabel alloc] init];
-    providerName.text = curseForge ? @"CurseForge" : @"Modrinth";
+    providerName.text = localFile ? localize(@"prisma.project.installed", nil) : (curseForge ? @"CurseForge" : @"Modrinth");
     providerName.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
     providerName.textColor = accent;
     UIStackView *brand = [[UIStackView alloc] initWithArrangedSubviews:@[mark, providerName]];
@@ -239,12 +250,45 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.dependencyStack.axis = UILayoutConstraintAxisVertical;
     self.dependencyStack.hidden = YES;
     self.projectStack = [[UIStackView alloc] initWithArrangedSubviews:@[brand, self.detailHeaderView, self.dependencyStack, filesBar]];
+    if (self.showsInstalledFile) {
+        UILabel *installed = [[UILabel alloc] init];
+        installed.numberOfLines = 0;
+        installed.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+        installed.textColor = UIColor.secondaryLabelColor;
+        NSString *status = localize(self.modItem.disabled ? @"resman.mods.filter.disabled" : @"resman.mods.filter.enabled", nil);
+        installed.text = [NSString stringWithFormat:@"%@ · %@\n%@", self.targetProfileName, status, self.modItem.fileName];
+        UIStackView *info = [[UIStackView alloc] initWithArrangedSubviews:@[installed]];
+        info.layoutMarginsRelativeArrangement = YES;
+        info.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 16, 8, 16);
+        [self.projectStack insertArrangedSubview:info atIndex:2];
+        self.filtersButton.hidden = localFile;
+    }
     self.projectStack.axis = UILayoutConstraintAxisVertical;
     self.projectStack.spacing = 4;
     self.projectStack.layoutMarginsRelativeArrangement = YES;
     self.projectStack.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 0, 8, 0);
     [self refreshFilesHeading];
     [self updateTableHeaderHeight];
+}
+
+- (void)displayInstalledVersions:(NSArray<ModVersion *> *)versions source:(NSInteger)source {
+    [self.activityIndicator stopAnimating];
+    if (source != kSourceCurseForge && source != kSourceModrinth) {
+        self.filesTitle.text = localize(@"resman.mods.link_unavailable_message", nil);
+        self.filesTitle.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+        [self updateTableHeaderHeight];
+        return;
+    }
+    self.apiSource = source;
+    self.selectedSource = source;
+    [self setupDetailHeader];
+    if (versions.count) {
+        [self handleVersionsResponse:versions error:nil];
+    } else {
+        self.filesTitle.text = localize(@"prisma.ui.no.versions.match.your.filters", nil);
+        self.filtersButton.hidden = YES;
+        [self updateTableHeaderHeight];
+    }
 }
 
 - (void)refreshFilesHeading {
@@ -327,7 +371,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
                                                           chipStackOut:&chipOut];
         self.sourceScrollView = scrollOut;
         self.sourceChipStack = chipOut;
-        [self.filterMainStack addArrangedSubview:sourceRow];
+        if (!self.showsInstalledFile) [self.filterMainStack addArrangedSubview:sourceRow];
     }
     [self rebuildSourceChips];
 
@@ -1437,10 +1481,11 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     ModVersion *selectedVersion = self.filteredVersions[indexPath.row];
+    UINavigationController *navigation = self.navigationController;
     if ([self.delegate respondsToSelector:@selector(modVersionViewController:didSelectVersion:)]) {
         [self.delegate modVersionViewController:self didSelectVersion:selectedVersion];
     }
-    [self.navigationController popViewControllerAnimated:YES];
+    if (navigation.topViewController == self) [navigation popViewControllerAnimated:YES];
 }
 
 @end

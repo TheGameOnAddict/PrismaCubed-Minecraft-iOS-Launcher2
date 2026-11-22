@@ -35,6 +35,8 @@ NS_ASSUME_NONNULL_BEGIN
 // 进入版本页时必须沿用搜索时的 API 来源，否则会拿 CurseForge 数字 ID 请求 Modrinth API
 // 导致版本列表拉不到。参照 ZL2 的 platform 枚举贯穿搜索→详情→版本全链路。
 @property (nonatomic, assign) NSInteger apiSource;
+@property (nonatomic) BOOL showsInstalledFile;
+- (void)displayInstalledVersions:(NSArray<ModVersion *> *)versions source:(NSInteger)source;
 
 @end
 

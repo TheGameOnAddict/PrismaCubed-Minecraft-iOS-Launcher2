@@ -3868,3 +3868,4 @@
 "cubic.settings.tools" = "启动器工具";
 
 "prisma.project.filters" = "筛选";
+"prisma.project.installed" = "已安装的模组";

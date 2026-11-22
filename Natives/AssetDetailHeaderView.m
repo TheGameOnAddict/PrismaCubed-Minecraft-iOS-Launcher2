@@ -549,6 +549,11 @@
     }
 }
 
+- (void)showLocalIcon:(UIImage *)icon {
+    [IconLoader cancelLoadingForImageView:self.iconImageView];
+    self.iconImageView.image = icon;
+}
+
 #pragma mark - Icon Loading
 
 /// 加载项目封面图（使用 IconLoader 统一加载器）
