@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface AssetDetailHeaderView : UIView
 
+- (instancetype)initWithProjectAccent:(UIColor *)accent surface:(UIColor *)surface cornerRadius:(CGFloat)radius;
+
 /// 尺寸变化回调（描述展开/收起时触发，控制器需在此回调中重新计算 tableHeaderView 高度）
 @property (nonatomic, copy, nullable) void (^onSizeChanged)(void);
 

@@ -3867,3 +3867,5 @@
 "cubic.settings.sources" = "Download sources";
 "cubic.settings.data" = "Backups and resets";
 "cubic.settings.tools" = "Launcher tools";
+
+"prisma.project.filters" = "Filters";

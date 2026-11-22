@@ -480,7 +480,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 
 #pragma mark - 壳本体
 
-@interface ZL2ShellViewController () <UINavigationControllerDelegate>
+@interface ZL2ShellViewController () <UINavigationControllerDelegate, UIGestureRecognizerDelegate>
 @property(nonatomic, strong) UIView *topBar;                          // safeArea 顶延伸 + 40pt 内容带
 @property(nonatomic, strong) UIStackView *barRow;                     // [左簇 | 标题 | 右簇]
 @property(nonatomic, strong) UIStackView *leftCluster;                // [返回 | 主页]
@@ -493,6 +493,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 @property(nonatomic, strong) UIView *container;                       // 子页挂载区
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, UIViewController *> *childCache;
 @property(nonatomic, assign) NSInteger currentIndex;
+@property(nonatomic, strong) NSMutableArray<NSNumber *> *sectionHistory;
+@property(nonatomic, strong) UIScreenEdgePanGestureRecognizer *sectionBackGesture;
 
 // ★ Task347 NavigationView 骨架态（topbar 骨架时全部闲置）
 @property(nonatomic, assign) BOOL ame347_navMode;                     // 结构令牌 = navigationview
@@ -527,6 +529,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     if (self) {
         _childCache = [NSMutableDictionary dictionary];
         _currentIndex = -1;
+        _sectionHistory = [NSMutableArray array];
     }
     return self;
 }
@@ -584,6 +587,10 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
                                                  name:DownloadTaskManagerDidUpdateTaskNotification
                                                object:nil];
 
+    self.sectionBackGesture = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(sectionBackSwiped:)];
+    self.sectionBackGesture.edges = self.view.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft ? UIRectEdgeRight : UIRectEdgeLeft;
+    self.sectionBackGesture.delegate = self;
+    [self.container addGestureRecognizer:self.sectionBackGesture];
     [self showPageAtIndex:0];
 }
 
@@ -1232,7 +1239,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     NSInteger ame347_index = self.currentIndex;
 
     UINavigationController *ame347_nav = [self ame_currentNav];
-    BOOL ame347_backVisible = (ame347_nav.viewControllers.count > 1);
+    BOOL ame347_backVisible = (ame347_nav.viewControllers.count > 1 || self.sectionHistory.count > 0);
 
     [self.headerTitle setText:[self ame_titleForIndex:ame347_index]];
 
@@ -1261,7 +1268,8 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 #pragma mark - 通知
 
 - (void)ame_showHome {
-    [self showPageAtIndex:0];
+    [self.sectionHistory removeAllObjects];
+    [self displaySection:0];
     [[self ame_currentNav] popToRootViewControllerAnimated:NO];
 }
 
@@ -1303,6 +1311,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 
 // 仅当前子 nav 的栈变化参与顶栏刷新（跨页导航不误触）
 - (void)navigationController:(UINavigationController *)navigationController didShowViewController:(UIViewController *)viewController animated:(BOOL)animated {
+    navigationController.interactivePopGestureRecognizer.enabled = navigationController.viewControllers.count > 1;
     if (navigationController != [self ame_currentNav]) return;
     [self ame_refreshTopBarStateAnimated:animated];
 }
@@ -1327,6 +1336,13 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
         return;
     }
 
+    if (self.currentIndex >= 0) {
+        [self.sectionHistory addObject:@(self.currentIndex)];
+    }
+    [self displaySection:index];
+}
+
+- (void)displaySection:(NSInteger)index {
     UIViewController *next = [self ame_childForIndex:index];
     UIViewController *prev = [self ame_currentChild];
 
@@ -1397,7 +1413,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 
     UINavigationController *nav = [self ame_currentNav];
     BOOL clusterVisible = (index != 0 || nav.viewControllers.count > 1);                  // 左簇仅非主页显示
-    BOOL backVisible = (nav.viewControllers.count > 1 || index == 3);  // 可 pop 才有返回钮
+    BOOL backVisible = (nav.viewControllers.count > 1 || self.sectionHistory.count > 0);  // 可 pop 才有返回钮
 
     NSString *title = [self ame_titleForIndex:index];
     UIViewController *current = nav.topViewController;
@@ -1440,8 +1456,39 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     UINavigationController *nav = [self ame_currentNav];
     if (nav && nav.viewControllers.count > 1) {
         [nav popViewControllerAnimated:YES];
-    } else if (self.currentIndex == 3) {
-        [self ame_showHome];
+    } else if ([self browsingHome]) {
+        [[self browsingHome] cubicShowProfiles];
+    } else if (self.sectionHistory.count) {
+        NSInteger previous = self.sectionHistory.lastObject.integerValue;
+        [self.sectionHistory removeLastObject];
+        [self displaySection:previous];
+    }
+}
+
+- (ZL2HomeViewController *)browsingHome {
+    UIViewController *top = [self ame_currentNav].topViewController;
+    if ([top isKindOfClass:ZL2HomeViewController.class] && ((ZL2HomeViewController *)top).isBrowsingModpacks) {
+        return (ZL2HomeViewController *)top;
+    }
+    return nil;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
+    UINavigationController *nav = [self ame_currentNav];
+    if (!nav || self.presentedViewController || self.ame347_drawerOpen || nav.transitionCoordinator) return NO;
+    if (gesture == self.sectionBackGesture) {
+        return nav.viewControllers.count == 1 && (self.sectionHistory.count || [self browsingHome]);
+    }
+    return gesture == nav.interactivePopGestureRecognizer && nav.viewControllers.count > 1;
+}
+
+- (void)sectionBackSwiped:(UIScreenEdgePanGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateEnded) return;
+    CGFloat direction = gesture.edges == UIRectEdgeRight ? -1 : 1;
+    CGFloat distance = direction * [gesture translationInView:self.container].x;
+    CGFloat speed = direction * [gesture velocityInView:self.container].x;
+    if (distance > MIN(100, self.container.bounds.size.width * 0.30) || (distance > 20 && speed > 500)) {
+        [self ame_popCurrentIfPossible];
     }
 }
 
@@ -1562,7 +1609,11 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     // 顶栏返回钮/标题跟随子 nav 栈深：UINavigationControllerDelegate 公开 API
     //（DidShow 通知常量在 SDK 非公开——CI 实证 undeclared，改走 delegate）
     if ([vc isKindOfClass:[UINavigationController class]]) {
-        ((UINavigationController *)vc).delegate = self;
+        UINavigationController *nav = (UINavigationController *)vc;
+        nav.delegate = self;
+        [nav loadViewIfNeeded];
+        nav.interactivePopGestureRecognizer.delegate = self;
+        nav.interactivePopGestureRecognizer.enabled = nav.viewControllers.count > 1;
     }
     self.childCache[@(index)] = vc;
     return vc;

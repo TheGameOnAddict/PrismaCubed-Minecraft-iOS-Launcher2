@@ -3863,3 +3863,5 @@
 "cubic.settings.sources" = "下載來源";
 "cubic.settings.data" = "備份與重設";
 "cubic.settings.tools" = "啟動器工具";
+
+"prisma.project.filters" = "篩選";

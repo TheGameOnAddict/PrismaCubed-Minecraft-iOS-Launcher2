@@ -23,6 +23,9 @@
 
 // 卡片容器（圆角 + 阴影 + 半透明背景 + 毛玻璃）
 @property (nonatomic, strong) UIView *cardContainer;
+@property (nonatomic, strong) UIColor *projectAccent;
+@property (nonatomic, copy) NSArray<NSString *> *projectCategories;
+@property (nonatomic) CGFloat projectLayoutWidth;
 
 // 顶部水平区：封面图 + 标题/作者
 @property (nonatomic, strong) UIImageView *iconImageView;
@@ -63,6 +66,30 @@
     return self;
 }
 
+- (instancetype)initWithProjectAccent:(UIColor *)accent surface:(UIColor *)surface cornerRadius:(CGFloat)radius {
+    self = [super initWithFrame:CGRectZero];
+    if (self) {
+        _projectAccent = accent;
+        [self setupViews];
+        self.cardContainer.backgroundColor = surface;
+        self.cardContainer.layer.cornerRadius = radius;
+        self.cardContainer.layer.shadowOpacity = 0;
+        self.titleLabel.font = [UIFont systemFontOfSize:23 weight:UIFontWeightBold];
+        self.descriptionLabel.font = [UIFont systemFontOfSize:15];
+        self.expandToggleButton.tintColor = accent;
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (self.projectAccent && self.bounds.size.width > 0 && self.projectLayoutWidth != self.bounds.size.width) {
+        self.projectLayoutWidth = self.bounds.size.width;
+        [self rebuildCategoriesStackWithCategories:self.projectCategories];
+        [self evaluateDescriptionTruncation];
+    }
+}
+
 #pragma mark - Setup
 
 - (void)setupViews {
@@ -81,7 +108,7 @@
     [self addSubview:self.cardContainer];
 
     // 应用毛玻璃背景效果（与启动器整体风格一致）
-    [[BackgroundManager sharedManager] applyEffectToView:self.cardContainer];
+    if (!self.projectAccent) [[BackgroundManager sharedManager] applyEffectToView:self.cardContainer];
 
     // ===== 顶部水平区：封面图 + 标题/作者 =====
     // 封面图容器（72x72，14pt 圆角，半透明占位背景）
@@ -269,6 +296,7 @@
     [self rebuildMetaInfoStackWithDownloads:downloads likes:likes lastUpdated:lastUpdated];
 
     // --- 标签行 ---
+    self.projectCategories = categories;
     [self rebuildCategoriesStackWithCategories:categories];
 
     // --- 描述 ---
@@ -416,7 +444,12 @@
     badge.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold];
     badge.textColor = [AmeTheme textOnBrand];
     badge.textAlignment = NSTextAlignmentCenter;
-    badge.backgroundColor = [self colorForCategory:category];
+    if (self.projectAccent) {
+        badge.backgroundColor = [UIColor colorWithWhite:1 alpha:0.09];
+        badge.textColor = UIColor.secondaryLabelColor;
+    } else {
+        badge.backgroundColor = [self colorForCategory:category];
+    }
     badge.layer.cornerRadius = 8;
     badge.layer.cornerCurve = kCACornerCurveContinuous;
     badge.layer.masksToBounds = YES;
@@ -481,7 +514,7 @@
     self.expandToggleButton.hidden = !self.descriptionTruncated;
 
     if (self.descriptionTruncated) {
-        [self.expandToggleButton setTitle:localize(@"i18n_str_26", nil) forState:UIControlStateNormal];
+        [self.expandToggleButton setTitle:localize(self.descriptionExpanded ? @"i18n_str_2051" : @"i18n_str_26", nil) forState:UIControlStateNormal];
     }
 }
 

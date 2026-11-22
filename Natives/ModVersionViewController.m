@@ -120,7 +120,11 @@ static NSArray<NSDictionary *> *SortOptionItems(void) {
 //   版本列表之上】——tableHeaderView 已被项目详情头占用，这里用堆叠容器
 //   把 [详情头 + 前置区] 合成一个头部。前置区存在性变化时重装头部。
 @property (nonatomic, strong, nullable) UIView *ame238_depsSectionView;   // 前置区（nil = 无）
-@property (nonatomic, strong, nullable) UIView *ame238_headerStackView;  // 堆叠容器（复用）
+@property (nonatomic, strong) UIStackView *projectStack;
+@property (nonatomic, strong) UIStackView *dependencyStack;
+@property (nonatomic, strong) UILabel *filesTitle;
+@property (nonatomic, strong) UIButton *filtersButton;
+@property (nonatomic) NSUInteger sourceRequest;
 
 @end
 
@@ -135,9 +139,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = self.modItem.displayName;
-    self.view.backgroundColor = [AmeTheme bgPrimary]; // Task136 页面底色；7.0-UI-3e：改 bgPrimary 令牌
-    // 适配自定义启动器背景：透明化当前 VC，让全局背景图/毛玻璃透出
-    [[BackgroundManager sharedManager] makeViewControllerTransparent:self];
+    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
     // 初始化筛选状态（默认 Modrinth 源 + 相关性排序）
     // 关键修复（CurseForge 搜索结果丢失来源）：版本页优先沿用搜索结果携带的 API 来源
@@ -155,25 +157,11 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.tableView.backgroundView = nil;
 
     [self fetchVersionsFromCurrentSource];
-
-    // 监听背景效果变化通知，背景切换时重新应用透明效果
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(reapplyBackgroundEffect)
-                                                 name:@"BackgroundUIEffectChanged"
-                                               object:nil];
 }
 
-- (void)reapplyBackgroundEffect {
-    // 背景效果改变时重新透明化当前 VC
-    [[BackgroundManager sharedManager] makeViewControllerTransparent:self];
-    // 重新设置 tableView 背景为透明，确保背景效果切换后仍透出全局背景
-    self.tableView.backgroundColor = [UIColor clearColor];
-    self.tableView.backgroundView = nil;
-}
-
-- (void)dealloc {
-    // 移除通知观察者，避免dealloc后收到通知导致崩溃
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
+- (UIColor *)accentForSource:(NSInteger)source {
+    return source == kSourceCurseForge ? [UIColor colorWithRed:1 green:0.43 blue:0.24 alpha:1]
+                                       : [UIColor colorWithRed:0.11 green:0.85 blue:0.44 alpha:1];
 }
 
 #pragma mark - Detail Header（项目信息展示）
@@ -181,7 +169,11 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 /// 创建并配置项目详情头部视图，设置为 tableView.tableHeaderView
 /// 补齐之前版本页缺少的项目封面图/标题/作者/下载量/标签/描述等信息显示
 - (void)setupDetailHeader {
-    self.detailHeaderView = [[AssetDetailHeaderView alloc] init];
+    BOOL curseForge = self.selectedSource == kSourceCurseForge;
+    UIColor *accent = [self accentForSource:self.selectedSource];
+    UIColor *surface = curseForge ? [UIColor colorWithWhite:0.145 alpha:1] : [UIColor colorWithRed:0.15 green:0.18 blue:0.20 alpha:1];
+    self.view.backgroundColor = curseForge ? [UIColor colorWithWhite:0.095 alpha:1] : [UIColor colorWithRed:0.10 green:0.13 blue:0.15 alpha:1];
+    self.detailHeaderView = [[AssetDetailHeaderView alloc] initWithProjectAccent:accent surface:surface cornerRadius:curseForge ? 5 : 15];
 
     // 描述展开/收起时重新计算 header 高度（避免循环引用，用 weak）
     __weak typeof(self) weakSelf = self;
@@ -200,68 +192,99 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
                                     categories:self.modItem.categories
                                    lastUpdated:self.modItem.lastUpdated
                            placeholderSymbolName:@"puzzlepiece.extension.fill"
-                               placeholderColor:[AmeTheme statusWarning]]; // 7.0-UI-3e：占位拼图橙→警示橙令牌（动态适配深浅）
+                               placeholderColor:accent];
 
+    UIImageView *mark = [[UIImageView alloc] initWithImage:[UIImage imageNamed:curseForge ? @"CubicCurseForge" : @"CubicModrinth"]];
+    mark.contentMode = UIViewContentModeScaleAspectFit;
+    [mark.widthAnchor constraintEqualToConstant:24].active = YES;
+    [mark.heightAnchor constraintEqualToConstant:24].active = YES;
+    UILabel *providerName = [[UILabel alloc] init];
+    providerName.text = curseForge ? @"CurseForge" : @"Modrinth";
+    providerName.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    providerName.textColor = accent;
+    UIStackView *brand = [[UIStackView alloc] initWithArrangedSubviews:@[mark, providerName]];
+    brand.alignment = UIStackViewAlignmentCenter;
+    brand.spacing = 8;
+    brand.layoutMarginsRelativeArrangement = YES;
+    brand.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(12, 16, 0, 16);
+
+    self.filesTitle = [[UILabel alloc] init];
+    self.filesTitle.font = [UIFont systemFontOfSize:20 weight:UIFontWeightBold];
+    self.filesTitle.accessibilityTraits |= UIAccessibilityTraitHeader;
+    self.filesTitle.numberOfLines = 0;
+    self.filtersButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.filtersButton setTitle:localize(@"prisma.project.filters", nil) forState:UIControlStateNormal];
+    [self.filtersButton setImage:[UIImage systemImageNamed:@"slider.horizontal.3"] forState:UIControlStateNormal];
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+        config.title = [self.filtersButton titleForState:UIControlStateNormal];
+        config.image = [self.filtersButton imageForState:UIControlStateNormal];
+        config.imagePadding = 6;
+        self.filtersButton.configuration = config;
+    }
+    self.filtersButton.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    self.filtersButton.contentEdgeInsets = UIEdgeInsetsMake(8, 12, 8, 12);
+    self.filtersButton.backgroundColor = [UIColor colorWithWhite:1 alpha:0.08];
+    self.filtersButton.layer.cornerRadius = curseForge ? 5 : 12;
+    [self.filtersButton addTarget:self action:@selector(toggleProjectFilters) forControlEvents:UIControlEventTouchUpInside];
+    [self.filtersButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView *filesBar = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesTitle, self.activityIndicator, self.filtersButton]];
+    filesBar.alignment = UIStackViewAlignmentCenter;
+    filesBar.spacing = 8;
+    filesBar.layoutMarginsRelativeArrangement = YES;
+    filesBar.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 16, 0, 16);
+    [self.filtersButton.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+
+    self.dependencyStack = [[UIStackView alloc] init];
+    self.dependencyStack.axis = UILayoutConstraintAxisVertical;
+    self.dependencyStack.hidden = YES;
+    self.projectStack = [[UIStackView alloc] initWithArrangedSubviews:@[brand, self.detailHeaderView, self.dependencyStack, filesBar]];
+    self.projectStack.axis = UILayoutConstraintAxisVertical;
+    self.projectStack.spacing = 4;
+    self.projectStack.layoutMarginsRelativeArrangement = YES;
+    self.projectStack.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 0, 8, 0);
+    [self refreshFilesHeading];
     [self updateTableHeaderHeight];
-    self.tableView.tableHeaderView = self.detailHeaderView;
 }
 
-/// 重新计算 tableHeaderView 高度并刷新（在 viewDidLayoutSubviews 和描述展开/收起时调用）
-/// ★ Task238：头部堆叠——无前置区 = 仅详情头（逐字节旧路径）；有前置区 =
-/// [详情头 + 前置区] 垂直堆叠进同一 tableHeaderView（前置上移到列表上方）。
-- (void)updateTableHeaderHeight {
-    if (!self.detailHeaderView) return;
-    CGFloat width = self.tableView.bounds.size.width;
-    if (width <= 0) width = self.view.bounds.size.width;
-    if (width <= 0) width = [UIScreen mainScreen].bounds.size.width;
-    CGFloat height = [self.detailHeaderView fittingHeightForWidth:width];
+- (void)refreshFilesHeading {
+    BOOL curseForge = self.selectedSource == kSourceCurseForge;
+    NSString *title = localize(curseForge ? @"i18n_str_72" : @"prisma.ui.versions", nil);
+    BOOL originalCurseForge = self.apiSource == kSourceCurseForge;
+    self.filesTitle.text = curseForge == originalCurseForge ? title :
+        [NSString stringWithFormat:@"%@ · %@", curseForge ? @"CurseForge" : @"Modrinth", title];
+    self.filtersButton.tintColor = [self accentForSource:self.selectedSource];
+    self.activityIndicator.color = self.filtersButton.tintColor;
+}
 
-    UIView *ame238_deps = self.ame238_depsSectionView;
-    if (![ame238_deps isKindOfClass:[UIView class]]) {
-        // 无前置区：旧路径（仅详情头；高度未变则跳过重赋值）
-        CGRect frame = self.detailHeaderView.frame;
-        if (fabs(frame.size.height - height) < 1 &&
-            self.tableView.tableHeaderView == self.detailHeaderView) return;
-        frame.size.height = height;
-        self.detailHeaderView.frame = frame;
-        // 重新赋值触发 tableView 重新布局 header
-        self.tableView.tableHeaderView = self.detailHeaderView;
-        return;
-    }
-
-    // 有前置区：堆叠头部（详情头在上，前置区紧随其下，都在版本列表之上）
-    CGFloat ame238_depsH = ceil([ame238_deps systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)].height);
-    CGFloat ame238_totalH = ceil(height) + ame238_depsH;
-    CGRect ame238_stackFrame = CGRectMake(0, 0, width, ame238_totalH);
-    if (self.ame238_headerStackView == nil) {
-        self.ame238_headerStackView = [[UIView alloc] init];
-    }
-    if (fabs(self.ame238_headerStackView.frame.size.height - ame238_totalH) < 1 &&
-        self.tableView.tableHeaderView == self.ame238_headerStackView &&
-        fabs(self.detailHeaderView.frame.size.height - height) < 1 &&
-        ame238_deps.superview == self.ame238_headerStackView) {
-        return;   // 几何未变且当前前置区已入栈（CF 回填重渲染的新视图必须入栈，不能早退）
-    }
-    self.ame238_headerStackView.frame = ame238_stackFrame;
-    self.detailHeaderView.frame = CGRectMake(0, 0, width, ceil(height));
-    ame238_deps.frame = CGRectMake(0, ceil(height), width, ame238_depsH);
-    if (ame238_deps.superview != self.ame238_headerStackView) {
-        // 新前置区入栈：清掉旧的前置区（CF 富元数据回填后重渲染会生成新
-        // 视图，旧视图不能残留在堆叠里重复显示）。
-        for (UIView *ame238_old in [self.ame238_headerStackView.subviews copy]) {
-            if (ame238_old != self.detailHeaderView && ame238_old != ame238_deps) {
-                [ame238_old removeFromSuperview];
-            }
-        }
-        [self.ame238_headerStackView addSubview:ame238_deps];
-    }
-    if (self.detailHeaderView.superview != self.ame238_headerStackView) {
-        [self.ame238_headerStackView addSubview:self.detailHeaderView];
+- (void)toggleProjectFilters {
+    if (self.filterContainerView.superview) {
+        [self.filterContainerView removeFromSuperview];
+        self.filtersButton.accessibilityTraits &= ~UIAccessibilityTraitSelected;
     } else {
-        [self.ame238_headerStackView bringSubviewToFront:self.detailHeaderView];
+        [self.projectStack addArrangedSubview:self.filterContainerView];
+        self.filtersButton.accessibilityTraits |= UIAccessibilityTraitSelected;
     }
-    // 重新赋值触发 tableView 重新布局 header
-    self.tableView.tableHeaderView = self.ame238_headerStackView;
+    [self updateTableHeaderHeight];
+}
+
+- (void)updateTableHeaderHeight {
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (!self.projectStack || width <= 0) return;
+    UIView *previous = self.dependencyStack.arrangedSubviews.firstObject;
+    if (previous != self.ame238_depsSectionView) {
+        [previous removeFromSuperview];
+        if (self.ame238_depsSectionView) [self.dependencyStack addArrangedSubview:self.ame238_depsSectionView];
+        self.dependencyStack.hidden = self.ame238_depsSectionView == nil;
+    }
+    CGSize fit = [self.projectStack systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                withHorizontalFittingPriority:UILayoutPriorityRequired
+                                      verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGRect frame = CGRectMake(0, 0, width, ceil(fit.height));
+    if (self.tableView.tableHeaderView != self.projectStack || !CGSizeEqualToSize(self.projectStack.frame.size, frame.size)) {
+        self.projectStack.frame = frame;
+        self.tableView.tableHeaderView = self.projectStack;
+    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -286,10 +309,6 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.filterContainerView.layer.cornerCurve = kCACornerCurveContinuous;
     self.filterContainerView.layer.borderWidth = 0.5;
     self.filterContainerView.layer.borderColor = [AmeTheme divider].CGColor; // 7.0-UI-3e：描边令牌（原白 10%）
-    [self.view addSubview:self.filterContainerView];
-    // 应用毛玻璃背景效果，与启动器整体风格一致
-    [[BackgroundManager sharedManager] applyEffectToView:self.filterContainerView];
-
     // ===== 主垂直 stack（4 行筛选，每行 = 图标标签 + 水平滚动 chips）=====
     self.filterMainStack = [[UIStackView alloc] init];
     self.filterMainStack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -356,9 +375,6 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
     // ===== 容器约束：顶部紧贴安全区域，左右留 8pt 边距 =====
     [NSLayoutConstraint activateConstraints:@[
-        [self.filterContainerView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:6],
-        [self.filterContainerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8],
-        [self.filterContainerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-8],
         // 主 stack 内边距
         [self.filterMainStack.topAnchor constraintEqualToAnchor:self.filterContainerView.topAnchor constant:8],
         [self.filterMainStack.bottomAnchor constraintEqualToAnchor:self.filterContainerView.bottomAnchor constant:-8],
@@ -394,11 +410,12 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     label.textAlignment = NSTextAlignmentLeft;
     [label setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [label setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [label.widthAnchor constraintEqualToConstant:34].active = YES;
+    [label.widthAnchor constraintLessThanOrEqualToConstant:100].active = YES;
 
     UIStackView *labelStack = [[UIStackView alloc] initWithArrangedSubviews:@[iconView, label]];
     labelStack.translatesAutoresizingMaskIntoConstraints = NO;
     labelStack.axis = UILayoutConstraintAxisHorizontal;
+    labelStack.alignment = UIStackViewAlignmentCenter;
     labelStack.spacing = 3;
     labelStack.alignment = UIStackViewAlignmentCenter;
     [labelStack setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
@@ -434,7 +451,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     row.translatesAutoresizingMaskIntoConstraints = NO;
     row.axis = UILayoutConstraintAxisHorizontal;
     row.spacing = 6;
-    row.alignment = UIStackViewAlignmentCenter;
+    row.alignment = UIStackViewAlignmentFill;
     // 固定行高，让 4 行总高度可控
     [row.heightAnchor constraintEqualToConstant:30].active = YES;
     return row;
@@ -465,8 +482,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 - (void)applyChipStyle:(UIButton *)chip selected:(BOOL)selected {
     if (selected) {
         // 选中态：主题色背景 + 白字（参照 FCL 选中标签高亮）
-        chip.backgroundColor = [AmeTheme brandPrimary]; // 7.0-UI-3e：选中 chip 品牌色底
-        [chip setTitleColor:[AmeTheme textOnBrand] forState:UIControlStateNormal]; // 7.0-UI-3e
+        chip.backgroundColor = [self accentForSource:self.selectedSource]; // 7.0-UI-3e：选中 chip 品牌色底
+        [chip setTitleColor:[UIColor blackColor] forState:UIControlStateNormal]; // 7.0-UI-3e
         chip.layer.borderWidth = 0;
     } else {
         // 未选中态：半透明背景 + 标签色文字 + 浅边框
@@ -596,6 +613,9 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     }
 
     self.selectedSource = newSource;
+    self.ame238_depsSectionView = nil;
+    [self refreshFilesHeading];
+    [self updateTableHeaderHeight];
     // 更新 chips 选中样式
     for (UIButton *chip in self.sourceChipStack.arrangedSubviews) {
         if (![chip isKindOfClass:[UIButton class]]) continue;
@@ -667,12 +687,11 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 78;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    [self.tableView registerClass:[ModVersionTableViewCell class] forCellReuseIdentifier:@"ModVersionCell"];
     [self.view addSubview:self.tableView];
 
     // tableView 紧贴筛选面板下方
     [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.filterContainerView.bottomAnchor constant:6],
+        [self.tableView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -680,15 +699,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 }
 
 - (void)setupActivityIndicator {
-    self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    self.activityIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     self.activityIndicator.hidesWhenStopped = YES;
-    [self.view addSubview:self.activityIndicator];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.activityIndicator.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.activityIndicator.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-    ]];
 }
 
 #pragma mark - 数据拉取
@@ -700,6 +712,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 /// 对端必然 404/空列表（用户报“在模组其中一个源打开，切换源显示未找到
 /// 可下载的版本”根因）。
 - (void)fetchVersionsFromCurrentSource {
+    self.sourceRequest++;
     [self.activityIndicator startAnimating];
 
     NSString *ame247_id = self.modItem.onlineID ?: @"";
@@ -725,6 +738,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 /// 匹配规则：displayName 完全等值（忽略大小写）优先 → 首个结果；
 /// 解析结果入缓存。搜索无结果时落空列表分支（既有报错文案提示切源）。
 - (void)ame247_searchCrossSourceCounterpart {
+    NSUInteger request = self.sourceRequest;
     NSString *ame247_query = self.modItem.displayName ?: @"";
     NSString *ame247_norm = [ame247_query stringByReplacingOccurrencesOfString:@" " withString:@""];
     NSString *ame247_lower = ame247_norm.lowercaseString;
@@ -732,7 +746,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     void (^ame247_finish)(NSString * _Nullable) = ^(NSString * _Nullable resolved) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf) return;
+            if (!strongSelf || strongSelf.sourceRequest != request) return;
             if (resolved.length > 0) {
                 if (strongSelf.ame247_resolvedIDs == nil) {
                     strongSelf.ame247_resolvedIDs = [NSMutableDictionary dictionary];
@@ -803,23 +817,16 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
 /// Task247（T11）：按解析后的 id 拉版本列表（原两分支主体收编于此）
 - (void)ame247_fetchVersionsWithID:(NSString *)ame247_fetchID {
+    NSUInteger request = self.sourceRequest;
+    void (^completion)(NSArray<ModVersion *> *, NSError *) = ^(NSArray<ModVersion *> *versions, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.sourceRequest == request) [self handleVersionsResponse:versions error:error];
+        });
+    };
     if (self.selectedSource == kSourceCurseForge) {
-        // ===== CurseForge 源 =====
-        // CurseForgeAPI.getVersionsForModWithID: 返回 ModVersion 数组（含 CurseForge 的 fileId/projectId）
-        [[CurseForgeAPI sharedInstance] getVersionsForModWithID:ame247_fetchID
-                                                     completion:^(NSArray<ModVersion *> * _Nullable versions, NSError * _Nullable error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self handleVersionsResponse:versions error:error];
-            });
-        }];
+        [[CurseForgeAPI sharedInstance] getVersionsForModWithID:ame247_fetchID completion:completion];
     } else {
-        // ===== Modrinth 源（默认）=====
-        [[ModrinthAPI sharedInstance] getVersionsForModWithID:ame247_fetchID
-                                                   completion:^(NSArray<ModVersion *> * _Nullable versions, NSError * _Nullable error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self handleVersionsResponse:versions error:error];
-            });
-        }];
+        [[ModrinthAPI sharedInstance] getVersionsForModWithID:ame247_fetchID completion:completion];
     }
 }
 
@@ -881,6 +888,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         return;
     }
     __weak typeof(self) weakSelf = self;
+    NSUInteger request = self.sourceRequest;
     [[ModDependencyResolver sharedResolver] resolveDependenciesFromVersionDetail:ame238_detail
                                                                        apiSource:ame238_src
                                                             installedProjectIds:nil
@@ -888,7 +896,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
                                                                      gameVersion:nil
                                                                       completion:^(ModDependencyPlan *plan, NSError * _Nullable error) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
+        if (!strongSelf || strongSelf.sourceRequest != request) return;
         NSArray<ModDependencyItem *> *ame227_req = plan.required ?: @[];
         if (ame227_req.count == 0) {
             strongSelf.ame238_depsSectionView = nil;
@@ -910,6 +918,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         [self updateTableHeaderHeight];
         return;
     }
+    NSUInteger request = self.sourceRequest;
     __weak typeof(self) ame236_wself = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSMutableArray<NSMutableDictionary *> *ame236_rows = [NSMutableArray array];
@@ -951,7 +960,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(ame236_wself) ame236_sself = ame236_wself;
-            if (!ame236_sself) return;
+            if (!ame236_sself || ame236_sself.sourceRequest != request) return;
             [ame236_sself ame236_renderDependencyFooter:ame236_rows];
             // ★ Task238：CF 前置行的富元数据回填（全链主线程，无跨线程
             //   写入；全部回填完成后重渲染一次）。占位先行 → 名称/介绍/
@@ -992,7 +1001,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
             }
             dispatch_group_notify(ame238_group, dispatch_get_main_queue(), ^{
                 __strong typeof(ame236_wself) ame238_sself2 = ame236_wself;
-                if (!ame238_sself2) return;
+                if (!ame238_sself2 || ame238_sself2.sourceRequest != request) return;
                 [ame238_sself2 ame236_renderDependencyFooter:ame236_rows];
                 NSLog(@"[ModVersionVC] Task238 CF dependency rows enriched (%lu project lookups)",
                       (unsigned long)ame238_cfPids.count);
@@ -1411,7 +1420,13 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    ModVersionTableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ModVersionCell" forIndexPath:indexPath];
+    BOOL curseForge = self.selectedSource == kSourceCurseForge;
+    NSString *identifier = curseForge ? @"CurseForgeFile" : @"ModrinthVersion";
+    ModVersionTableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    if (!cell) {
+        cell = [[ModVersionTableViewCell alloc] initWithProjectAccent:[self accentForSource:self.selectedSource]
+                                                        cornerRadius:curseForge ? 5 : 12 reuseIdentifier:identifier];
+    }
     ModVersion *version = self.filteredVersions[indexPath.row];
     [cell configureWithVersion:version];
     return cell;

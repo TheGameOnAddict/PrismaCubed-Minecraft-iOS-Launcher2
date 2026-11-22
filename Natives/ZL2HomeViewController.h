@@ -40,6 +40,8 @@ NS_ASSUME_NONNULL_BEGIN
 // viewWillAppear 与 @"UpdateAccountInfo" 通知均会自动触发；壳侧也可手动调。
 // 同时重建实例网格（@"SelectedProfileChanged"/@"ReloadProfileList" 同链）。
 - (void)refreshLaunchState;
+@property (nonatomic, readonly) BOOL isBrowsingModpacks;
+- (void)cubicShowProfiles;
 - (void)ame_playProfileNamed:(NSString *)profileName;
 
 @end

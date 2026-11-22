@@ -1023,6 +1023,10 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 
 /// 空态：archivebox 68 +「没有安装版本」+「去下载」钮（壳切下载页 index=1；
 /// 与 ZL2VersionsViewController versions_manage_no_versions 同语义）
+- (BOOL)isBrowsingModpacks {
+    return self.packBrowser.isViewLoaded && !self.packBrowser.view.hidden;
+}
+
 - (void)cubicBrowseModpacks {
     if (!self.packBrowser) {
         ZL2AssetSearchViewController *browser = [[ZL2AssetSearchViewController alloc]
