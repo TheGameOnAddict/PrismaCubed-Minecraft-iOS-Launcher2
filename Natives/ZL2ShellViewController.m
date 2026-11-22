@@ -1376,6 +1376,9 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
 - (void)ame_setTitleText:(NSString *)title {
     NSString *next = title ?: @"";
     if ([self.titleLabel.text isEqualToString:next]) return;
+    self.titleLabel.font = [next isEqualToString:@"PrismaCubic"]
+        ? [UIFont systemFontOfSize:19 weight:UIFontWeightHeavy]
+        : [UIFont boldSystemFontOfSize:17];
     if (self.titleLabel.window) {
         // Crossfade 等价（MainScreen.kt title 位）
         [UIView transitionWithView:self.titleLabel
