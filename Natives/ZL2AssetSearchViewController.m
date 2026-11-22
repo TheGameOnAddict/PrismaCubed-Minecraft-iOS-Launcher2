@@ -2527,12 +2527,12 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 // 1=解压文件(parse 内部完成) 2=下载依赖文件 3=安装加载器 4=下载游戏文件(原版预装) 5=完成配置
 - (void)ame_startModpackInstallation:(ModVersion *)version modpack:(NSDictionary *)modpack {
     NSString *downloadURL = version.primaryFile[@"url"];
-    if (!downloadURL) {
+    NSURL *url = [NSURL URLWithString:downloadURL ?: @""];
+    if (!url.host.length) {
         [self ame_showError:localize(@"i18n_str_254", nil)];
         return;
     }
 
-    NSURL *url = [NSURL URLWithString:downloadURL];
     // Task218：来源标签收敛到 PLMirrorCenter（整合包下载任务）
     NSString *downloadSource = [PLMirrorCenter legacySourceTokenForType:PLMirrorResourceTypeAssetDownload];
     __block DownloadTaskItem *taskItem = nil;
@@ -2540,66 +2540,50 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     // 关键修复（参照 FCL/ZL2 整合包下载容错）：单次下载无重试会因网络偶发
     // 抖动/镜像 5xx 整体失败——最多 3 次重试（旧页同款）。
     __block NSInteger downloadAttempt = 0;
-    __block NSURL *downloadLocation = nil;
-    __block NSError *downloadError = nil;
     __weak typeof(self) weakSelf = self;
 
     // Task231：递归（失败重试）block 必须 __block——非 __block 自引用捕获
     // 赋值前的 nil（ARC 零初始化），重试分支 nil->invoke EXC_BAD_ACCESS（旧页同款判例）
     __block void (^attemptDownload)(void) = ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
+        typeof(self) strongSelf = self;
         downloadAttempt++;
         NSLog(@"[ModpackDownload] Modpack download attempt %ld: %@", (long)downloadAttempt, downloadURL);
         NSURLSessionDownloadTask *task = [[NSURLSession sharedSession] downloadTaskWithURL:url completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+            // URLSession owns location and removes it when this callback returns.
+            NSURL *archive = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+                URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"zip"]];
+            NSError *archiveError = error;
+            NSInteger status = [(NSHTTPURLResponse *)response statusCode];
+            if (!archiveError && (status < 200 || status >= 300)) {
+                archiveError = [NSError errorWithDomain:@"ModpackDownload" code:status userInfo:@{
+                    NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Archive download returned HTTP %ld.", (long)status]}];
+            }
+            if (!archiveError && location) [NSFileManager.defaultManager moveItemAtURL:location toURL:archive error:&archiveError];
+            if (!archiveError && !location) archiveError = [NSError errorWithDomain:@"ModpackDownload" code:1
+                userInfo:@{NSLocalizedDescriptionKey:@"The archive download returned no file."}];
             dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(weakSelf) strongSelf2 = weakSelf;
-                if (!strongSelf2) return;
-                if (error || !location) {
-                    downloadError = error ?: [NSError errorWithDomain:@"DownloadError" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Download returned empty data"}];
-                    NSLog(@"[ModpackDownload] Attempt %ld failed: %@", (long)downloadAttempt, downloadError.localizedDescription);
+                DownloadTaskManager *manager = DownloadTaskManager.sharedManager;
+                if (taskItem.state == DownloadTaskStateCancelled) {
+                    [NSFileManager.defaultManager removeItemAtURL:archive error:nil];
+                    attemptDownload = nil;
+                    return;
+                }
+                if (archiveError) {
+                    [taskItem appendActivity:archiveError.localizedDescription];
                     if (downloadAttempt < 3) {
-                        // 间隔 1.5s 后重试，避免连续请求触发限流
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
-                                       dispatch_get_main_queue(), ^{
-                            attemptDownload();
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                            if (taskItem.state == DownloadTaskStateCancelled) attemptDownload = nil;
+                            else attemptDownload();
                         });
                     } else {
-                        [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                                 stageAtIndex:0
-                                                                     status:PLTaskStageStatusFailed];
-                        [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId completedWithError:downloadError];
-                        [strongSelf2 ame_showError:[NSString stringWithFormat:@"Modpack download failed (retried %ld times): %@",
-                                                    (long)downloadAttempt, downloadError.localizedDescription ?: @"Unknown error"]];
+                        [manager updateTaskWithId:taskItem.taskId stageAtIndex:0 status:PLTaskStageStatusFailed];
+                        [manager setTaskWithId:taskItem.taskId completedWithError:archiveError];
+                        attemptDownload = nil;
                     }
                     return;
                 }
-                downloadLocation = location;
-                downloadError = nil;
-
-                // 移动到临时文件
-                NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
-                                      [NSString stringWithFormat:@"%@_%@.mrpack", modpack[@"id"] ?: @"modpack", [[NSUUID UUID] UUIDString]]];
-                [[NSFileManager defaultManager] removeItemAtPath:tempPath error:nil];
-                NSError *moveError = nil;
-                [[NSFileManager defaultManager] moveItemAtPath:downloadLocation.path toPath:tempPath error:&moveError];
-                if (moveError) {
-                    if (downloadAttempt < 3) {
-                        NSLog(@"[ModpackDownload] File move failed, retrying: %@", moveError.localizedDescription);
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
-                                       dispatch_get_main_queue(), ^{
-                            attemptDownload();
-                        });
-                        return;
-                    }
-                    [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
-                                                             stageAtIndex:0
-                                                                 status:PLTaskStageStatusFailed];
-                    [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId completedWithError:moveError];
-                    [strongSelf2 ame_showError:moveError.localizedDescription];
-                    return;
-                }
-
+                attemptDownload = nil;
+                NSString *tempPath = archive.path;
                 // zip 下载完成 → 进入解析阶段（任务整体保持 Downloading，导入完成才标记 Completed）
                 [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
                                                          stageAtIndex:0
@@ -2610,6 +2594,8 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                     NSError *parseError = nil;
                     NSDictionary *modpackInfo = [importService parseModpackAtURL:[NSURL fileURLWithPath:tempPath] error:&parseError];
                     if (!modpackInfo) {
+                        [NSFileManager.defaultManager removeItemAtURL:archive error:nil];
+                        if (!parseError) parseError = [NSError errorWithDomain:@"ModpackDownload" code:2 userInfo:@{NSLocalizedDescriptionKey:localize(@"i18n_str_256", nil)}];
                         dispatch_async(dispatch_get_main_queue(), ^{
                             [[DownloadTaskManager sharedManager] updateTaskWithId:taskItem.taskId
                                                                      stageAtIndex:0
@@ -2628,7 +2614,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                         // 不强制下载 icon，保留原整合包内的（旧页同款注释）
                     }
 
-                    [strongSelf2 ame_importModpackWithService:importService info:mutableInfo taskId:taskItem.taskId tempPath:tempPath];
+                    [strongSelf ame_importModpackWithService:importService info:mutableInfo taskId:taskItem.taskId tempPath:tempPath];
                 });
             });
         }];
@@ -2655,6 +2641,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
             [[DownloadTaskManager sharedManager] setTaskWithId:taskItem.taskId state:DownloadTaskStateDownloading];
         }
 
+        taskItem.rawTask = task;
         [task resume];
     };
 
@@ -2662,7 +2649,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
     attemptDownload();
     if (self.showProfiles) {
         UIAlertController *notice = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Modpack is installing", nil)
-            message:NSLocalizedString(@"Find it in My Profiles once installation finishes.", nil) preferredStyle:UIAlertControllerStyleAlert];
+            message:NSLocalizedString(@"Follow its progress in My Profiles.", nil) preferredStyle:UIAlertControllerStyleAlert];
         [notice addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Keep Browsing", nil) style:UIAlertActionStyleCancel handler:nil]];
         [notice addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Go to Profiles", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             if (weakSelf.showProfiles) weakSelf.showProfiles();

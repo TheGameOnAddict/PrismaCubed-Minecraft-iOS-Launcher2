@@ -873,12 +873,10 @@ static const double kInnerProcessorsStart = 0.45;
                 NSString *actual = [self sha1OfFile:destPath];
                 if (!actual || [actual caseInsensitiveCompare:sha1] != NSOrderedSame) {
                     [[NSFileManager defaultManager] removeItemAtPath:destPath error:nil];
-                    if (error) {
-                        *error = [NSError errorWithDomain:ForgeProcessorExecutorErrorDomain
+                    lastError = [NSError errorWithDomain:ForgeProcessorExecutorErrorDomain
                                                      code:ForgeProcessorExecutorErrorDownloadFailed
                                                  userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:localize(@"i18n_str_1188", nil), label, sha1, actual ?: localize(@"i18n_str_1189", nil)]}];
-                    }
-                    return NO;
+                    continue;
                 }
             }
             if (progress) progress(1.0, [NSString stringWithFormat:localize(@"i18n_str_1190", nil), label]);

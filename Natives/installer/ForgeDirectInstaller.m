@@ -975,10 +975,13 @@ NSString *const ForgeDirectInstallerErrorDomain = @"ForgeDirectInstallerErrorDom
         NSDictionary *artifact = [downloads isKindOfClass:NSDictionary.class] ? downloads[@"artifact"] : nil;
         NSString *expected = [artifact isKindOfClass:NSDictionary.class] ? artifact[@"sha1"] : nil;
         if (![expected isKindOfClass:NSString.class] || expected.length != 40) expected = nil;
-        if ([fm fileExistsAtPath:destPath] && (!expected || [[ForgeProcessorExecutor sha1OfFile:destPath].lowercaseString isEqual:expected.lowercaseString])) {
-            skipped++;
-            processed++;
-            continue;
+        if ([fm fileExistsAtPath:destPath]) {
+            if (!expected || [[ForgeProcessorExecutor sha1OfFile:destPath].lowercaseString isEqual:expected.lowercaseString]) {
+                skipped++;
+                processed++;
+                continue;
+            }
+            [fm removeItemAtPath:destPath error:nil];
         }
 
         // 拼 URL

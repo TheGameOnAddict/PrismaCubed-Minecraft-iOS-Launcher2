@@ -1,11 +1,14 @@
 #import "DownloadTaskItem.h"
-#import "PLTaskStages.h"
 #include <assert.h>
 
 int main(void) {
     @autoreleasepool {
         DownloadTaskItem *task = [[DownloadTaskItem alloc] initWithResourceType:DownloadTaskResourceTypeModpack resourceName:@"test" displayName:@"Test pack" downloadSource:@"CurseForge" rawTask:nil supportsResume:NO iconURL:nil];
-        task.stages = PLTaskStagesModpack();
+        NSMutableArray *stages = [NSMutableArray array];
+        for (NSString *title in @[@"parseModpack", @"extractFiles", @"downloadDependencies", @"installLoader", @"downloadGameFiles", @"finalizeConfig"]) {
+            [stages addObject:[PLTaskStage stageWithTitle:[@"taskStage.title." stringByAppendingString:title] iconName:@""]];
+        }
+        task.stages = stages;
         task.currentStageIndex = 3;
         task.state = DownloadTaskStateFailed;
         for (int i=0; i<3; i++) task.stages[i].status = PLTaskStageStatusCompleted;

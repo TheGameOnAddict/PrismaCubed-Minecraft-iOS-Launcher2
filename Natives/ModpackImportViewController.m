@@ -660,7 +660,16 @@
 
 - (void)startModpackImport:(NSDictionary *)modpackInfo temporaryDirectory:(NSURL *)temporaryDirectory {
     // Return to the library as soon as the user confirms. The background block retains this controller.
-    if (self.profileImportForm) [self dismissViewControllerAnimated:YES completion:nil];
+    if (self.profileImportForm) {
+        UIViewController *host = self.presentingViewController;
+        id<UIViewControllerTransitionCoordinator> transition = self.presentedViewController.transitionCoordinator;
+        void (^closeForm)(void) = ^{
+            if (host.presentedViewController == self) [host dismissViewControllerAnimated:YES completion:nil];
+        };
+        if (!transition || ![transition animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> ctx) { closeForm(); }]) {
+            dispatch_async(dispatch_get_main_queue(), closeForm);
+        }
+    }
     // 重置取消状态
     [self.importService resetCancelState];
 
