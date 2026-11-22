@@ -716,6 +716,7 @@ static void CubicCheckResults(UIView *host) {
     [@"OK" writeToFile:[directory stringByAppendingPathComponent:@"cubic-check.log"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+#import "ModVersionViewController.h"
 #import "ZL2ShellViewController.h"
 #import "ZL2VersionDetailViewController.h"
 #import "ZL2VersionPages.h"
@@ -755,6 +756,17 @@ static void PreviewScreens(UIWindow *window) {
     UINavigationController *nav = [shell ame_currentNav];
     ZL2HomeViewController *home = (id)nav.topViewController;
     NSCAssert([home isKindOfClass:ZL2HomeViewController.class], @"Home route unavailable");
+    BOOL projectRoute = [route isEqual:@"curseforge"] || [route isEqual:@"modrinth"];
+    if (projectRoute) {
+        BOOL cf = [route isEqual:@"curseforge"];
+        ModVersionViewController *detail = [[ModVersionViewController alloc] init];
+        detail.apiSource = cf ? 2 : 1;
+        detail.modItem = [[ModItem alloc] initWithOnlineData:@{@"id":cf ? @"12345" : @"book-of-dragons",
+            @"title":@"Book of Dragons", @"author":@"Preview author", @"imageUrl":@"preview:CubicProfileCover2",
+            @"description":@"Discover dragons, study their habits, and take flight through the Overworld.",
+            @"categories":@[@"Adventure", @"Mobs"], @"downloads":@125739, @"likes":@144}];
+        [nav pushViewController:detail animated:NO];
+    }
     if ([route isEqual:@"downloads"] || [route isEqual:@"download-log"]) {
         DownloadTaskItem *task = [route isEqual:@"download-log"] ? DownloadTaskManager.sharedManager.allTasks.firstObject : nil;
         [CubicDownloadsController showFrom:shell task:task];
@@ -794,6 +806,19 @@ static void PreviewScreens(UIWindow *window) {
                 NSCAssert(toggle && toggle.on == (i == 1), @"Mod state lost after rescan");
             }
             [page layoutIfNeeded];
+        }
+        if (projectRoute) {
+            ModVersionViewController *detail = (id)nav.topViewController;
+            UITableView *table = [detail valueForKey:@"tableView"];
+            UIButton *filter = [detail valueForKey:@"filtersButton"];
+            CGFloat collapsed = table.tableHeaderView.bounds.size.height;
+            NSCAssert([table numberOfRowsInSection:0] == 1 && collapsed > 80, @"Missing project or file");
+            NSCAssert(nav.interactivePopGestureRecognizer.enabled &&
+                [nav.interactivePopGestureRecognizer.delegate gestureRecognizerShouldBegin:nav.interactivePopGestureRecognizer], @"Back gesture unavailable");
+            [filter sendActionsForControlEvents:UIControlEventTouchUpInside];
+            NSCAssert(table.tableHeaderView.bounds.size.height > collapsed + 80, @"Filters did not expand");
+            [filter sendActionsForControlEvents:UIControlEventTouchUpInside];
+            [window layoutIfNeeded];
         }
         NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";
         CGSize size = window.bounds.size;

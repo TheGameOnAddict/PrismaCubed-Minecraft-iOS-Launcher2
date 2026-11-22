@@ -106,6 +106,7 @@ preview_mode() {
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
     ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
     ZL2M3Kit                       # 7.0-UI-12：MD3 功能组件库（搜索/chip/开关/对话框/弹层）
+    ModVersionViewController ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
     ZL2GameDownloadViewController  # 7.0-UI-12：游戏 M3 下载页（旧 DownloadViewController 退场）
     ZL2GameAddonsViewController    # 7.0-UI-14：Addons 加载器选择屏（选版后加载器组合+安装分发）
     ZL2SearchIdViewController      # 7.0-UI-14：按项目 ID 直查页（下载左轨第 6 项）
@@ -214,11 +215,13 @@ PLIST
   xcrun simctl bootstatus "$device" -b >/dev/null 2>&1 || true
   xcrun simctl install "$device" "$app" || { echo "✗ 安装失败"; FAIL=1; return; }
 
-  if [[ "$MODE" == "screens" ]]; then
+  if [[ "$MODE" == "screens" || "$MODE" == "projects" ]]; then
+    local routes=(home browse profile mods menu accounts create import installing downloads download-log)
+    if [[ "$MODE" == "projects" ]]; then routes=(curseforge modrinth); fi
     local bundle="com.prisma-devs.ame-fluent-preview" docs route orientation pid png
     docs="$(xcrun simctl get_app_container "$device" "$bundle" data)/Documents"
     for orientation in portrait landscape; do
-      for route in home browse profile mods menu accounts create import installing downloads download-log; do
+      for route in "${routes[@]}"; do
         png="cubic-$route-$orientation.png"
         rm -f "$docs/$png"
         xcrun simctl launch --console "$device" "$bundle" -cubicScreens -route "$route" -orientation "$orientation" > "$OUT/$route-$orientation.log" 2>&1 &
@@ -238,7 +241,7 @@ PLIST
         cp "$docs/$png" "$OUT/"
       done
     done
-    python3 "$ROOT/scripts/native_preview_gallery.py" "$OUT" || FAIL=1
+    if [[ "$MODE" == "screens" ]]; then python3 "$ROOT/scripts/native_preview_gallery.py" "$OUT" || FAIL=1; fi
     return
   fi
   if [[ "$MODE" == "cubic" ]]; then
@@ -331,7 +334,7 @@ PLIST
 
 case "$MODE" in
   syntax)  syntax_mode ;;
-  preview|cubic|screens) preview_mode ;;
+  preview|cubic|screens|projects) preview_mode ;;
   all)     syntax_mode; preview_mode ;;
   *) echo "用法: $0 [syntax|preview|all]"; exit 2 ;;
 esac
