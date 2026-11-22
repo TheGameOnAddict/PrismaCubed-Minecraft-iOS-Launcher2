@@ -217,7 +217,7 @@ PLIST
 
   if [[ "$MODE" == "screens" || "$MODE" == "projects" ]]; then
     local routes=(home browse profile mods menu accounts create import installing downloads download-log)
-    if [[ "$MODE" == "projects" ]]; then routes=(curseforge modrinth); fi
+    if [[ "$MODE" == "projects" ]]; then routes=(curseforge modrinth installed-project); fi
     local bundle="com.prisma-devs.ame-fluent-preview" docs route orientation pid png
     docs="$(xcrun simctl get_app_container "$device" "$bundle" data)/Documents"
     for orientation in portrait landscape; do
