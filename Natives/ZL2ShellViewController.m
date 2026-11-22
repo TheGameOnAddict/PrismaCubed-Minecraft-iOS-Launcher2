@@ -729,9 +729,10 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     UIButton *dismiss = [UIButton buttonWithType:UIButtonTypeCustom];
     dismiss.accessibilityLabel = NSLocalizedString(@"Close menu", nil);
     __weak UIViewController *weakDrawer = drawer;
-    [dismiss addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    UIAction *closeMenu = [UIAction actionWithHandler:^(__kindof UIAction *action) {
         [weakDrawer dismissViewControllerAnimated:NO completion:nil];
-    }] forControlEvents:UIControlEventTouchUpInside];
+    }];
+    [dismiss addAction:closeMenu forControlEvents:UIControlEventTouchUpInside];
     dismiss.frame = overlay.bounds;
     dismiss.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [overlay addSubview:dismiss];
@@ -744,6 +745,23 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     items.spacing = 5;
     items.translatesAutoresizingMaskIntoConstraints = NO;
     [panel addSubview:items];
+
+    UILabel *menuTitle = [UILabel new];
+    menuTitle.text = NSLocalizedString(@"Menu", nil);
+    menuTitle.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    menuTitle.textColor = ZL2Theme.onSurface;
+    menuTitle.accessibilityTraits |= UIAccessibilityTraitHeader;
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.accessibilityLabel = dismiss.accessibilityLabel;
+    close.tintColor = ZL2Theme.onSurfaceVariant;
+    [close setImage:[UIImage systemImageNamed:@"xmark" withConfiguration:
+        [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold]] forState:UIControlStateNormal];
+    [close addAction:closeMenu forControlEvents:UIControlEventTouchUpInside];
+    [close.widthAnchor constraintEqualToConstant:44].active = YES;
+    [close.heightAnchor constraintEqualToConstant:44].active = YES;
+    UIStackView *heading = [[UIStackView alloc] initWithArrangedSubviews:@[menuTitle, close]];
+    heading.alignment = UIStackViewAlignmentCenter;
+    [items addArrangedSubview:heading];
     NSLayoutConstraint *width = [panel.widthAnchor constraintEqualToAnchor:overlay.widthAnchor multiplier:0.76];
     width.priority = 999;
     [NSLayoutConstraint activateConstraints:@[
