@@ -635,6 +635,7 @@ add_executable(AngelAuraAmethyst
   ModTableViewCell.m
   ModsManagerViewController.m
   ModVersion.m
+  ModProjectCatalog.m
   ModVersionViewController.m
   ModVersionTableViewCell.m
   ModDependencyResolver.m   # Task227（issue #10）：依赖（前置）自动解析与安装

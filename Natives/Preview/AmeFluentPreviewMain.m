@@ -716,6 +716,8 @@ static void CubicCheckResults(UIView *host) {
     [@"OK" writeToFile:[directory stringByAppendingPathComponent:@"cubic-check.log"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+#import "ModVersionViewController.h"
+#import "ModProjectCatalog.h"
 #import "ZL2ShellViewController.h"
 #import "ZL2VersionDetailViewController.h"
 #import "ZL2VersionPages.h"
@@ -731,6 +733,7 @@ static void CubicCheckResults(UIView *host) {
 @interface ZL2ShellViewController (PreviewRoutes)
 - (void)cubicOpenAccountMenu;
 - (UINavigationController *)ame_currentNav;
+- (void)ame_popCurrentIfPossible;
 @end
 @interface ZL2VersionModsPage (PreviewRoutes)
 - (void)ameV13_openDownloadCenter;
@@ -755,6 +758,39 @@ static void PreviewScreens(UIWindow *window) {
     UINavigationController *nav = [shell ame_currentNav];
     ZL2HomeViewController *home = (id)nav.topViewController;
     NSCAssert([home isKindOfClass:ZL2HomeViewController.class], @"Home route unavailable");
+    BOOL installed = [route isEqual:@"installed-project"];
+    BOOL projectRoute = installed || [route isEqual:@"curseforge"] || [route isEqual:@"modrinth"];
+    __block BOOL quickInstallChecked = NO;
+    if (projectRoute) {
+        [ModProjectCatalog quickFileForID:@"book-of-dragons" title:@"Book of Dragons" source:1 minecraft:@"1.20.1" loader:@"forge" completion:^(ModVersion *file, NSError *error) {
+            NSCAssert(!error && file.apiSource == 2 && [file.fileId isEqual:@"2"], @"Quick Install chose the wrong source or build");
+            quickInstallChecked = YES;
+        }];
+    }
+    if (projectRoute) {
+        BOOL cf = [route isEqual:@"curseforge"];
+        ModVersionViewController *detail = [[ModVersionViewController alloc] init];
+        detail.apiSource = cf ? 2 : 1;
+        detail.preferredGameVersion = @"1.20.1";
+        detail.preferredLoader = @"forge";
+        detail.modItem = [[ModItem alloc] initWithOnlineData:@{@"id":cf ? @"12345" : @"book-of-dragons",
+            @"title":@"Book of Dragons", @"author":@"Preview author", @"imageUrl":@"preview:CubicProfileCover2",
+            @"description":@"Discover dragons, study their habits, and take flight through the Overworld.",
+            @"categories":@[@"Adventure", @"Mobs"], @"downloads":@125739, @"likes":@144}];
+        if (installed) {
+            detail.showsInstalledFile = YES;
+            detail.installedProjectID = @"book-of-dragons";
+            detail.apiSource = 0;
+            detail.targetProfileName = @"The Gang";
+            detail.modItem.fileName = @"bookofdragons-1.4.2-1.20.1.jar";
+        }
+        [nav pushViewController:detail animated:NO];
+        if (installed) {
+            ModVersion *version = [[ModVersion alloc] initWithDictionary:@{@"name":@"Book of Dragons 1.4.2", @"version_number":@"1.4.2",
+                @"loaders":@[@"forge"], @"game_versions":@[@"1.20.1"], @"date_published":@"2026-06-01T00:00:00Z", @"files":@[@{@"url":@"https://example.invalid/local.jar"}], @"changelog":@"Local notes"}];
+            [detail displayInstalledVersions:@[version] source:1];
+        }
+    }
     if ([route isEqual:@"downloads"] || [route isEqual:@"download-log"]) {
         DownloadTaskItem *task = [route isEqual:@"download-log"] ? DownloadTaskManager.sharedManager.allTasks.firstObject : nil;
         [CubicDownloadsController showFrom:shell task:task];
@@ -795,6 +831,42 @@ static void PreviewScreens(UIWindow *window) {
             }
             [page layoutIfNeeded];
         }
+        if (projectRoute) {
+            ModVersionViewController *detail = (id)nav.topViewController;
+            UITableView *table = [detail valueForKey:@"tableView"];
+            UIButton *filter = [detail valueForKey:@"filtersButton"];
+            NSCAssert(quickInstallChecked, @"Quick Install did not resolve");
+            CGFloat collapsed = table.tableHeaderView.bounds.size.height;
+            UIButton *expand = [[detail valueForKey:@"detailHeaderView"] valueForKey:@"expandToggleButton"];
+            NSCAssert(expand.hidden, @"Short description should fit");
+            NSCAssert(filter.bounds.size.width < table.bounds.size.width / 2, @"Filter action stretched");
+            NSCAssert([table numberOfRowsInSection:0] == ([route isEqual:@"curseforge"] ? 2 : 1) && collapsed > 80, @"Missing project or file");
+            NSCAssert(nav.interactivePopGestureRecognizer.enabled &&
+                [nav.interactivePopGestureRecognizer.delegate gestureRecognizerShouldBegin:nav.interactivePopGestureRecognizer], @"Back gesture unavailable");
+            [filter sendActionsForControlEvents:UIControlEventTouchUpInside];
+            NSCAssert(table.tableHeaderView.bounds.size.height > collapsed + 80, @"Filters did not expand");
+            [filter sendActionsForControlEvents:UIControlEventTouchUpInside];
+            UISegmentedControl *tabs = [detail valueForKey:@"tabs"];
+            UIButton *download = [detail valueForKey:@"downloadButton"];
+            NSCAssert(download.enabled, @"Missing compatible download");
+            if ([route isEqual:@"curseforge"]) {
+                [table.delegate tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
+                ModVersion *choice = [detail valueForKey:@"chosenFile"];
+                NSCAssert([choice.fileId isEqual:@"1"], @"Manual file choice lost");
+            }
+            tabs.selectedSegmentIndex = 1;
+            [tabs sendActionsForControlEvents:UIControlEventValueChanged];
+            NSCAssert([table numberOfRowsInSection:0] == 1, @"Missing provider gallery");
+            tabs.selectedSegmentIndex = 2;
+            [tabs sendActionsForControlEvents:UIControlEventValueChanged];
+            if (![route isEqual:@"curseforge"]) {
+                UILabel *notes = [detail valueForKey:@"tabMessage"];
+                NSCAssert([notes.text containsString:@"notes"], @"Missing selected file changelog");
+            }
+            tabs.selectedSegmentIndex = 0;
+            [tabs sendActionsForControlEvents:UIControlEventValueChanged];
+            [window layoutIfNeeded];
+        }
         NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";
         CGSize size = window.bounds.size;
         NSCAssert((size.width < size.height) == [orientation isEqual:@"portrait"], @"Unexpected viewport %@", NSStringFromCGSize(size));
@@ -804,6 +876,19 @@ static void PreviewScreens(UIWindow *window) {
         NSData *png = [renderer PNGDataWithActions:^(UIGraphicsImageRendererContext *context) {
             [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:YES];
         }];
+        if (projectRoute) {
+            [nav popViewControllerAnimated:NO];
+            NSCAssert(nav.topViewController == home, @"Lost previous screen");
+            [home cubicBrowseModpacks];
+            UIGestureRecognizer *edge = [shell valueForKey:@"sectionBackGesture"];
+            NSCAssert([edge.delegate gestureRecognizerShouldBegin:edge], @"Browse has no edge back");
+            [shell ame_popCurrentIfPossible];
+            NSCAssert(!home.isBrowsingModpacks && ![edge.delegate gestureRecognizerShouldBegin:edge], @"Edge back at profile root");
+            [shell showPageAtIndex:4];
+            [shell showPageAtIndex:3];
+            [shell ame_popCurrentIfPossible];
+            NSCAssert([[shell valueForKey:@"currentIndex"] integerValue] == 4, @"Lost section history");
+        }
         NSCAssert([png writeToFile:[directory stringByAppendingPathComponent:name] atomically:YES], @"Could not save %@",name);
     });
 }

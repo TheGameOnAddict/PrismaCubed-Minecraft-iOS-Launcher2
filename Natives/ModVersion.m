@@ -15,7 +15,7 @@
         }
 
         // CurseForge file 格式适配（识别 gameVersions/downloadUrl/fileLength/fileDate/id/modId 字段）
-        if (dictionary[@"gameVersions"] != nil && dictionary[@"downloadUrl"] != nil) {
+        if (dictionary[@"gameVersions"] != nil && dictionary[@"modId"] != nil) {
             return [self parseCurseForgeDictionary:dictionary];
         }
 
@@ -28,7 +28,11 @@
         _versionType = [dictionary[@"version_type"] isKindOfClass:[NSString class]] ? dictionary[@"version_type"] : @"release";
 
         NSArray *files = [dictionary[@"files"] isKindOfClass:[NSArray class]] ? dictionary[@"files"] : @[];
-        _primaryFile = [files firstObject];
+        for (NSDictionary *file in files) {
+            if (![file isKindOfClass:NSDictionary.class] || ![file[@"url"] isKindOfClass:NSString.class]) continue;
+            if (!_primaryFile || [file[@"primary"] boolValue]) _primaryFile = file;
+            if ([file[@"primary"] boolValue]) break;
+        }
         // Task229 (feedback #4: dependency sheet + version-page footer both dead):
         // the Modrinth branch never set _apiSource (property default 0; only
         // parseCurseForgeDictionary set it to 2). ModDependencyResolver's
@@ -114,7 +118,7 @@
     }
     // 构造 primaryFile 以兼容 Modrinth 格式读取（url/filename/hashes）
     NSMutableDictionary *pf = [NSMutableDictionary dictionary];
-    if (dictionary[@"downloadUrl"]) {
+    if ([dictionary[@"downloadUrl"] isKindOfClass:NSString.class]) {
         // Task173：CF 下载 URL 镜像解析（整合包 CF 源不可用的根因）。
         // ModrinthAPI 的 MRAMirrorResolvedURL 一直在做这件事（cdn.modrinth.com → MCIM
         // 镜像），CF 路径漏了：raw edge.forgecdn.net 在镜像策略开启

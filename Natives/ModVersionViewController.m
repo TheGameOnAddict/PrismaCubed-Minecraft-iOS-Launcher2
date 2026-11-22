@@ -4,6 +4,9 @@
 #import "installer/modpack/CurseForgeAPI.h"
 #import "ModVersion.h"
 #import "ModVersionTableViewCell.h"
+#import "ModProjectCatalog.h"
+#import "IconLoader.h"
+#import "MarkdownParser.h"
 #import "ModDependencyResolver.h"
 #import "installer/modpack/ModrinthAPI.h"
 #import "installer/modpack/CurseForgeAPI.h"
@@ -64,6 +67,22 @@ static NSArray<NSDictionary *> *SortOptionItems(void) {
     return items;
 }
 
+typedef NS_ENUM(NSInteger, ProjectTab) { ProjectTabVersions, ProjectTabGallery, ProjectTabChangelog };
+
+static NSString *ProjectString(id value) {
+    return [value isKindOfClass:NSString.class] ? value : @"";
+}
+
+static NSString *ProjectNotes(NSString *markup) {
+    // Provider notes may contain HTML. Retain paragraph breaks without loading embedded resources.
+    NSString *text = [markup stringByReplacingOccurrencesOfString:@"(?i)<(?:br\\s*/?|/p|/div|/li|/h[1-6])>" withString:@"\n" options:NSRegularExpressionSearch range:NSMakeRange(0, markup.length)];
+    text = [text stringByReplacingOccurrencesOfString:@"</?[A-Za-z][^>]*>" withString:@"" options:NSRegularExpressionSearch range:NSMakeRange(0, text.length)];
+    for (NSArray *pair in @[@[@"&nbsp;", @" "], @[@"&quot;", @"\""], @[@"&#39;", @"'"], @[@"&lt;", @"<"], @[@"&gt;", @">"], @[@"&amp;", @"&"]]) {
+        text = [text stringByReplacingOccurrencesOfString:pair[0] withString:pair[1]];
+    }
+    return [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+}
+
 @interface ModVersionViewController () <UITableViewDataSource, UITableViewDelegate, ModVersionViewControllerDelegate>
 
 // 主表格视图（展示版本列表）
@@ -76,8 +95,6 @@ static NSArray<NSDictionary *> *SortOptionItems(void) {
 @property (nonatomic, strong) UIStackView *filterMainStack;
 
 // --- 下载源筛选行 ---
-@property (nonatomic, strong) UIScrollView *sourceScrollView;   // 水平滚动容器
-@property (nonatomic, strong) UIStackView  *sourceChipStack;    // chips 水平排列
 
 // --- 游戏版本筛选行 ---
 @property (nonatomic, strong) UIScrollView *versionScrollView;
@@ -125,6 +142,21 @@ static NSArray<NSDictionary *> *SortOptionItems(void) {
 @property (nonatomic, strong) UILabel *filesTitle;
 @property (nonatomic, strong) UIButton *filtersButton;
 @property (nonatomic) NSUInteger sourceRequest;
+@property (nonatomic) ProjectTab tab;
+@property (nonatomic, strong) UISegmentedControl *tabs;
+@property (nonatomic, strong) UIButton *downloadButton;
+@property (nonatomic, strong) UILabel *fileSummary;
+@property (nonatomic, strong) UILabel *tabMessage;
+@property (nonatomic, strong) UIView *filesBar;
+@property (nonatomic, strong) ModVersion *chosenFile;
+@property (nonatomic, copy) NSArray<NSDictionary *> *gallery;
+@property (nonatomic, copy) NSString *galleryStatus;
+@property (nonatomic, copy) NSString *versionStatus;
+@property (nonatomic, copy) NSString *currentProjectID;
+@property (nonatomic, copy) NSString *notesKey;
+@property (nonatomic, copy) NSString *notes;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *notesCache;
+
 
 @end
 
@@ -188,7 +220,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         if (strongSelf) [strongSelf updateTableHeaderHeight];
     };
 
-    // 用搜索阶段已有的 modItem 数据填充（无需额外 API 调用）
+    BOOL original = self.apiSource == self.selectedSource || localFile;
+    if (original) {
     [self.detailHeaderView configureWithIconURL:self.modItem.iconURL
                                           title:self.modItem.displayName
                                          author:self.modItem.author
@@ -200,24 +233,38 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
                            placeholderSymbolName:@"puzzlepiece.extension.fill"
                                placeholderColor:accent];
 
-    UIImageView *mark = [[UIImageView alloc] initWithImage:[UIImage imageNamed:curseForge ? @"CubicCurseForge" : @"CubicModrinth"]];
-    if (localFile) {
-        mark.image = [UIImage systemImageNamed:@"shippingbox"];
-        mark.tintColor = accent;
+        if (self.showsInstalledFile && self.modItem.icon) [self.detailHeaderView showLocalIcon:self.modItem.icon];
+    } else {
+        [self.detailHeaderView configureWithIconURL:nil title:self.modItem.displayName author:nil downloads:nil likes:nil
+            descriptionText:nil categories:nil lastUpdated:nil placeholderSymbolName:@"puzzlepiece.extension.fill" placeholderColor:accent];
     }
-    if (self.showsInstalledFile && self.modItem.icon) [self.detailHeaderView showLocalIcon:self.modItem.icon];
-    mark.contentMode = UIViewContentModeScaleAspectFit;
-    [mark.widthAnchor constraintEqualToConstant:24].active = YES;
-    [mark.heightAnchor constraintEqualToConstant:24].active = YES;
-    UILabel *providerName = [[UILabel alloc] init];
-    providerName.text = localFile ? localize(@"prisma.project.installed", nil) : (curseForge ? @"CurseForge" : @"Modrinth");
-    providerName.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
-    providerName.textColor = accent;
-    UIStackView *brand = [[UIStackView alloc] initWithArrangedSubviews:@[mark, providerName]];
-    brand.alignment = UIStackViewAlignmentCenter;
-    brand.spacing = 8;
-    brand.layoutMarginsRelativeArrangement = YES;
-    brand.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(12, 16, 0, 16);
+    UISegmentedControl *sources = [[UISegmentedControl alloc] initWithItems:@[@"Modrinth", @"CurseForge"]];
+    sources.accessibilityLabel = localize(@"i18n_str_462", nil);
+    sources.selectedSegmentIndex = curseForge ? 1 : 0;
+    [sources addTarget:self action:@selector(changeProjectSource:) forControlEvents:UIControlEventValueChanged];
+    sources.hidden = localFile;
+    self.downloadButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.downloadButton.backgroundColor = [AmeTheme brandPrimary];
+    self.downloadButton.tintColor = UIColor.blackColor;
+    self.downloadButton.layer.cornerRadius = 10;
+    self.downloadButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+    [self.downloadButton setTitle:localize(@"resman.mods.download", nil) forState:UIControlStateNormal];
+    [self.downloadButton addTarget:self action:@selector(downloadChosenFile) forControlEvents:UIControlEventTouchUpInside];
+    [self.downloadButton.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+    self.fileSummary = [[UILabel alloc] init];
+    self.fileSummary.textColor = UIColor.secondaryLabelColor;
+    self.fileSummary.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    self.fileSummary.numberOfLines = 0;
+    self.tabs = [[UISegmentedControl alloc] initWithItems:@[localize(@"prisma.ui.versions", nil),
+        localize(@"prisma.project.gallery", nil), localize(@"prisma.project.changelog", nil)]];
+    self.tabs.selectedSegmentIndex = self.tab;
+    [self.tabs addTarget:self action:@selector(changeProjectTab:) forControlEvents:UIControlEventValueChanged];
+    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[sources, self.downloadButton, self.fileSummary, self.tabs]];
+    actions.axis = UILayoutConstraintAxisVertical;
+    actions.spacing = 10;
+    actions.layoutMarginsRelativeArrangement = YES;
+    actions.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(6, 16, 8, 16);
+    actions.hidden = localFile;
 
     self.filesTitle = [[UILabel alloc] init];
     self.filesTitle.font = [UIFont systemFontOfSize:20 weight:UIFontWeightBold];
@@ -251,7 +298,14 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.dependencyStack = [[UIStackView alloc] init];
     self.dependencyStack.axis = UILayoutConstraintAxisVertical;
     self.dependencyStack.hidden = YES;
-    self.projectStack = [[UIStackView alloc] initWithArrangedSubviews:@[brand, self.detailHeaderView, self.dependencyStack, filesBar]];
+    self.filesBar = filesBar;
+    self.tabMessage = [[UILabel alloc] init];
+    self.tabMessage.numberOfLines = 0;
+    self.tabMessage.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    UIStackView *message = [[UIStackView alloc] initWithArrangedSubviews:@[self.tabMessage]];
+    message.layoutMarginsRelativeArrangement = YES;
+    message.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 16, 0, 16);
+    self.projectStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.detailHeaderView, actions, filesBar, message, self.dependencyStack]];
     if (self.showsInstalledFile) {
         UILabel *installed = [[UILabel alloc] init];
         installed.numberOfLines = 0;
@@ -270,6 +324,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.projectStack.layoutMarginsRelativeArrangement = YES;
     self.projectStack.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 0, 8, 0);
     [self refreshFilesHeading];
+    [self refreshProjectTab];
     [self updateTableHeaderHeight];
 }
 
@@ -284,13 +339,171 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.apiSource = source;
     self.selectedSource = source;
     [self setupDetailHeader];
-    if (versions.count) {
-        [self handleVersionsResponse:versions error:nil];
-    } else {
-        self.filesTitle.text = localize(@"prisma.ui.no.versions.match.your.filters", nil);
-        self.filtersButton.hidden = YES;
-        [self updateTableHeaderHeight];
+    self.currentProjectID = self.installedProjectID;
+    if (self.currentProjectID.length) [self loadProjectMetadata];
+    [self handleVersionsResponse:versions error:nil];
+}
+
+- (void)changeProjectTab:(UISegmentedControl *)control {
+    self.tab = control.selectedSegmentIndex;
+    if (self.tab != ProjectTabVersions) [self.filterContainerView removeFromSuperview];
+    [self refreshProjectTab];
+    [self.tableView reloadData];
+}
+
+- (void)refreshProjectTab {
+    BOOL versions = self.tab == ProjectTabVersions;
+    self.filesBar.hidden = !versions;
+    self.filtersButton.hidden = self.allVersions.count == 0;
+    self.downloadButton.enabled = ProjectString(self.chosenFile.primaryFile[@"url"]).length > 0;
+    self.downloadButton.alpha = self.downloadButton.enabled ? 1 : 0.5;
+    NSString *match = localize(@"prisma.project.choose", nil);
+    self.fileSummary.text = self.chosenFile ? [NSString stringWithFormat:@"%@ · %@", self.selectedSource == 2 ? @"CurseForge" : @"Modrinth",
+        self.chosenFile.primaryFile[@"filename"] ?: self.chosenFile.name] : match;
+    self.tabMessage.attributedText = nil;
+    NSString *message = nil;
+    if (versions && !self.filteredVersions.count) message = self.versionStatus;
+    if (self.tab == ProjectTabGallery && !self.gallery.count)
+        message = self.galleryStatus ?: localize(@"i18n_str_40", nil);
+    if (self.tab == ProjectTabChangelog) {
+        [self loadNotesIfNeeded];
+        if (self.notes.length) {
+            self.tabMessage.attributedText = [MarkdownParser parseMarkdown:self.notes baseFont:[UIFont preferredFontForTextStyle:UIFontTextStyleBody] textColor:UIColor.labelColor];
+        } else {
+            message = self.chosenFile ? localize(@"i18n_str_40", nil) : match;
+        }
     }
+    if (message) self.tabMessage.text = message;
+    self.tabMessage.hidden = !self.tabMessage.attributedText.length && !self.tabMessage.text.length;
+    [self updateTableHeaderHeight];
+}
+
+- (void)loadProjectMetadata {
+    NSUInteger request = self.sourceRequest;
+    BOOL curse = self.selectedSource == kSourceCurseForge;
+    NSString *path = [NSString stringWithFormat:@"%@/%@", curse ? @"mods" : @"project", self.currentProjectID];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        ModpackAPI *api = curse ? (ModpackAPI *)[CurseForgeAPI sharedInstance] : [ModrinthAPI sharedInstance];
+        NSDictionary *json = [api getEndpoint:path params:nil];
+        NSDictionary *project = [json isKindOfClass:NSDictionary.class] ? (curse ? json[@"data"] : json) : nil;
+        if (![project isKindOfClass:NSDictionary.class] || !project[@"id"]) project = nil;
+        NSArray *images = project[curse ? @"screenshots" : @"gallery"];
+        NSMutableArray *gallery = [NSMutableArray array];
+        if ([images isKindOfClass:NSArray.class]) for (NSDictionary *entry in images) {
+            if (![entry isKindOfClass:NSDictionary.class]) continue;
+            NSString *url = ProjectString(entry[@"url"]);
+            if (!url.length) continue;
+            NSString *thumb = ProjectString(entry[@"thumbnailUrl"]);
+            [gallery addObject:@{@"url":url, @"thumbnail":thumb.length ? thumb : url, @"title":ProjectString(entry[@"title"]),
+                @"caption":ProjectString(entry[@"description"])}];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.sourceRequest != request) return;
+            self.gallery = gallery;
+            self.galleryStatus = localize(project ? @"prisma.project.noGallery" : @"prisma.project.metadataError", nil);
+            if (project && (self.showsInstalledFile || self.selectedSource != self.apiSource)) {
+                NSString *title = ProjectString(project[curse ? @"name" : @"title"]);
+                NSDictionary *logo = [project[@"logo"] isKindOfClass:NSDictionary.class] ? project[@"logo"] : nil;
+                NSArray *authors = [project[@"authors"] isKindOfClass:NSArray.class] ? project[@"authors"] : nil;
+                NSDictionary *firstAuthor = [authors.firstObject isKindOfClass:NSDictionary.class] ? authors.firstObject : nil;
+                NSString *author = curse ? ProjectString(firstAuthor[@"name"]) : nil;
+                NSArray *categories = [project[@"categories"] isKindOfClass:NSArray.class] ? project[@"categories"] : @[];
+                NSMutableArray *tags = [NSMutableArray array];
+                for (id category in categories) {
+                    NSString *tag = ProjectString([category isKindOfClass:NSDictionary.class] ? category[@"name"] : category);
+                    if (tag.length) [tags addObject:tag];
+                }
+                [self.detailHeaderView configureWithIconURL:ProjectString(curse ? logo[@"url"] : project[@"icon_url"])
+                    title:title.length ? title : self.modItem.displayName author:author downloads:project[curse ? @"downloadCount" : @"downloads"]
+                    likes:project[@"followers"] descriptionText:ProjectString(project[curse ? @"summary" : @"description"])
+                    categories:tags lastUpdated:ProjectString(project[curse ? @"dateModified" : @"updated"])
+                    placeholderSymbolName:@"puzzlepiece.extension.fill" placeholderColor:[self accentForSource:self.selectedSource]];
+            }
+            [self refreshProjectTab];
+            if (self.tab == ProjectTabGallery) [self.tableView reloadData];
+        });
+    });
+}
+
+- (void)loadNotesIfNeeded {
+    ModVersion *file = self.chosenFile;
+    if (!file) { self.notes = nil; self.notesKey = nil; return; }
+    if (self.selectedSource == kSourceModrinth) {
+        NSString *body = ProjectNotes(ProjectString(file.rawDictionary[@"changelog"]));
+        self.notes = body.length ? body : localize(@"prisma.project.noNotes", nil);
+        return;
+    }
+    if (!file.fileId.length || !self.currentProjectID.length) {
+        self.notes = localize(@"prisma.project.noNotes", nil);
+        return;
+    }
+    NSString *path = [NSString stringWithFormat:@"mods/%@/files/%@/changelog", self.currentProjectID, file.fileId];
+    if ([path isEqual:self.notesKey]) return;
+    self.notesKey = path;
+    self.notes = self.notesCache[path];
+    if (self.notes) return;
+    NSUInteger request = self.sourceRequest;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSDictionary *json = [[CurseForgeAPI sharedInstance] getEndpoint:path params:nil];
+        id data = [json isKindOfClass:NSDictionary.class] ? json[@"data"] : nil;
+        NSString *body = ProjectNotes(ProjectString(data));
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (request != self.sourceRequest || ![path isEqual:self.notesKey]) return;
+            self.notes = body.length ? body : localize([data isKindOfClass:NSString.class] ? @"prisma.project.noNotes" : @"prisma.project.metadataError", nil);
+            if ([data isKindOfClass:NSString.class]) {
+                if (!self.notesCache) self.notesCache = [NSMutableDictionary dictionary];
+                self.notesCache[path] = self.notes;
+            }
+            [self refreshProjectTab];
+        });
+    });
+}
+
+- (UITableViewCell *)galleryCellAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"ProjectPhoto"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"ProjectPhoto"];
+        cell.backgroundColor = UIColor.clearColor;
+        UIImageView *photo = [[UIImageView alloc] init];
+        photo.tag = 101;
+        photo.contentMode = UIViewContentModeScaleAspectFill;
+        photo.layer.cornerRadius = 10;
+        photo.clipsToBounds = YES;
+        UILabel *caption = [[UILabel alloc] init];
+        caption.tag = 102;
+        caption.numberOfLines = 0;
+        caption.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+        UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[photo, caption]];
+        stack.axis = UILayoutConstraintAxisVertical;
+        stack.spacing = 5;
+        stack.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:stack];
+        UILayoutGuide *margins = cell.contentView.layoutMarginsGuide;
+        [NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:margins.leadingAnchor],
+            [stack.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor], [stack.topAnchor constraintEqualToAnchor:margins.topAnchor],
+            [stack.bottomAnchor constraintEqualToAnchor:margins.bottomAnchor], [photo.heightAnchor constraintEqualToAnchor:photo.widthAnchor multiplier:0.5]]];
+    }
+    NSDictionary *image = self.gallery[indexPath.row];
+    UILabel *caption = [cell.contentView viewWithTag:102];
+    caption.text = [@[image[@"title"], image[@"caption"]] componentsJoinedByString:@"\n"];
+    caption.text = [caption.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    caption.hidden = !caption.text.length;
+    UIImageView *photo = [cell.contentView viewWithTag:101];
+    UIImage *placeholder = [UIImage systemImageNamed:@"photo"];
+    [IconLoader loadIconForImageView:photo URL:image[@"thumbnail"] placeholder:placeholder fallback:placeholder targetSize:CGSizeMake(640, 360)];
+    return cell;
+}
+
+- (void)openGalleryImage:(NSDictionary *)image {
+    UIViewController *photo = [[UIViewController alloc] init];
+    photo.title = image[@"title"];
+    photo.view.backgroundColor = UIColor.blackColor;
+    UIImageView *view = [[UIImageView alloc] initWithFrame:photo.view.bounds];
+    view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    view.contentMode = UIViewContentModeScaleAspectFit;
+    [photo.view addSubview:view];
+    [IconLoader loadIconForImageView:view URL:image[@"url"] placeholder:nil fallback:[UIImage systemImageNamed:@"photo"] targetSize:UIScreen.mainScreen.bounds.size];
+    [self.navigationController pushViewController:photo animated:YES];
 }
 
 - (void)refreshFilesHeading {
@@ -321,8 +534,9 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     if (previous != self.ame238_depsSectionView) {
         [previous removeFromSuperview];
         if (self.ame238_depsSectionView) [self.dependencyStack addArrangedSubview:self.ame238_depsSectionView];
-        self.dependencyStack.hidden = self.ame238_depsSectionView == nil;
+
     }
+    self.dependencyStack.hidden = self.tab != ProjectTabVersions || !self.ame238_depsSectionView;
     CGSize fit = [self.projectStack systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                 withHorizontalFittingPriority:UILayoutPriorityRequired
                                       verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
@@ -362,20 +576,6 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     self.filterMainStack.spacing = 4;
     self.filterMainStack.alignment = UIStackViewAlignmentFill;
     [self.filterContainerView addSubview:self.filterMainStack];
-
-    // ----- 第 1 行：下载源筛选（Modrinth / CurseForge）-----
-    {
-        UIScrollView *scrollOut = nil;
-        UIStackView *chipOut = nil;
-        UIStackView *sourceRow = [self createFilterRowWithIconName:@"globe"
-                                                             label:localize(@"i18n_str_462", nil)
-                                                        scrollStackOut:&scrollOut
-                                                          chipStackOut:&chipOut];
-        self.sourceScrollView = scrollOut;
-        self.sourceChipStack = chipOut;
-        if (!self.showsInstalledFile) [self.filterMainStack addArrangedSubview:sourceRow];
-    }
-    [self rebuildSourceChips];
 
     // ----- 第 2 行：游戏版本筛选（动态填充，初始显示"加载中"）-----
     {
@@ -556,25 +756,6 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
 #pragma mark - 重建各筛选行 chips
 
-/// 重建下载源 chips（Modrinth / CurseForge）
-- (void)rebuildSourceChips {
-    [self clearChipStack:self.sourceChipStack];
-
-    // Modrinth chip
-    UIButton *modrinthChip = [self createFilterChipWithTitle:@"Modrinth"
-                                                    selected:(self.selectedSource == kSourceModrinth)];
-    modrinthChip.tag = kSourceModrinth;
-    [modrinthChip addTarget:self action:@selector(sourceChipTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [self.sourceChipStack addArrangedSubview:modrinthChip];
-
-    // CurseForge chip
-    UIButton *curseforgeChip = [self createFilterChipWithTitle:@"CurseForge"
-                                                      selected:(self.selectedSource == kSourceCurseForge)];
-    curseforgeChip.tag = kSourceCurseForge;
-    [curseforgeChip addTarget:self action:@selector(sourceChipTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [self.sourceChipStack addArrangedSubview:curseforgeChip];
-}
-
 /// 重建游戏版本 chips（从 availableGameVersions 动态填充，含"全部"）
 - (void)rebuildVersionChips {
     [self clearChipStack:self.versionChipStack];
@@ -646,13 +827,14 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 #pragma mark - Chip 点击事件处理
 
 /// 下载源 chip 点击：切换 Modrinth / CurseForge，并重新拉取版本列表
-- (void)sourceChipTapped:(UIButton *)sender {
-    NSInteger newSource = sender.tag;
+- (void)changeProjectSource:(UISegmentedControl *)sender {
+    NSInteger newSource = sender.selectedSegmentIndex + 1;
     if (newSource == self.selectedSource) return; // 未切换则忽略
 
     // CurseForge 源：Task162 起免 key 可用（无 key 时 baseURL 强制落 MCIM 镜像，
     // 实测 200），门控改用 isSourceAvailable——key 仅官方直连需要。
     if (newSource == kSourceCurseForge && ![CurseForgeAPI isSourceAvailable]) {
+        sender.selectedSegmentIndex = self.selectedSource - 1;
         [self showSourceAlertWithTitle:localize(@"i18n_str_465", nil)
                                 message:localize(@"i18n_str_466", nil)];
         return;
@@ -660,16 +842,17 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
     self.selectedSource = newSource;
     self.ame238_depsSectionView = nil;
-    [self refreshFilesHeading];
-    [self updateTableHeaderHeight];
-    // 更新 chips 选中样式
-    for (UIButton *chip in self.sourceChipStack.arrangedSubviews) {
-        if (![chip isKindOfClass:[UIButton class]]) continue;
-        [self applyChipStyle:chip selected:(chip.tag == self.selectedSource)];
-    }
-    // 清空已有数据，重新拉取
     self.allVersions = nil;
     self.filteredVersions = nil;
+    self.chosenFile = nil;
+    self.currentProjectID = nil;
+    self.notesKey = nil;
+    self.notes = nil;
+    self.gallery = nil;
+    self.galleryStatus = localize(@"i18n_str_40", nil);
+    self.versionStatus = self.galleryStatus;
+    [self.filterContainerView removeFromSuperview];
+    [self setupDetailHeader];
     [self.tableView reloadData];
     [self fetchVersionsFromCurrentSource];
 }
@@ -759,150 +942,51 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 /// 可下载的版本”根因）。
 - (void)fetchVersionsFromCurrentSource {
     self.sourceRequest++;
+    self.versionStatus = localize(@"i18n_str_40", nil);
     [self.activityIndicator startAnimating];
+    [self refreshProjectTab];
 
-    NSString *ame247_id = self.modItem.onlineID ?: @"";
-    BOOL ame247_numeric = (ame247_id.length > 0 &&
-        [ame247_id rangeOfCharacterFromSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]].location == NSNotFound);
-    // 判定是否需要跨源解析：CF 源要数字 id；Modrinth 源要 slug/项目码（非全数字）
-    BOOL ame247_needResolve =
-        (self.selectedSource == kSourceCurseForge) ? !ame247_numeric : ame247_numeric;
-    if (!ame247_needResolve) {
-        [self ame247_fetchVersionsWithID:ame247_id];
+    NSString *identifier = self.installedProjectID ?: self.modItem.onlineID;
+    NSInteger original = self.apiSource == kSourceCurseForge ? kSourceCurseForge : kSourceModrinth;
+    if (self.selectedSource == original) {
+        [self ame247_fetchVersionsWithID:identifier];
         return;
     }
-    // 会话级解析缓存命中：切过去再切回来不重复搜索
-    NSString *ame247_cached = self.ame247_resolvedIDs[@(self.selectedSource)];
-    if (ame247_cached.length > 0) {
-        [self ame247_fetchVersionsWithID:ame247_cached];
-        return;
-    }
-    [self ame247_searchCrossSourceCounterpart];
-}
-
-/// Task247（T11）：以项目名搜索对端源，解析出该源的项目 id。
-/// 匹配规则：displayName 完全等值（忽略大小写）优先 → 首个结果；
-/// 解析结果入缓存。搜索无结果时落空列表分支（既有报错文案提示切源）。
-- (void)ame247_searchCrossSourceCounterpart {
+    NSString *cached = self.ame247_resolvedIDs[@(self.selectedSource)];
+    if (cached) { [self ame247_fetchVersionsWithID:cached]; return; }
     NSUInteger request = self.sourceRequest;
-    NSString *ame247_query = self.modItem.displayName ?: @"";
-    NSString *ame247_norm = [ame247_query stringByReplacingOccurrencesOfString:@" " withString:@""];
-    NSString *ame247_lower = ame247_norm.lowercaseString;
-    __weak typeof(self) weakSelf = self;
-    void (^ame247_finish)(NSString * _Nullable) = ^(NSString * _Nullable resolved) {
+    [ModProjectCatalog findProject:self.modItem.displayName type:self.projectType source:self.selectedSource completion:^(NSString *match, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf || strongSelf.sourceRequest != request) return;
-            if (resolved.length > 0) {
-                if (strongSelf.ame247_resolvedIDs == nil) {
-                    strongSelf.ame247_resolvedIDs = [NSMutableDictionary dictionary];
-                }
-                strongSelf.ame247_resolvedIDs[@(strongSelf.selectedSource)] = resolved;
-                NSLog(@"[ModVersionVC] Task247: cross-source id resolved (source=%ld): %@",
-                      (long)strongSelf.selectedSource, resolved);
-                [strongSelf ame247_fetchVersionsWithID:resolved];
-            } else {
-                NSLog(@"[ModVersionVC] Task247: cross-source id unresolved (source=%ld) -- empty fallback",
-                      (long)strongSelf.selectedSource);
-                [strongSelf handleVersionsResponse:@[] error:nil];
-            }
+            if (self.sourceRequest != request) return;
+            if (!match) { [self handleVersionsResponse:nil error:error]; return; }
+            if (!self.ame247_resolvedIDs) self.ame247_resolvedIDs = [NSMutableDictionary dictionary];
+            self.ame247_resolvedIDs[@(self.selectedSource)] = match;
+            [self ame247_fetchVersionsWithID:match];
         });
-    };
-    void (^ame247_pick)(NSArray * _Nullable, NSError * _Nullable) = ^(NSArray * _Nullable results, NSError * _Nullable error) {
-        if (error != nil || results.count == 0) {
-            ame247_finish(nil);
-            return;
-        }
-        // ★ Task248（⑩ 切源仍报"未找到可下载的版本" 根修）：两个 API 的
-        //   异步 searchModWithFilters:completion: 返回的是【NSMutableDictionary
-        //   字典数组】（CurseForgeAPI projectFromCurseForgeProject: / ModrinthAPI
-        //   搜索解析，键 = apiSource/id/title/...）——Task247 的 pick 按
-        //   ModItem 对象遍历 + isKindOfClass 过滤，字典全部被 continue 跳过
-        //   = 解析恒失败 = 空列表报错文案（T11 等于从未生效）。双形态兼容：
-        //   字典读 id/title 键，ModItem 对象保留（防御未来改型）。
-        NSString *ame247_best = nil;
-        for (id ame247_entry in results) {
-            NSString *ame247_pid = nil;
-            NSString *ame247_pname = nil;
-            if ([ame247_entry isKindOfClass:[NSDictionary class]]) {
-                id ame247_rawID = [(NSDictionary *)ame247_entry objectForKey:@"id"];
-                ame247_pid = [ame247_rawID isKindOfClass:[NSString class]]
-                    ? ame247_rawID
-                    : ([ame247_rawID isKindOfClass:[NSNumber class]]
-                        ? [(NSNumber *)ame247_rawID stringValue] : nil);
-                ame247_pname = [(NSDictionary *)ame247_entry objectForKey:@"title"];
-            } else if ([ame247_entry isKindOfClass:[ModItem class]]) {
-                ame247_pid = [(ModItem *)ame247_entry onlineID];
-                ame247_pname = [(ModItem *)ame247_entry displayName];
-            }
-            if (ame247_pid.length == 0) continue;
-            NSString *ame247_dn = (ame247_pname ?: @"").lowercaseString;
-            NSString *ame247_dsq = [ame247_dn stringByReplacingOccurrencesOfString:@" " withString:@""];
-            // 完全等值优先（含 slug 形态：Modrinth slug 常为去空格连字串）
-            if ([ame247_dsq isEqualToString:ame247_lower]) {
-                ame247_best = ame247_pid;
-                break;
-            }
-            if (ame247_best == nil) ame247_best = ame247_pid;   // 兖底取首个
-        }
-        ame247_finish(ame247_best);
-    };
-    NSDictionary *ame247_filters = @{
-        @"name": ame247_query,
-        @"projectType": @"mod",
-        @"limit": @20,
-    };
-    NSLog(@"[ModVersionVC] Task247: resolving cross-source id (source=%ld) via search: %@",
-          (long)self.selectedSource, ame247_query);
-    if (self.selectedSource == kSourceCurseForge) {
-        [[CurseForgeAPI sharedInstance] searchModWithFilters:ame247_filters completion:ame247_pick];
-    } else {
-        [[ModrinthAPI sharedInstance] searchModWithFilters:ame247_filters completion:ame247_pick];
-    }
+    }];
 }
 
-/// Task247（T11）：按解析后的 id 拉版本列表（原两分支主体收编于此）
-- (void)ame247_fetchVersionsWithID:(NSString *)ame247_fetchID {
+- (void)ame247_fetchVersionsWithID:(NSString *)identifier {
     NSUInteger request = self.sourceRequest;
-    void (^completion)(NSArray<ModVersion *> *, NSError *) = ^(NSArray<ModVersion *> *versions, NSError *error) {
+    if (!identifier.length) { [self handleVersionsResponse:nil error:nil]; return; }
+    self.currentProjectID = identifier;
+    [self loadProjectMetadata];
+    [ModProjectCatalog filesForID:identifier source:self.selectedSource completion:^(NSArray *files, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.sourceRequest == request) [self handleVersionsResponse:versions error:error];
+            if (self.sourceRequest == request) [self handleVersionsResponse:files error:error];
         });
-    };
-    if (self.selectedSource == kSourceCurseForge) {
-        [[CurseForgeAPI sharedInstance] getVersionsForModWithID:ame247_fetchID completion:completion];
-    } else {
-        [[ModrinthAPI sharedInstance] getVersionsForModWithID:ame247_fetchID completion:completion];
-    }
+    }];
 }
 
-/// 统一处理版本拉取回调
 - (void)handleVersionsResponse:(NSArray<ModVersion *> *)versions error:(NSError *)error {
     [self.activityIndicator stopAnimating];
-    if (error) {
-        NSLog(@"[ModVersionVC] Error fetching versions (source=%ld): %@", (long)self.selectedSource, error);
-        // 修复"下载版本点击下载按钮后没有反应"：
-        // 之前版本列表拉取失败时仅 NSLog，用户看到空白列表毫无反馈，误以为按钮失灵。
-        // 现在补 UIAlertController 提示（与 ShaderVersionViewController 保持一致）。
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:localize(@"i18n_str_42", nil)
-                                                                        message:localize(@"i18n_str_467", nil)
-                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:localize(@"i18n_str_44", nil) style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        return;
-    }
-    if (!versions || versions.count == 0) {
-        // 列表为空时也给出反馈，避免用户误以为"按钮无反应"
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:localize(@"i18n_str_388", nil)
-                                                                        message:localize(@"i18n_str_468", nil)
-                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:localize(@"i18n_str_44", nil) style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        return;
-    }
-    self.allVersions = versions;
+    self.versionStatus = error ? error.localizedDescription : localize(@"prisma.project.noFiles", nil);
+    if (!self.currentProjectID) self.galleryStatus = self.versionStatus;
+    self.allVersions = versions ?: @[];
+    self.chosenFile = [ModProjectCatalog latestFile:versions minecraft:self.preferredGameVersion loader:self.preferredLoader];
     [self processFilters];
     [self applyFiltersAndSort];
+    [self refreshProjectTab];
     [self ame227_refreshDependenciesFooter];
 }
 
@@ -1347,8 +1431,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
     // FCL 风格：默认选中"全部"，但如果 preferredGameVersion/preferredLoader
     // 在可选列表中，则自动选中匹配项（让用户无需手动筛选）
-    self.selectedGameVersion = self.availableGameVersions.firstObject ?: localize(@"resman.mods.filter.all", nil);
-    self.selectedLoader = self.availableLoaders.firstObject ?: localize(@"resman.mods.filter.all", nil);
+    self.selectedGameVersion = localize(@"resman.mods.filter.all", nil);
+    self.selectedLoader = localize(@"resman.mods.filter.all", nil);
 
     // 自动选中 preferred 版本（大小写不敏感比较）
     if (self.preferredGameVersion.length > 0) {
@@ -1419,6 +1503,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     }
 
     self.filteredVersions = sorted;
+    [self refreshProjectTab];
 
     [self.tableView reloadData];
 }
@@ -1462,10 +1547,12 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.filteredVersions.count;
+    if (self.tab == ProjectTabGallery) return self.gallery.count;
+    return self.tab == ProjectTabVersions ? self.filteredVersions.count : 0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.tab == ProjectTabGallery) return [self galleryCellAtIndexPath:indexPath];
     BOOL curseForge = self.selectedSource == kSourceCurseForge;
     NSString *identifier = curseForge ? @"CurseForgeFile" : @"ModrinthVersion";
     ModVersionTableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
@@ -1475,6 +1562,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     }
     ModVersion *version = self.filteredVersions[indexPath.row];
     [cell configureWithVersion:version];
+    cell.accessoryType = version == self.chosenFile ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    cell.tintColor = [self accentForSource:self.selectedSource];
     return cell;
 }
 
@@ -1482,7 +1571,15 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    ModVersion *selectedVersion = self.filteredVersions[indexPath.row];
+    if (self.tab == ProjectTabGallery) { [self openGalleryImage:self.gallery[indexPath.row]]; return; }
+    self.chosenFile = self.filteredVersions[indexPath.row];
+    [self refreshProjectTab];
+    [tableView reloadData];
+}
+
+- (void)downloadChosenFile {
+    ModVersion *selectedVersion = self.chosenFile;
+    if (!ProjectString(selectedVersion.primaryFile[@"url"]).length) return;
     UINavigationController *navigation = self.navigationController;
     if ([self.delegate respondsToSelector:@selector(modVersionViewController:didSelectVersion:)]) {
         [self.delegate modVersionViewController:self didSelectVersion:selectedVersion];

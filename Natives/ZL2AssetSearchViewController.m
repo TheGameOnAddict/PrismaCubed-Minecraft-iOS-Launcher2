@@ -95,6 +95,7 @@
 #import "WorldItem.h"
 #import "DataPackItem.h"          // Task323：数据包 tab（Prisma1 八类对齐）
 #import "ModVersionViewController.h"
+#import "ModProjectCatalog.h"
 #import "ShaderVersionViewController.h"
 #import "AssetVersionViewController.h"
 #import "ModService.h"
@@ -617,6 +618,8 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 @property (nonatomic, strong) DataPackItem *pendingDataPackItem;   // Task323：数据包版本页回填
 
 // 目标实例快照（旧页 targetProfileName 语义：打开页面时锁定，防操作期间切实例错写目录）
+@property (nonatomic, strong) ModItem *quickInstallItem;
+@property (nonatomic, copy) NSString *quickInstallKey;
 @property (nonatomic, copy) NSString *lockedProfileName;
 
 // 收藏模式（7.0-UI-14）：数据源 = ZL2FavoritesStore，其余全链同构复用
@@ -1844,9 +1847,17 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
                      fallbackSymbol:[symbol stringByAppendingString:@".fill"]];
     }
     __weak typeof(self) weakSelf = self;
+    BOOL mods = self.assetType == ZL2AssetSearchTypeMod;
+    NSInteger source = [item[@"apiSource"] integerValue] ?: [self ame_apiSourceForType];
+    NSString *key = [NSString stringWithFormat:@"%ld/%@", (long)source, item[@"id"]];
+    BOOL pending = mods && [self.quickInstallKey isEqual:key];
+    cell.installButton.enabled = !mods || !self.quickInstallItem;
+    [cell.installButton setTitle:pending ? @"…" : NSLocalizedString(@"Install", nil) forState:UIControlStateNormal];
     cell.onInstall = ^{
         NSInteger index = [weakSelf.results indexOfObjectIdenticalTo:item];
-        if (index != NSNotFound) [weakSelf ame_openResultAtIndex:index];
+        if (index == NSNotFound) return;
+        if (mods) [weakSelf quickInstallResult:item source:source key:key];
+        else [weakSelf ame_openResultAtIndex:index];
     };
     return cell;
 }
@@ -1871,6 +1882,36 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
 }
 
 #pragma mark - 结果卡点击 → 版本页（1:1 复刻旧页各类型配置）
+
+- (void)quickInstallResult:(NSDictionary *)result source:(NSInteger)source key:(NSString *)key {
+    if (self.quickInstallItem) return;
+    ModItem *item = [[ModItem alloc] initWithOnlineData:result];
+    NSString *minecraft = [self ame_profileMinecraftVersion];
+    NSString *loader = [self ame_profileLoader];
+    self.quickInstallItem = item;
+    self.quickInstallKey = key;
+    [self.tableView reloadData];
+    [ModProjectCatalog quickFileForID:item.onlineID title:item.displayName source:source minecraft:minecraft loader:loader completion:^(ModVersion *file, NSError *error) {
+        if (!self.view.window || (self.navigationController && self.navigationController.topViewController != self)) {
+            [self finishQuickInstall:item];
+            return;
+        }
+        if (!file) {
+            [self finishQuickInstall:item];
+            NSString *message = error.localizedDescription ?: [NSString stringWithFormat:localize(@"prisma.project.noMatch", nil), minecraft ?: @"—", loader.capitalizedString ?: @"—"];
+            [self ame_showError:message];
+            return;
+        }
+        [self installMod:item version:file];
+    }];
+}
+
+- (void)finishQuickInstall:(ModItem *)item {
+    if (self.quickInstallItem != item) return;
+    self.quickInstallItem = nil;
+    self.quickInstallKey = nil;
+    [self.tableView reloadData];
+}
 
 - (void)ame_openResultAtIndex:(NSInteger)index {
     if (index < 0 || index >= (NSInteger)self.results.count) return;
@@ -1900,6 +1941,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
             // pendingDownloadType="modpack" + pendingModpackDict 分流安装流
             ModItem *modItem = [[ModItem alloc] initWithOnlineData:dict];
             ModVersionViewController *versionVC = [[ModVersionViewController alloc] init];
+            versionVC.projectType = @"modpack";
             versionVC.modItem = modItem;
             versionVC.targetProfileName = self.lockedProfileName;
             versionVC.delegate = self;
@@ -2035,15 +2077,17 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         return;
     }
 
-    ModItem *itemToDownload = viewController.modItem;
+    [self ame_popVersionPage];
+    [self installMod:viewController.modItem version:version];
+}
+
+- (void)installMod:(ModItem *)itemToDownload version:(ModVersion *)version {
+    NSDictionary *primaryFile = version.primaryFile;
     itemToDownload.selectedVersionDownloadURL = primaryFile[@"url"];
     itemToDownload.fileName = primaryFile[@"filename"] ?: [NSString stringWithFormat:@"%@.jar", itemToDownload.displayName];
     itemToDownload.fileSHA1 = ZL2AssetSha1FromPrimaryFile(primaryFile);
 
     self.pendingDownloadType = nil;
-
-    // 子页面已 push 到导航栈，选完版本后 pop 回搜索列表
-    [self ame_popVersionPage];
 
     // ★ Task227（旧页 L5469-5560 1:1）：下载前依赖解析 + 双源 + PCL2CE 确认单。
     //   ① ModDependencyResolver 递归解析必需/可选前置（双源归一）；
@@ -2144,6 +2188,7 @@ static NSInteger const ZL2AssetSearchPageSize = 30;
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf) return;
+            [strongSelf finishQuickInstall:item];
             if (error) {
                 [strongSelf ame_showError:error.localizedDescription];
                 return;

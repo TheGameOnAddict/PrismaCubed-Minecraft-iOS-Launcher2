@@ -5314,6 +5314,7 @@ static const NSTimeInterval kAme291MergeWindowSeconds = 7.0 * 24.0 * 3600.0;
     ModItem *modItem = [[ModItem alloc] initWithOnlineData:modpack];
 
     ModVersionViewController *versionVC = [[ModVersionViewController alloc] init];
+    versionVC.projectType = @"modpack";
     versionVC.modItem = modItem;
     versionVC.delegate = self;
     versionVC.title = modItem.displayName;

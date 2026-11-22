@@ -1462,13 +1462,8 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
                 ModVersionViewController *detail = weakPage;
                 if (!detail) return;
                 objc_setAssociatedObject(detail, @selector(ameV13_cardTapped:), result, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                NSMutableArray *compatible = [NSMutableArray array];
-                for (ModVersion *version in result.allVersions) {
-                    if (minecraft.length && ![version.gameVersions containsObject:minecraft]) continue;
-                    if (loader.length && version.loaders.count && ![version.loaders containsObject:loader.lowercaseString]) continue;
-                    [compatible addObject:version];
-                }
-                [detail displayInstalledVersions:compatible source:result.apiSource.integerValue];
+                detail.installedProjectID = result.projectID;
+                [detail displayInstalledVersions:result.allVersions source:result.apiSource.integerValue];
             }];
         });
         return;

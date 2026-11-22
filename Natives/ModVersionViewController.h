@@ -36,6 +36,8 @@ NS_ASSUME_NONNULL_BEGIN
 // 导致版本列表拉不到。参照 ZL2 的 platform 枚举贯穿搜索→详情→版本全链路。
 @property (nonatomic, assign) NSInteger apiSource;
 @property (nonatomic) BOOL showsInstalledFile;
+@property (nonatomic, copy, nullable) NSString *projectType;
+@property (nonatomic, copy, nullable) NSString *installedProjectID;
 - (void)displayInstalledVersions:(NSArray<ModVersion *> *)versions source:(NSInteger)source;
 
 @end

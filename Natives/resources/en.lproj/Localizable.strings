@@ -3870,3 +3870,11 @@
 
 "prisma.project.filters" = "Filters";
 "prisma.project.installed" = "Installed mod";
+"prisma.project.gallery" = "Gallery";
+"prisma.project.changelog" = "Changelog";
+"prisma.project.choose" = "Select a file in Versions to download it.";
+"prisma.project.noFiles" = "No matching versions on this source.";
+"prisma.project.noGallery" = "This project has no gallery images on this source.";
+"prisma.project.metadataError" = "Couldn’t load this content from the source.";
+"prisma.project.noNotes" = "No changelog was published for this version.";
+"prisma.project.noMatch" = "No downloadable file matched Minecraft %@ and loader %@. Open the project card to review its versions.";

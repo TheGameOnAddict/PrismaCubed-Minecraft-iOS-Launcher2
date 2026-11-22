@@ -116,6 +116,7 @@
 @end
 
 @implementation ModLoaderIconHelper
++ (UIColor *)brandColorForLoader:(NSString *)loader { return UIColor.systemIndigoColor; }
 
 + (nullable NSString *)detectLoaderFromVersionId:(NSString *)versionId {
     return [versionId containsString:@"forge"] ? @"Forge" : nil;
@@ -425,17 +426,8 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
 
 // 版本页回调携带的数据模型。预览搜索桩恒空结果，实例不会被创建；
 // 类桩仍给全消费面属性（readonly 照真实头），满足链接期类符号。
-@interface ModVersion : NSObject
-@property (nonatomic, copy, readonly) NSString *name;
-@property (nonatomic, copy, readonly) NSArray<NSString *> *gameVersions;
-@property (nonatomic, copy, readonly) NSArray<NSString *> *loaders;
-@property (nonatomic, copy, readonly, nullable) NSDictionary *primaryFile;
-@property (nonatomic, assign) NSInteger apiSource;
-@property (nonatomic, copy, nullable) NSDictionary *rawDictionary;
-@end
+#import "ModVersion.h"
 
-@implementation ModVersion
-@end
 
 @interface ShaderVersion : NSObject
 @property (nonatomic, copy, readonly, nullable) NSDictionary *primaryFile;
@@ -459,6 +451,7 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
 @end
 
 static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
+    if ([filters[@"name"] isEqual:@"Book of Dragons"]) return @[@{@"id":source == 1 ? @"book-of-dragons" : @"12345", @"title":@"Book of Dragons"}];
     BOOL packs = [filters[@"projectType"] isEqual:@"modpack"];
     NSArray *names = packs ? @[@"Skyward Adventures", @"Frostfall Expeditions", @"The Workshop"] : @[@"Jade", @"AppleSkin", @"AmbientSounds"];
     NSArray *authors = packs ? @[@"Skyward Team", @"Frostfall Team", @"Workshop Team"] : @[@"Snownee", @"squeek502", @"CreativeMD"];
@@ -524,12 +517,29 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 // 依赖挑选链：回调 nil → 消费方记 failure 后 nextStep 收口（守卫已核对）
 - (void)getVersionsForModWithID:(NSString *)modID
                      completion:(void (^)(NSArray<ModVersion *> * _Nullable versions, NSError * _Nullable error))completion {
+    if ([modID isEqual:@"book-of-dragons"] || [modID isEqual:@"12345"]) {
+        ModVersion *v = [[ModVersion alloc] initWithDictionary:@{@"name":@"Book of Dragons 1.4.2", @"version_number":@"1.4.2", @"loaders":@[@"forge"], @"game_versions":@[@"1.20.1"], @"date_published":@"2026-06-01T00:00:00Z", @"changelog":@"Dragon flight notes", @"files":@[@{@"filename":@"sources.jar", @"url":@"https://example.invalid/sources.jar"}, @{@"primary":@YES, @"filename":@"dragons.jar", @"url":@"https://example.invalid/dragons.jar", @"hashes":@{@"sha1":@"abcd"}, @"size":@41025384}]}];
+        v.apiSource = [modID isEqual:@"12345"] ? 2 : 1;
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(@[v], nil); });
+        return;
+    }
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil); });
 }
 
 // 7.0-UI-14：按ID搜索页单项目直查（同步端点；预览返回单条 demo 项目卡数据）
 - (id)getEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
+    if ([endpoint isEqual:@"project/book-of-dragons"]) return @{@"id":@"book-of-dragons", @"title":@"Book of Dragons", @"gallery":@[@{@"title":@"Flight", @"url":@"preview:CubicProfileCover2"}]};
+    if ([endpoint hasSuffix:@"/changelog"]) return @{@"data":@"<p>Dragon flight notes</p>"};
+    if ([endpoint isEqual:@"mods/12345/files"]) return @{@"data":@[
+        @{@"id":@3, @"modId":@12345, @"fileDate":@"2026-09-01T00:00:00Z", @"gameVersions":@[@"Fabric", @"1.21.1"],
+          @"fileName":@"fabric.jar", @"downloadUrl":@"https://example.invalid/fabric.jar"},
+        @{@"id":@2, @"modId":@12345, @"fileDate":@"2026-07-01T00:00:00.123Z", @"gameVersions":@[@"Forge", @"1.20.1"],
+          @"fileName":@"dragons-2.jar", @"downloadUrl":@"https://example.invalid/dragons-2.jar"},
+        @{@"id":@1, @"modId":@12345, @"fileDate":@"2026-06-01T00:00:00Z", @"gameVersions":@[@"Forge", @"1.20.1"],
+          @"hashes":@[@{@"algo":@1, @"value":@"abcd"}], @"fileName":@"dragons.jar", @"downloadUrl":@"https://example.invalid/dragons.jar"}]};
+    if ([endpoint isEqual:@"mods/12345"]) return @{@"data":@{@"id":@12345, @"name":@"Book of Dragons",
+        @"screenshots":@[@{@"title":@"Wings", @"url":@"preview:CubicProfileCover2"}]}};
     return @{
         @"project_id": @"demo-project",
         @"slug": @"demo-project",
@@ -610,6 +620,12 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 
 - (void)getVersionsForModWithID:(NSString *)modID
                      completion:(void (^)(NSArray<ModVersion *> * _Nullable versions, NSError * _Nullable error))completion {
+    if ([modID isEqual:@"book-of-dragons"] || [modID isEqual:@"12345"]) {
+        ModVersion *v = [[ModVersion alloc] initWithDictionary:@{@"name":@"Book of Dragons 1.4.2", @"version_number":@"1.4.2", @"loaders":@[@"forge"], @"game_versions":@[@"1.20.1"], @"date_published":@"2026-06-01T00:00:00Z", @"changelog":@"Dragon flight notes", @"files":@[@{@"filename":@"sources.jar", @"url":@"https://example.invalid/sources.jar"}, @{@"primary":@YES, @"filename":@"dragons.jar", @"url":@"https://example.invalid/dragons.jar", @"hashes":@{@"sha1":@"abcd"}, @"size":@41025384}]}];
+        v.apiSource = [modID isEqual:@"12345"] ? 2 : 1;
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(@[v], nil); });
+        return;
+    }
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil); });
 }
@@ -637,34 +653,8 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 // initWithOnlineData: 预览空解析（不触达）；属性覆盖消费面全部读写点
 //（结果卡点击→版本页配置 + 下载前 selectedVersionDownloadURL/fileName/fileSHA1 回填）
 
-@interface ModItem : NSObject
-@property (nonatomic) unsigned long long fileSize;
-@property (nonatomic, copy) NSString *filePath;
-@property (nonatomic, copy) NSString *basename;
-@property (nonatomic) BOOL disabled, isForge, isNeoForge, isFabric;
-@property (nonatomic, copy, nullable) NSString *onlineID;
-@property (nonatomic, copy, nullable) NSString *author;
-@property (nonatomic, strong, nullable) NSNumber *downloads;
-@property (nonatomic, strong, nullable) NSNumber *likes;
-@property (nonatomic, copy, nullable) NSString *lastUpdated;
-@property (nonatomic, strong, nullable) NSArray<NSString *> *categories;
-@property (nonatomic, copy, nullable) NSString *selectedVersionDownloadURL;
-@property (nonatomic, copy, nullable) NSString *displayName;
-@property (nonatomic, copy, nullable) NSString *modDescription;
-@property (nonatomic, copy, nullable) NSString *iconURL;
-@property (nonatomic, copy, nullable) NSString *fileName;
-@property (nonatomic, copy, nullable) NSString *fileSHA1;
-- (instancetype)initWithOnlineData:(NSDictionary *)data;
-@end
+#import "ModItem.h"
 
-@implementation ModItem
-
-- (instancetype)initWithOnlineData:(NSDictionary *)data {
-    self = [super init];
-    return self;
-}
-
-@end
 
 @interface ShaderItem : NSObject
 @property (nonatomic, copy, nullable) NSString *onlineID;
@@ -745,22 +735,8 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
     AssetVersionTypeWorld = 2,
 };
 
-@protocol ModVersionViewControllerDelegate <NSObject>
-@end
 
-@interface ModVersionViewController : UIViewController
-@property (nonatomic, copy) NSString *targetProfileName;
-@property (nonatomic) BOOL showsInstalledFile;
-@property (nonatomic, strong, nullable) ModItem *modItem;
-@property (nonatomic, weak, nullable) id<ModVersionViewControllerDelegate> delegate;
-@property (nonatomic, copy, nullable) NSString *preferredGameVersion;
-@property (nonatomic, copy, nullable) NSString *preferredLoader;
-@property (nonatomic, assign) NSInteger apiSource;
-@end
 
-@implementation ModVersionViewController
-- (void)displayInstalledVersions:(NSArray *)versions source:(NSInteger)source {}
-@end
 
 @protocol ShaderVersionViewControllerDelegate <NSObject>
 @end
@@ -827,7 +803,7 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
     NSMutableArray *mods = [NSMutableArray array];
     for (NSString *name in @[@"AppleSkin", @"Jade", @"AmbientSounds", @"Controlling"]) {
         ModItem *item = [ModItem new];
-        item.basename = item.displayName = name;
+        item.displayName = name;
         item.fileName = [NSString stringWithFormat:@"%@-forge-1.20.1.jar",name.lowercaseString];
         item.filePath = [NSTemporaryDirectory() stringByAppendingPathComponent:item.fileName];
         NSString *disabledPath = [item.filePath stringByAppendingPathExtension:@"disabled"];
@@ -1033,6 +1009,7 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
 @end
 
 @implementation PLMirrorCenter
++ (NSURL *)preferredURLForOriginalURL:(NSURL *)url resourceType:(NSInteger)type { return url; }
 
 // 真实现返回 official / bmclapi 旧式 token（仅展示字段）；manager 桩不读值
 + (NSString *)legacySourceTokenForType:(NSInteger)type {
@@ -1120,6 +1097,10 @@ typedef NS_ENUM(NSInteger, AssetVersionType) {
 @end
 
 @implementation IconLoader
++ (void)cancelLoadingForImageView:(UIImageView *)imageView {}
++ (void)loadIconForImageView:(UIImageView *)view URL:(NSString *)URL placeholder:(UIImage *)placeholder fallback:(UIImage *)fallback targetSize:(CGSize)size {
+    [self loadIconForImageView:view URL:URL placeholder:placeholder fallback:fallback targetSize:size options:0 completion:nil];
+}
 
 // 恒命中"占位"分支：同步铺 placeholder ?: fallback（真实加载器对 nil URL 的
 // 同款行为）→ 结果卡占位 SF 符号视觉成立；completion 异步 nil → 消费方守卫
@@ -1560,6 +1541,7 @@ int ame173_safeHeapCeilingMB(void) { return 2048; }
 NSArray *getRendererKeys(BOOL defaults) { return @[]; }
 NSArray *getRendererNames(BOOL defaults) { return @[]; }
 
+void ame229_labelSetStrokeExempt(UILabel *label, BOOL exempt) {}
 void ame230_setViewTreeStrokeExempt(UIView *view, BOOL exempt) {}
 @interface AiSessionStore : NSObject
 @end

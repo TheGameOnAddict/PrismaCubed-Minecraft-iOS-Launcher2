@@ -3866,3 +3866,11 @@
 
 "prisma.project.filters" = "篩選";
 "prisma.project.installed" = "已安裝的模組";
+"prisma.project.gallery" = "圖庫";
+"prisma.project.changelog" = "更新日誌";
+"prisma.project.choose" = "請在版本中選擇要下載的檔案。";
+"prisma.project.noFiles" = "此來源沒有相符的版本。";
+"prisma.project.noGallery" = "此來源上沒有專案圖片。";
+"prisma.project.metadataError" = "無法從此來源載入內容。";
+"prisma.project.noNotes" = "此版本未發布更新日誌。";
+"prisma.project.noMatch" = "沒有適用於 Minecraft %@ 和載入器 %@ 的可下載檔案。開啟專案卡片可查看版本。";
