@@ -3852,3 +3852,17 @@
 
 "preference.title.renderer.mithril_experimental" = "Mithril (实验性)";
 "preference.title.renderer.tglmt_experimental" = "TGLMT (实验性)";
+
+"cubic.settings.renderer.location" = "在「我的配置」的「配置选项」中选择渲染器。每个配置独立保存。";
+"cubic.settings.native.theme" = "系统界面主题";
+"cubic.settings.native.scope" = "选择系统界面和对话框的主题。配置与浏览页面使用 PrismaCubic 深色配色。";
+"cubic.settings.wallpaper.scope" = "设置游戏启动及支持面板的壁纸，并调整模糊度与不透明度。";
+"cubic.settings.menu.style" = "选择菜单和对话框使用的材质。";
+"cubic.settings.more.scope" = "打开完整设置列表，包括经典页面的颜色设置。";
+"cubic.profile.advanced" = "高级配置设置";
+"cubic.profile.memory.reset" = "使用自动内存分配";
+"cubic.profile.automatic" = "自动";
+"cubic.boot.waiting" = "正在等待游戏首帧…";
+"cubic.settings.sources" = "下载源";
+"cubic.settings.data" = "备份与重置";
+"cubic.settings.tools" = "启动器工具";

@@ -938,7 +938,7 @@ if ([section isEqualToString:@"general"]) {
               }
             },
             @{@"key": @"ui_theme",
-              @"title": localize(@"i18n_str_379", nil),
+              @"title": localize(@"cubic.settings.native.theme", nil),
               @"hasDetail": @YES,
               @"icon": @"circle.lefthalf.filled",
               @"type": self.typePickField,
@@ -1065,12 +1065,6 @@ if ([section isEqualToString:@"general"]) {
                   localize(@"i18n_str_377", nil),
                   localize(@"i18n_str_378", nil)
               ]
-            },
-            @{@"key": @"hidden_sidebar",
-              @"hasDetail": @YES,
-              @"icon": @"sidebar.leading",
-              @"type": self.typeSwitch,
-              @"enableCondition": whenNotInGame
             },
             @{@"key": @"custom_accent_color",
               @"title": localize(@"i18n_str_383", nil),

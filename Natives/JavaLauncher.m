@@ -4442,6 +4442,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     //   （launchHeadlessJVM）不经过此处，Task144 抑制语义零回归。
     ame251_armShutdownForceExitWatchdog();
 
+    [NSNotificationCenter.defaultCenter postNotificationName:@"CubicGameRuntimeStarted" object:nil];
     return pJLI_Launch(++margc, margv,
                    0, NULL, // sizeof(const_jargs) / sizeof(char *), const_jargs,
                    0, NULL, // sizeof(const_appclasspath) / sizeof(char *), const_appclasspath,

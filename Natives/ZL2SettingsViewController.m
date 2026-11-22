@@ -150,6 +150,12 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
 // 左轨
 @property (nonatomic, strong) UIScrollView *railScrollView;
 @property (nonatomic, strong) UIStackView *railStack;
+@property (nonatomic, strong) UIView *railEdge;
+@property (nonatomic, strong) UIButton *categoryButton;
+@property (nonatomic, strong) NSLayoutConstraint *wideLeading;
+@property (nonatomic, strong) NSLayoutConstraint *narrowLeading;
+@property (nonatomic, strong) NSLayoutConstraint *wideTop;
+@property (nonatomic, strong) NSLayoutConstraint *narrowTop;
 @property (nonatomic, strong) NSMutableArray<ZL2SettingsRailItem *> *railItems;
 @property (nonatomic, strong) NSMutableArray<UIView *> *railSeparators;
 @property (nonatomic, strong) NSLayoutConstraint *railWidthConstraint;
@@ -228,6 +234,7 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
 
     // 右缘 1pt 分隔线（outlineVariant——与主壳 NavigationRail 同语言）
     UIView *railEdge = [[UIView alloc] init];
+    self.railEdge = railEdge;
     railEdge.backgroundColor = [ZL2Theme outlineVariant];
     railEdge.userInteractionEnabled = NO;
     railEdge.translatesAutoresizingMaskIntoConstraints = NO;
@@ -250,17 +257,17 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
         // 7.0-UI-13-r2：裸 ivar 入数组不需括号（[ivar] = 空消息表达式语法错）
         _railWidthConstraint,
 
-        [railEdge.trailingAnchor constraintEqualToAnchor:_railScrollView.trailingAnchor],
+
         [railEdge.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [railEdge.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [railEdge.leadingAnchor constraintEqualToAnchor:_railScrollView.trailingAnchor],
         [railEdge.widthAnchor constraintEqualToConstant:1.0],
 
         [_railStack.topAnchor constraintEqualToAnchor:_railScrollView.contentLayoutGuide.topAnchor constant:8.0],
-        [_railStack.bottomAnchor constraintEqualToAnchor:_railScrollView.contentLayoutGuide.bottomAnchor constant:8.0],
-        [_railStack.centerXAnchor constraintEqualToAnchor:_railScrollView.contentLayoutGuide.centerXAnchor],
-        [_railStack.leadingAnchor constraintGreaterThanOrEqualToAnchor:_railScrollView.contentLayoutGuide.leadingAnchor constant:4.0],
-        [_railStack.trailingAnchor constraintLessThanOrEqualToAnchor:_railScrollView.contentLayoutGuide.trailingAnchor constant:-4.0],
+        [_railStack.bottomAnchor constraintEqualToAnchor:_railScrollView.contentLayoutGuide.bottomAnchor constant:-8.0],
+        [_railStack.widthAnchor constraintEqualToAnchor:_railScrollView.frameLayoutGuide.widthAnchor],
+        [_railStack.leadingAnchor constraintEqualToAnchor:_railScrollView.contentLayoutGuide.leadingAnchor],
+        [_railStack.trailingAnchor constraintEqualToAnchor:_railScrollView.contentLayoutGuide.trailingAnchor],
     ]];
 
     // —— 轨项装配（Task344 扩容 8→10 项 + 3 条组分隔线；组间 custom spacing 6 呼吸）——
@@ -307,23 +314,52 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
             [self.separatorWidthConstraints addObject:sepWidth];
         }
     }
-    [self ame_applyRailMetrics];
-
     // —— 右内容区 ——
     _contentContainer = [[UIView alloc] init];
     _contentContainer.backgroundColor = [ZL2Theme surface];
     _contentContainer.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:_contentContainer];
+
+    _categoryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _categoryButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _categoryButton.tintColor = ZL2Theme.primary;
+    _categoryButton.backgroundColor = ZL2Theme.surfaceContainer;
+    _categoryButton.layer.cornerRadius = 10;
+    _categoryButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    [_categoryButton setImage:[UIImage systemImageNamed:@"chevron.up.chevron.down"] forState:UIControlStateNormal];
+    _categoryButton.showsMenuAsPrimaryAction = YES;
+    [self.view addSubview:_categoryButton];
+    _wideLeading = [_contentContainer.leadingAnchor constraintEqualToAnchor:railEdge.trailingAnchor];
+    _narrowLeading = [_contentContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
+    _wideTop = [_contentContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor];
+    _narrowTop = [_contentContainer.topAnchor constraintEqualToAnchor:_categoryButton.bottomAnchor constant:4];
     [NSLayoutConstraint activateConstraints:@[
-        [_contentContainer.leadingAnchor constraintEqualToAnchor:railEdge.trailingAnchor],
+        [_categoryButton.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:6],
+        [_categoryButton.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:16],
+        [_categoryButton.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-16],
+        [_categoryButton.heightAnchor constraintEqualToConstant:44],
         [_contentContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [_contentContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+
         [_contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
     ]];
+    [self ame_applyRailMetrics];
 }
 
 // 轨宽度量刷新：轨宽、轨项宽（轨宽-12，ZL2RailView 同款内缩）、分隔线宽（60%）
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self ame_applyRailMetrics];
+}
+
 - (void)ame_applyRailMetrics {
+    BOOL narrow = CGRectGetWidth(self.view.bounds) < 600;
+    self.railScrollView.hidden = narrow;
+    self.railEdge.hidden = narrow;
+    self.categoryButton.hidden = !narrow;
+    if (self.narrowTop.active != narrow || self.wideTop.active == narrow) {
+        [NSLayoutConstraint deactivateConstraints:narrow ? @[self.wideTop, self.wideLeading] : @[self.narrowTop, self.narrowLeading]];
+        [NSLayoutConstraint activateConstraints:narrow ? @[self.narrowTop, self.narrowLeading] : @[self.wideTop, self.wideLeading]];
+    }
     CGFloat railWidth = [self ame_railWidth];
     self.railWidthConstraint.constant = railWidth;
     for (ZL2SettingsRailItem *item in self.railItems) {
@@ -437,6 +473,20 @@ static UIImage *ame_hubSystemImage(NSString *name, NSString *fallback) {
 }
 
 - (void)ame_refreshRailSelection {
+    NSMutableArray<UIAction *> *actions = [NSMutableArray array];
+    __weak typeof(self) weakSelf = self;
+    for (ZL2SettingsRailItem *item in self.railItems) {
+        NSInteger index = item.tag;
+        UIAction *action = [UIAction actionWithTitle:item.accessibilityLabel image:item.icon.image identifier:nil handler:^(__kindof UIAction *sender) {
+            [weakSelf ame_showPageAtIndex:index];
+        }];
+        action.state = index == self.currentIndex ? UIMenuElementStateOn : UIMenuElementStateOff;
+        [actions addObject:action];
+    }
+    self.categoryButton.menu = [UIMenu menuWithTitle:localize(@"Settings", nil) children:actions];
+    NSString *title = [self ame_titleForIndex:self.currentIndex];
+    [self.categoryButton setTitle:[@"  " stringByAppendingString:title] forState:UIControlStateNormal];
+    self.categoryButton.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", localize(@"Settings", nil), title];
     [self.railItems enumerateObjectsUsingBlock:^(ZL2SettingsRailItem *item, NSUInteger idx, BOOL *stop) {
         [item ame_setSelected:((NSInteger)idx == self.currentIndex)];
     }];

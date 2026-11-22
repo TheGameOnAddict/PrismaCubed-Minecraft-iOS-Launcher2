@@ -15,6 +15,8 @@
 #import "LauncherPreferences.h"
 #import "MinecraftResourceUtils.h"
 #import "PLProfiles.h"
+#import "ModpackExportService.h"
+#import "ModLoaderIconHelper.h"
 #import "SurfaceViewController.h"
 #import "utils.h"
 #import "GameMenuOverlayView.h"
@@ -521,7 +523,7 @@ static BOOL ame83_fsr_capable_renderer(NSString *renderer) {
 //        - 未命中 → 返回 nil，触摸继续穿透到游戏画面
 @property(nonatomic, strong) UIView *launchOverlayView;
 @property(nonatomic, strong) CAGradientLayer *launchGradientLayer;
-@property(nonatomic, strong) UIActivityIndicatorView *launchSpinner;
+
 @property(nonatomic, strong) UILabel *launchTitleLabel;
 // ★ Task222（清单第 16 项）：高级启动进度（阶段文案 + 微光进度条 + 耗时 + 信息胶囊）
 @property(nonatomic, strong) UILabel *launchStageLabel;
@@ -530,7 +532,7 @@ static BOOL ame83_fsr_capable_renderer(NSString *renderer) {
 @property(nonatomic, strong) UILabel *launchElapsedLabel;
 @property(nonatomic, strong) UILabel *launchInfoLabel;
 @property(nonatomic, strong) NSTimer *launchStageTimer;
-@property(nonatomic, assign) NSInteger launchStageIndex;
+
 @property(nonatomic, assign) NSTimeInterval launchStartTime;
 @property(nonatomic, assign) BOOL launchOverlayDismissed;
 @property(nonatomic, strong) UIButton *launchCancelButton;     // 取消启动按钮
@@ -3130,6 +3132,9 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         // Launch JVM（args[0] 传 accountId，Java 端 MinecraftAccount.load(accountId) 据此加载账户）
         // Task317：game.starting 事件（launchJVM 阻塞至游戏退出，事件必须在调用前派发）
         [AmePluginRuntime notifyGameStarting];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!self.launchOverlayDismissed) self.launchStageLabel.text = localize(@"launch.stage.1", nil);
+        });
         int launchResult = launchJVM(accountId, self.metadata, windowWidth, windowHeight, minVersion);
         // Task317：game.exited 事件（正常退出与启动失败都算生命周期终点）
         [AmePluginRuntime notifyGameExited:launchResult];
@@ -3264,7 +3269,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         }
         UIView *dimOverlay = [[UIView alloc] initWithFrame:self.launchOverlayView.bounds];
         dimOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        dimOverlay.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.3];
+        dimOverlay.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.78];
         dimOverlay.userInteractionEnabled = NO;
         [self.launchOverlayView addSubview:dimOverlay];
     } else {
@@ -3272,7 +3277,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         CAGradientLayer *gradient = [CAGradientLayer layer];
         gradient.frame = self.launchOverlayView.bounds;
         gradient.colors = @[
-            (__bridge id)[UIColor colorWithRed:0.08 green:0.09 blue:0.13 alpha:1.0].CGColor,
+            (__bridge id)[UIColor colorWithRed:0.14 green:0.12 blue:0.11 alpha:1.0].CGColor,
             (__bridge id)[UIColor colorWithRed:0.03 green:0.03 blue:0.05 alpha:1.0].CGColor,
         ];
         gradient.locations = @[@0.0, @1.0];
@@ -3291,17 +3296,40 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     [self.launchOverlayView addSubview:centerContainer];
 
     // 大号旋转指示器（FCL 风格：屏幕正中央的大转圈）
-    self.launchSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    self.launchSpinner.translatesAutoresizingMaskIntoConstraints = NO;
-    self.launchSpinner.color = [UIColor whiteColor];
-    [self.launchSpinner startAnimating];
-    [centerContainer addSubview:self.launchSpinner];
+    UIImageView *mark = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicBrand"]];
+    mark.contentMode = UIViewContentModeScaleAspectFit;
+    mark.translatesAutoresizingMaskIntoConstraints = NO;
+    [centerContainer addSubview:mark];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        CABasicAnimation *arrival = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+        arrival.fromValue = @0.78;
+        arrival.toValue = @1;
+        arrival.duration = 0.45;
+        arrival.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        [mark.layer addAnimation:arrival forKey:@"arrival"];
+    }
 
-    // 标题文字（转圈下方，简短提示）
+    NSDictionary *profile = PLProfiles.current.selectedProfile;
+    NSString *version = self.metadata[@"id"] ?: profile[@"lastVersionId"];
+    NSDictionary *parsed = version.length ? [ModpackExportService parseVersionId:version] : nil;
+    NSString *loader = version.length ? [ModLoaderIconHelper detectLoaderFromVersionId:version] : nil;
+    NSMutableArray *details = [NSMutableArray array];
+    NSString *minecraft = parsed[@"minecraft"] ?: version;
+    if (minecraft.length) [details addObject:[@"Minecraft " stringByAppendingString:minecraft]];
+    if (loader.length) [details addObject:[ModLoaderIconHelper displayNameForLoader:loader]];
+    UILabel *versionLabel = [UILabel new];
+    versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    versionLabel.text = [details componentsJoinedByString:@" · "];
+    versionLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    versionLabel.textAlignment = NSTextAlignmentCenter;
+    versionLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    versionLabel.textColor = [UIColor colorWithWhite:0.83 alpha:1];
+    [centerContainer addSubview:versionLabel];
+
     self.launchTitleLabel = [[UILabel alloc] init];
     self.launchTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.launchTitleLabel.text = localize(@"launch.title", @"正在启动 Minecraft");
-    self.launchTitleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    self.launchTitleLabel.text = profile[@"name"] ?: PLProfiles.current.selectedProfileName ?: localize(@"launch.title", nil);
+    self.launchTitleLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
     self.launchTitleLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
     self.launchTitleLabel.textAlignment = NSTextAlignmentCenter;
     [centerContainer addSubview:self.launchTitleLabel];
@@ -3319,7 +3347,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     self.launchStageLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1.0];
     self.launchStageLabel.textAlignment = NSTextAlignmentCenter;
     [centerContainer addSubview:self.launchStageLabel];
-    self.launchStageIndex = 0;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(cubicRuntimeStarted:) name:@"CubicGameRuntimeStarted" object:nil];
 
     // 进度轨道（2pt 细条，280pt 宽）+ 微光滑块（30% 宽往复移动）
     self.launchProgressTrack = [[UIView alloc] init];
@@ -3331,7 +3359,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 
     self.launchProgressBar = [[UIView alloc] init];
     self.launchProgressBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.launchProgressBar.backgroundColor = [UIColor whiteColor];
+    self.launchProgressBar.backgroundColor = [UIColor colorWithRed:1 green:0.557 blue:0.322 alpha:1];
     self.launchProgressBar.layer.cornerRadius = 1.5;
     [self.launchProgressTrack addSubview:self.launchProgressBar];
     // 微光动画：30% 宽的亮条从左到右循环扫过（indeterminate shimmer）
@@ -3376,23 +3404,29 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         [centerContainer.centerYAnchor constraintEqualToAnchor:self.launchOverlayView.centerYAnchor],
 
         // 旋转指示器：容器顶部居中
-        [self.launchSpinner.topAnchor constraintEqualToAnchor:centerContainer.topAnchor],
-        [self.launchSpinner.centerXAnchor constraintEqualToAnchor:centerContainer.centerXAnchor],
+        [centerContainer.widthAnchor constraintEqualToAnchor:self.launchOverlayView.safeAreaLayoutGuide.widthAnchor multiplier:0.82],
+        [mark.widthAnchor constraintEqualToConstant:52],
+        [mark.heightAnchor constraintEqualToConstant:52],
+        [mark.topAnchor constraintEqualToAnchor:centerContainer.topAnchor],
+        [mark.centerXAnchor constraintEqualToAnchor:centerContainer.centerXAnchor],
 
         // 标题：转圈下方
-        [self.launchTitleLabel.topAnchor constraintEqualToAnchor:self.launchSpinner.bottomAnchor constant:16],
+        [self.launchTitleLabel.topAnchor constraintEqualToAnchor:mark.bottomAnchor constant:12],
         [self.launchTitleLabel.leadingAnchor constraintEqualToAnchor:centerContainer.leadingAnchor],
         [self.launchTitleLabel.trailingAnchor constraintEqualToAnchor:centerContainer.trailingAnchor],
 
         // ★ Task222：阶段文案（标题下方，淡入淡出轮转）
-        [self.launchStageLabel.topAnchor constraintEqualToAnchor:self.launchTitleLabel.bottomAnchor constant:8],
+        [versionLabel.topAnchor constraintEqualToAnchor:self.launchTitleLabel.bottomAnchor constant:3],
+        [versionLabel.leadingAnchor constraintEqualToAnchor:centerContainer.leadingAnchor],
+        [versionLabel.trailingAnchor constraintEqualToAnchor:centerContainer.trailingAnchor],
+        [self.launchStageLabel.topAnchor constraintEqualToAnchor:versionLabel.bottomAnchor constant:12],
         [self.launchStageLabel.leadingAnchor constraintEqualToAnchor:centerContainer.leadingAnchor],
         [self.launchStageLabel.trailingAnchor constraintEqualToAnchor:centerContainer.trailingAnchor],
 
         // ★ Task222：微光进度条（阶段下方，280pt 宽 3pt 高）
         [self.launchProgressTrack.topAnchor constraintEqualToAnchor:self.launchStageLabel.bottomAnchor constant:14],
         [self.launchProgressTrack.centerXAnchor constraintEqualToAnchor:centerContainer.centerXAnchor],
-        [self.launchProgressTrack.widthAnchor constraintEqualToConstant:280],
+        [self.launchProgressTrack.widthAnchor constraintEqualToAnchor:centerContainer.widthAnchor multiplier:0.58],
         [self.launchProgressTrack.heightAnchor constraintEqualToConstant:3],
 
         // ★ Task222：已耗时（进度条下方）
@@ -3405,7 +3439,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         [self.launchCancelButton.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-24],
         [self.launchCancelButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [self.launchCancelButton.widthAnchor constraintEqualToConstant:120],
-        [self.launchCancelButton.heightAnchor constraintEqualToConstant:36],
+        [self.launchCancelButton.heightAnchor constraintEqualToConstant:44],
     ]];
 
     // ★ Task238（用户："刚启动游戏⚙️和文字没有显示"）：启动遮罩层是
@@ -3524,37 +3558,24 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 ///    不可靠，时间轴是 Pojav 系启动器的通用形态），阶段切换带淡入淡出；
 /// 2. 首个周期挂载微光扫过动画（track 首次 layout 后才有真实宽度）；
 /// 3. 刷新已耗时（等宽数字，秒级）。
+- (void)cubicRuntimeStarted:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.launchOverlayDismissed) self.launchStageLabel.text = localize(@"cubic.boot.waiting", nil);
+    });
+}
+
 - (void)updateLaunchStage {
     if (self.launchOverlayDismissed) return;
 
     NSTimeInterval elapsed = [NSDate timeIntervalSinceReferenceDate] - self.launchStartTime;
 
-    // 阶段时间轴（iPad 性能基线；慢设备自然多停留几拍，文案语义渐进不违和）：
-    //   0-4s 准备运行环境 / 4-10s 启动 Java 虚拟机 / 10-22s 加载游戏与模组 /
-    //   22-40s 初始化资源 / 40s+ 生成窗口（首次启动/整合包耗时更久）
-    NSInteger stage = 0;
-    if (elapsed >= 40.0)      stage = 4;
-    else if (elapsed >= 22.0) stage = 3;
-    else if (elapsed >= 10.0) stage = 2;
-    else if (elapsed >= 4.0)  stage = 1;
-
-    if (stage != self.launchStageIndex) {
-        self.launchStageIndex = stage;
-        NSString *key = [NSString stringWithFormat:@"launch.stage.%ld", (long)stage];
-        // 淡出 -> 换文案 -> 淡入（0.18s，克制不抢戏）
-        [UIView animateWithDuration:0.18 animations:^{
-            self.launchStageLabel.alpha = 0.0;
-        } completion:^(BOOL finished) {
-            self.launchStageLabel.text = localize(key, nil);
-            [UIView animateWithDuration:0.22 animations:^{
-                self.launchStageLabel.alpha = 1.0;
-            }];
-        }];
-    }
-
     // 首个周期：挂载微光扫过动画（track 已 layout，宽度有效）
-    if (self.launchProgressBar.layer.animationKeys.count == 0 &&
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        [self.launchProgressBar.layer removeAnimationForKey:@"ame222_shimmer"];
+        self.launchProgressTrack.hidden = YES;
+    } else if (self.launchProgressBar.layer.animationKeys.count == 0 &&
         self.launchProgressTrack.bounds.size.width > 1.0) {
+        self.launchProgressTrack.hidden = NO;
         CGFloat trackW = self.launchProgressTrack.bounds.size.width;
         CGFloat barW = trackW * 0.3;
         CAKeyframeAnimation *shimmer = [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.x"];
@@ -3593,8 +3614,8 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.launchOverlayDismissed) return;
         self.launchOverlayDismissed = YES;
+        [NSNotificationCenter.defaultCenter removeObserver:self name:@"CubicGameRuntimeStarted" object:nil];
 
-        [self.launchSpinner stopAnimating];
         // ★ Task222：停阶段轮转定时器
         [self.launchStageTimer invalidate];
         self.launchStageTimer = nil;
@@ -3605,8 +3626,8 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         [self.launchCancelButton setHidden:YES];
 
         // 淡出移除遮罩层（FCL 风格：简洁的淡出过渡）
-        [UIView animateWithDuration:0.4
-                              delay:0.1
+        [UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled() ? 0 : 0.28
+                              delay:0
                             options:UIViewAnimationOptionCurveEaseOut
                          animations:^{
             self.launchOverlayView.alpha = 0.0;
@@ -3639,8 +3660,8 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.launchOverlayDismissed) return;
         self.launchOverlayDismissed = YES;
+        [NSNotificationCenter.defaultCenter removeObserver:self name:@"CubicGameRuntimeStarted" object:nil];
 
-        [self.launchSpinner stopAnimating];
         // ★ Task222：停阶段轮转定时器
         [self.launchStageTimer invalidate];
         self.launchStageTimer = nil;

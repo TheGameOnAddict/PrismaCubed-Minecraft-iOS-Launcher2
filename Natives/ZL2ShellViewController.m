@@ -118,21 +118,6 @@ static const CGFloat ZL2ShellRegularMinWidth = 640.0;   // ≥ 此宽常驻窗�
 
 // SF Symbols 取图兜底（ZL2HomeViewController 同款静态 helper）：基名优先，
 // 取不到走同族旧名，仍取不到为 nil（调用方以模板渲染前自判）
-static UIImage *CubicBrandMark(void) {
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(22, 22)];
-    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        CGContextRef canvas = context.CGContext;
-        CGPoint silhouette[] = {{11,0},{21,5.5},{21,16.5},{11,22},{1,16.5},{1,5.5}};
-        CGContextAddLines(canvas, silhouette, 6);
-        CGContextSetFillColorWithColor(canvas, ZL2Theme.primary.CGColor);
-        CGContextFillPath(canvas);
-        CGPoint side[] = {{11,11},{21,5.5},{21,16.5},{11,22}};
-        CGContextAddLines(canvas, side, 4);
-        CGContextSetRGBFillColor(canvas, 0.68, 0.30, 0.15, 1);
-        CGContextFillPath(canvas);
-    }];
-}
-
 static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
     UIImage *image = [UIImage systemImageNamed:name];
     if (!image && fallback) image = [UIImage systemImageNamed:fallback];
@@ -673,7 +658,7 @@ static UIImage *ZL2ShellSystemImage(NSString *name, NSString *fallback) {
                                        forAxis:UILayoutConstraintAxisHorizontal];
     [self.titleLabel setContentCompressionResistancePriority:(UILayoutPriority)749.0
                                                      forAxis:UILayoutConstraintAxisHorizontal];
-    UIImageView *brand = [[UIImageView alloc] initWithImage:CubicBrandMark()];
+    UIImageView *brand = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicBrand"]];
     brand.contentMode = UIViewContentModeScaleAspectFit;
     [brand.widthAnchor constraintEqualToConstant:22].active = YES;
     [brand.heightAnchor constraintEqualToConstant:22].active = YES;

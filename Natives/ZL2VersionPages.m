@@ -62,6 +62,7 @@
 
 #import "ZL2VersionPages.h"
 #import "ZL2Theme.h"
+#import "ZL2SettingCards.h"
 #import "ZL2M3Kit.h"
 #import "ZL2VersionNBT.h"
 #import "ModLoaderIconHelper.h"      // 7.0-UI-13-r1：加载器识别（详情头图标口径）
@@ -3033,7 +3034,8 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 @property (nonatomic, strong) UITextField *ameV13_javaArgsField;
 @property (nonatomic, strong) UITextField *ameV13_serverIpField;
 @property (nonatomic, strong) UILabel *ameV13_presetValueLabel;
-@property (nonatomic, strong) UIStackView *ameV13_rendererRowsStack;
+@property (nonatomic, strong) ZL2SettingRowList *rendererPicker;
+@property (nonatomic, strong) UIButton *autoMemoryButton;
 @property (nonatomic, assign) NSInteger ameV13_maxMemory;
 @property (nonatomic, assign) NSInteger ameV13_pendingMemory;
 @end
@@ -3045,88 +3047,51 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     self.view.backgroundColor = [UIColor clearColor];
     _ameV13_contentStack = [self ameV13_installContentSkeleton];
 
-    UIButton *picture = [UIButton buttonWithType:UIButtonTypeSystem];
-    [picture setTitle:NSLocalizedString(@"Change Picture", nil) forState:UIControlStateNormal];
-    [picture addTarget:self action:@selector(cubicChoosePicture) forControlEvents:UIControlEventTouchUpInside];
-    UIButton *description = [UIButton buttonWithType:UIButtonTypeSystem];
-    [description setTitle:NSLocalizedString(@"Edit Description", nil) forState:UIControlStateNormal];
-    [description addTarget:self action:@selector(ameV13_actionEditSummary) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *appearance = [[UIStackView alloc] initWithArrangedSubviews:@[picture, description]];
-    appearance.distribution = UIStackViewDistributionFillEqually;
-    appearance.tintColor = [ZL2Theme primary];
-    [_ameV13_contentStack addArrangedSubview:appearance];
+    __weak typeof(self) weakSelf = self;
+    ZL2SettingRowAction *picture = [[ZL2SettingRowAction alloc] initWithTitle:NSLocalizedString(@"Change Picture", nil) subtitle:nil];
+    picture.onTap = ^{ [weakSelf cubicChoosePicture]; };
+    ZL2SettingRowAction *description = [[ZL2SettingRowAction alloc] initWithTitle:NSLocalizedString(@"Edit Description", nil) subtitle:nil];
+    description.onTap = ^{ [weakSelf ameV13_actionEditSummary]; };
 
-    // —— 内存滑条卡 ——
-    UIView *memoryCard = [self ameV13_buildMemoryCard];
-    UIStackView *memoryWrap = [[UIStackView alloc] initWithArrangedSubviews:@[memoryCard]];
-    memoryWrap.axis = UILayoutConstraintAxisVertical;
-    memoryWrap.alignment = UIStackViewAlignmentFill;
-    memoryWrap.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:memoryWrap];
+    NSArray *keys = getRendererKeys(NO);
+    self.rendererPicker = [[ZL2SettingRowList alloc] initWithTitle:localize(@"preference.title.renderer", nil)
+        subtitle:localize(@"prisma.ui.choose.a.renderer.for.this.instance.only", nil) options:getRendererNames(NO) optionKeys:keys];
+    self.rendererPicker.onSelect = ^(NSInteger index) {
+        if (index >= 0 && index < (NSInteger)keys.count) [weakSelf ameV13_writeProfileKey:@"renderer" value:keys[index]];
+    };
+    ZL2SettingCardGroup *renderGroup = [ZL2SettingCardGroup new];
+    [renderGroup ame_addRow:self.rendererPicker];
+    ZL2SettingCardGroup *appearance = [ZL2SettingCardGroup new];
+    [appearance ame_addRows:@[picture, description]];
+    ZL2SettingRowAction *advanced = [[ZL2SettingRowAction alloc] initWithTitle:localize(@"cubic.profile.advanced", nil) subtitle:nil];
+    advanced.onTap = ^{ [weakSelf ameV13_openFullSettings]; };
+    ZL2SettingCardGroup *advancedGroup = [ZL2SettingCardGroup new];
+    [advancedGroup ame_addRow:advanced];
 
-    // —— JVM 参数行 ——
-    UIView *argsCard = [self ameV13_buildJavaArgsCard];
-    UIStackView *argsWrap = [[UIStackView alloc] initWithArrangedSubviews:@[argsCard]];
-    argsWrap.axis = UILayoutConstraintAxisVertical;
-    argsWrap.alignment = UIStackViewAlignmentFill;
-    argsWrap.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:argsWrap];
+    [_ameV13_contentStack addArrangedSubview:[self cubicOptionsHeading:NSLocalizedString(@"Profile Options", nil)]];
+    for (UIView *card in @[renderGroup, appearance, [self ameV13_buildMemoryCard], [self ameV13_buildPresetCard],
+                           [self ameV13_buildJavaArgsCard], [self ameV13_buildServerIpCard], advancedGroup]) {
+        [_ameV13_contentStack addArrangedSubview:card];
+    }
+    [self ameV13_reloadContent];
+}
 
-    // —— JVM 预设行（点击换档）——
-    UIView *presetCard = [self ameV13_buildPresetCard];
-    UIStackView *presetWrap = [[UIStackView alloc] initWithArrangedSubviews:@[presetCard]];
-    presetWrap.axis = UILayoutConstraintAxisVertical;
-    presetWrap.alignment = UIStackViewAlignmentFill;
-    presetWrap.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:presetWrap];
+- (UILabel *)cubicOptionsHeading:(NSString *)text {
+    UILabel *heading = [UILabel new];
+    heading.text = text;
+    heading.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    heading.adjustsFontForContentSizeCategory = YES;
+    heading.textColor = ZL2Theme.onSurface;
+    heading.accessibilityTraits = UIAccessibilityTraitHeader;
+    return heading;
+}
 
-    // —— 渲染器覆写 RowList ——
-    UILabel *rendererHeader = [[UILabel alloc] init];
-    rendererHeader.text = localize(@"prisma.ui.renderer.override", nil);
-    rendererHeader.font = [ZL2Theme fontTitleMedium];
-    rendererHeader.textColor = [ZL2Theme onSurface];
-    rendererHeader.translatesAutoresizingMaskIntoConstraints = NO;
-    UILabel *rendererHint = [[UILabel alloc] init];
-    rendererHint.text = localize(@"prisma.ui.choose.a.renderer.for.this.instance.only", nil);
-    rendererHint.font = [ZL2Theme fontLabelMedium];
-    rendererHint.textColor = [ZL2Theme onSurfaceVariant];
-    rendererHint.numberOfLines = 0;
-    rendererHint.translatesAutoresizingMaskIntoConstraints = NO;
-    UIStackView *rendererHeaderStack = [[UIStackView alloc] initWithArrangedSubviews:@[rendererHeader, rendererHint]];
-    rendererHeaderStack.axis = UILayoutConstraintAxisVertical;
-    rendererHeaderStack.alignment = UIStackViewAlignmentLeading;
-    rendererHeaderStack.spacing = 2;
-    rendererHeaderStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:rendererHeaderStack];
-
-    _ameV13_rendererRowsStack = [[UIStackView alloc] init];
-    _ameV13_rendererRowsStack.axis = UILayoutConstraintAxisVertical;
-    _ameV13_rendererRowsStack.alignment = UIStackViewAlignmentFill;
-    _ameV13_rendererRowsStack.spacing = 8;
-    _ameV13_rendererRowsStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:_ameV13_rendererRowsStack];
-
-    // —— 服务器 IP 行 ——
-    UIView *serverIpCard = [self ameV13_buildServerIpCard];
-    UIStackView *serverIpWrap = [[UIStackView alloc] initWithArrangedSubviews:@[serverIpCard]];
-    serverIpWrap.axis = UILayoutConstraintAxisVertical;
-    serverIpWrap.alignment = UIStackViewAlignmentFill;
-    serverIpWrap.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:serverIpWrap];
-
-    // —— 完整实例设置（长尾兜底：push 旧 ProfileSettingsViewController）——
-    NSString *fullTitle = localize(@"prisma.ui.all.instance.settings", nil);
-    UIButton *fullButton = [self ameV13_outlinedButtonWithTitle:fullTitle destructive:NO];
-    fullButton.contentEdgeInsets = UIEdgeInsetsMake(12, 12, 12, 12);
-    [fullButton addTarget:self action:@selector(ameV13_openFullSettings) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *fullWrap = [[UIStackView alloc] initWithArrangedSubviews:@[fullButton]];
-    fullWrap.axis = UILayoutConstraintAxisVertical;
-    fullWrap.alignment = UIStackViewAlignmentFill;
-    fullWrap.translatesAutoresizingMaskIntoConstraints = NO;
-    [_ameV13_contentStack addArrangedSubview:fullWrap];
-
+- (void)ameV13_reloadContent {
+    if (!self.rendererPicker) return;
     [self ameV13_loadValues];
-    [self ameV13_rebuildRendererRows];
+    NSString *key = [self ameV13_profileDict][@"renderer"];
+    if (!key.length || [key isEqualToString:@"(default)"]) key = @"auto";
+    [self.rendererPicker ame_reloadSelectedIndex:[getRendererKeys(NO) indexOfObject:key]];
 }
 
 #pragma mark 配置：各卡构建
@@ -3163,7 +3128,12 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     titleRow.alignment = UIStackViewAlignmentCenter;
     titleRow.translatesAutoresizingMaskIntoConstraints = NO;
 
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[titleRow, _ameV13_memorySlider, hintLabel]];
+    self.autoMemoryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.autoMemoryButton setTitle:localize(@"cubic.profile.memory.reset", nil) forState:UIControlStateNormal];
+    self.autoMemoryButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    self.autoMemoryButton.tintColor = ZL2Theme.primary;
+    [self.autoMemoryButton addTarget:self action:@selector(cubicUseAutoMemory) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[titleRow, _ameV13_memorySlider, hintLabel, self.autoMemoryButton]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.alignment = UIStackViewAlignmentFill;
     stack.spacing = 8;
@@ -3363,18 +3333,20 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     if ([profile[@"allocatedMemory"] isKindOfClass:[NSNumber class]]) {
         allocated = [(NSNumber *)profile[@"allocatedMemory"] integerValue];
     }
-    if (allocated <= 0) allocated = MIN(maxMemory / 2, 2048);
+    BOOL usesAutomaticMemory = allocated <= 0;
+    if (usesAutomaticMemory) allocated = MIN(maxMemory / 2, 2048);
     if (allocated > maxMemory) allocated = maxMemory;
     _ameV13_pendingMemory = allocated;
 
     _ameV13_memorySlider.minimumValue = 512.0;
     _ameV13_memorySlider.maximumValue = (float)maxMemory;
     _ameV13_memorySlider.value = (float)allocated;
-    self.ameV13_memoryValueLabel.text = [NSString stringWithFormat:@"%ld MB", (long)allocated];
+    self.autoMemoryButton.hidden = usesAutomaticMemory;
+    self.ameV13_memoryValueLabel.text = usesAutomaticMemory ? localize(@"cubic.profile.automatic", nil) : [NSString stringWithFormat:@"%ld MB", (long)allocated];
 
     NSString *args = [profile[@"javaArgs"] isKindOfClass:[NSString class]] ? (NSString *)profile[@"javaArgs"] : @"";
     self.ameV13_javaArgsField.text = args;
-    self.ameV13_javaArgsField.placeholder = @"(default)";
+    self.ameV13_javaArgsField.placeholder = localize(@"preference.profile.jvm_follow_global", nil);
 
     [self ameV13_refreshPresetValue];
 
@@ -3401,31 +3373,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     self.ameV13_presetValueLabel.text = (display.length > 0) ? display : preset;
 }
 
-- (void)ameV13_rebuildRendererRows {
-    [self ameV13_clearStack:_ameV13_rendererRowsStack];
-    NSMutableDictionary *profile = [self ameV13_profileDict];
-    NSString *selected = [profile[@"renderer"] isKindOfClass:[NSString class]] && ((NSString *)profile[@"renderer"]).length > 0
-        ? (NSString *)profile[@"renderer"] : @"auto";
-
-    NSArray *keys = getRendererKeys(NO);
-    NSArray *names = getRendererNames(NO);
-    for (NSInteger i = 0; i < (NSInteger)keys.count; i++) {
-        NSString *key = keys[i];
-        NSString *name = (i < (NSInteger)names.count) ? names[i] : key;
-        BOOL isSelected = [selected isEqualToString:key];
-        NSString *rowTitle = isSelected ? [NSString stringWithFormat:@"✓ %@", name] : name;
-        UIButton *rowButton = [self ameV13_outlinedButtonWithTitle:rowTitle destructive:NO];
-        rowButton.contentEdgeInsets = UIEdgeInsetsMake(10, 12, 10, 12);
-        if (isSelected) {
-            rowButton.layer.borderColor = [ZL2Theme primary].CGColor;
-            [rowButton setTitleColor:[ZL2Theme primary] forState:UIControlStateNormal];
-        }
-        objc_setAssociatedObject(rowButton, @selector(ameV13_rendererTapped:), key, OBJC_ASSOCIATION_COPY_NONATOMIC);
-        [rowButton addTarget:self action:@selector(ameV13_rendererTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [_ameV13_rendererRowsStack addArrangedSubview:rowButton];
-    }
-}
-
 #pragma mark 配置：内存滑条（值即时预览，松手落盘）
 
 - (void)ameV13_memoryValueChanged {
@@ -3434,11 +3381,21 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     self.ameV13_memoryValueLabel.text = [NSString stringWithFormat:@"%ld MB", (long)value];
 }
 
+- (void)cubicUseAutoMemory {
+    NSMutableDictionary *profile = [self ameV13_profileDict];
+    if (!profile) return;
+    profile[@"allocatedMemory"] = @0;
+    profile[@"memoryAuto"] = @YES;
+    [PLProfiles.current save];
+    [self ameV13_loadValues];
+}
+
 - (void)ameV13_memoryTouchUp {
     // 旧 saveSettings 手动分支同口径：显式落值 + 清 memoryAuto 标记
     _ameV13_pendingMemory = (NSInteger)self.ameV13_memorySlider.value;
     NSMutableDictionary *profile = [self ameV13_profileDict];
     if (!profile) return;
+    self.autoMemoryButton.hidden = NO;
     profile[@"allocatedMemory"] = @(_ameV13_pendingMemory);
     [profile removeObjectForKey:@"memoryAuto"];
     [PLProfiles.current save];
@@ -3491,14 +3448,6 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
     alert.popoverPresentationController.sourceView = self.view;
     alert.popoverPresentationController.sourceRect = CGRectMake(self.view.bounds.size.width / 2.0, self.view.bounds.size.height / 2.0, 1, 1);
     [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)ameV13_rendererTapped:(UIButton *)sender {
-    NSString *key = objc_getAssociatedObject(sender, @selector(ameV13_rendererTapped:));
-    if (key.length == 0) return;
-    [self ameV13_writeProfileKey:@"renderer" value:key];
-    [self ameV13_rebuildRendererRows];
-    NSLog(@"[ZL2VersionPages] renderer for '%@' -> %@", self.ameV13_profileName, key);
 }
 
 #pragma mark 配置：完整实例设置（旧 ProfileSettingsViewController 长尾兜底）

@@ -172,26 +172,6 @@ static BOOL ame_pages_whenNotInGame(void) {
     return ![visibleVC isKindOfClass:NSClassFromString(@"SurfaceViewController")];
 }
 
-// Task344：hex 颜色往返（旧 VC colorFromHexString/hexStringFromColor 平移）
-static UIColor *ame_pages_colorFromHex(id hex) {
-    if (![hex isKindOfClass:[NSString class]] || [(NSString *)hex length] == 0) return nil;
-    NSString *clean = [(NSString *)hex stringByReplacingOccurrencesOfString:@"#" withString:@""];
-    unsigned int rgb = 0;
-    NSScanner *scanner = [NSScanner scannerWithString:clean];
-    if (![scanner scanHexInt:&rgb]) return nil;
-    return [UIColor colorWithRed:((rgb >> 16) & 0xFF) / 255.0
-                           green:((rgb >> 8) & 0xFF) / 255.0
-                            blue:(rgb & 0xFF) / 255.0
-                           alpha:1.0];
-}
-
-static NSString *ame_pages_hexFromColor(UIColor *color) {
-    CGFloat r = 0, g = 0, b = 0, a = 0;
-    [color getRed:&r green:&g blue:&b alpha:&a];
-    return [NSString stringWithFormat:@"%02X%02X%02X",
-            (unsigned)(r * 255), (unsigned)(g * 255), (unsigned)(b * 255)];
-}
-
 #pragma mark - 基类（滚动骨架 + 组卡装配 + push 助手）
 
 @interface ZL2SettingPage ()
@@ -231,7 +211,7 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
     _groupsStack = [[UIStackView alloc] init];
     _groupsStack.axis = UILayoutConstraintAxisVertical;
     _groupsStack.alignment = UIStackViewAlignmentFill;
-    _groupsStack.spacing = [ZL2SettingCardGroup preferredGroupSpacing];
+    _groupsStack.spacing = 12;
     _groupsStack.translatesAutoresizingMaskIntoConstraints = NO;
     [contentStack addArrangedSubview:_groupsStack];
 
@@ -297,7 +277,6 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
 #pragma mark - ① 渲染器屏
 
 @interface ZL2RendererSettingsPage ()
-@property (nonatomic, strong) ZL2SettingRowList *rendererRow;
 @property (nonatomic, strong) ZL2SettingRowSlider *resolutionRow;
 @property (nonatomic, strong) ZL2SettingRowSwitch *fullscreenRow;
 @end
@@ -309,27 +288,11 @@ static NSString *ame_pages_hexFromColor(UIColor *color) {
 
     // --- 组 1：渲染器 ---
     // 渲染器（全局默认；实例页可单独覆盖——Task150 分层语义）
-    ame142_migrateRendererStorage();   // 读前迁移（幂等，Task142 分层归一）
-    NSArray<NSString *> *rendererKeys = getRendererKeys(YES);
-    NSArray<NSString *> *rendererNames = getRendererNames(YES);
-    NSString *current = ame_pages_stringOr(getPrefObject(@"video.renderer"), @"auto");
-    NSInteger currentIdx = (NSInteger)[rendererKeys indexOfObject:current];
-    if (currentIdx < 0) currentIdx = (NSInteger)[rendererKeys indexOfObject:@"auto"];
-    if (currentIdx < 0) currentIdx = 0;
+    ZL2SettingRowAction *rendererRow = [[ZL2SettingRowAction alloc]
+        initWithTitle:localize(@"preference.title.renderer", nil)
+        subtitle:localize(@"cubic.settings.renderer.location", nil)];
+    rendererRow.onTap = nil;
 
-    ZL2SettingRowList *rendererRow =
-        [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
-                                 options:rendererNames optionKeys:rendererKeys];
-    rendererRow.title = localize(@"prisma.ui.renderer.global.default", nil);
-    rendererRow.subtitle = localize(@"prisma.ui.individual.instances.can.override.this.in.version.settings", nil);
-    [rendererRow ame_reloadSelectedIndex:currentIdx];
-    rendererRow.onSelect = ^(NSInteger index) {
-        if (index < 0 || (NSUInteger)index >= rendererKeys.count) return;
-        setPrefString(@"video.renderer", rendererKeys[index]);
-    };
-    self.rendererRow = rendererRow;
-
-    // 分辨率缩放（全局兜底键 video.resolution；各实例显式值优先——Task159）
     NSInteger resolution = (NSInteger)getPrefFloat(@"video.resolution");
     if (resolution <= 0) resolution = 100;
     ZL2SettingRowSlider *resolutionRow =
@@ -1506,19 +1469,15 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey,id> *
 @interface ZL2LauncherSettingsPage ()
 @property (nonatomic, strong) ZL2SettingRowEnum *themeRow;
 @property (nonatomic, strong) ZL2SettingRowList *languageRow;
-@property (nonatomic, strong) ZL2SettingRowList *effectRow;
-@property (nonatomic, strong) ZL2SettingRowSlider *opacityRow;
-@property (nonatomic, strong) ZL2SettingRowSlider *blurRow;
 @property (nonatomic, strong) NSArray<ZL2SettingRowList *> *sourceRows;
 @property (nonatomic, strong) NSArray<NSString *> *sourceRowKeys;   // 与 sourceRows 对齐
 // ★ Task327：插件贡献行动态组（viewWillAppear 重建——插件启停/装载变化即反映）
 @property (nonatomic, strong) UIView *ame327_pluginHeader;
 @property (nonatomic, strong) ZL2SettingCardGroup *ame327_pluginGroup;
 // ★ Task344：自定义颜色选择（旧页 openColorPickerForKey 平移）
-@property (nonatomic, copy) NSString *ame344_pickingColorKey;
 @end
 
-@interface ZL2LauncherSettingsPage () <UIDocumentPickerDelegate, UIColorPickerViewControllerDelegate>
+@interface ZL2LauncherSettingsPage () <UIDocumentPickerDelegate>
 @end
 
 @implementation ZL2LauncherSettingsPage
@@ -1599,6 +1558,16 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     return name ?: code;
 }
 
+- (void)cubicAddHeading:(NSString *)text {
+    UILabel *label = [UILabel new];
+    label.text = text;
+    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    label.adjustsFontForContentSizeCategory = YES;
+    label.textColor = ZL2Theme.onSurface;
+    label.accessibilityTraits = UIAccessibilityTraitHeader;
+    [self.groupsStack addArrangedSubview:label];
+}
+
 - (void)ame_buildGroups {
     __weak typeof(self) weakSelf = self;
 
@@ -1612,7 +1581,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     ];
     ZL2SettingRowEnum *themeRow =
         [[ZL2SettingRowEnum alloc] initWithTitle:@"" subtitle:nil options:themeNames];
-    themeRow.title = localize(@"i18n_str_379", nil);
+    themeRow.title = localize(@"cubic.settings.native.theme", nil);
+    themeRow.subtitle = localize(@"cubic.settings.native.scope", nil);
     NSString *theme = ame_pages_stringOr(getPrefObject(@"general.ui_theme"), @"auto");
     [themeRow ame_reloadSelectedIndex:(NSInteger)[themeKeys indexOfObject:theme]];
     themeRow.onSelect = ^(NSInteger index) {
@@ -1649,53 +1619,22 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     self.languageRow = languageRow;
 
     // 界面效果（BackgroundManager.uiEffect；毛玻璃/半透明两档）
-    BackgroundManager *bg = [BackgroundManager sharedManager];
-    NSArray<NSString *> *effectNames = @[
-        localize(@"i18n_str_67", nil),
-        localize(@"i18n_str_68", nil),
-    ];
-    ZL2SettingRowList *effectRow =
-        [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
-                                 options:effectNames
-                              optionKeys:@[@"blur", @"translucent"]];
-    effectRow.title = localize(@"prisma.ui.interface.effects", nil);
-    effectRow.subtitle = localize(@"background.effect.footer", nil);
-    [effectRow ame_reloadSelectedIndex:(bg.uiEffect == BackgroundUIEffectBlur ? 0 : 1)];
-    effectRow.onSelect = ^(NSInteger index) {
-        BackgroundManager *manager = [BackgroundManager sharedManager];
-        manager.uiEffect = (index == 0) ? BackgroundUIEffectBlur : BackgroundUIEffectTranslucent;
-        [manager refreshUIEffect];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"BackgroundUIEffectChanged" object:nil];
+    ZL2SettingRowAction *backgroundRow =
+        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
+    backgroundRow.title = localize(@"prisma.ui.background.settings", nil);
+    backgroundRow.subtitle = localize(@"cubic.settings.wallpaper.scope", nil);
+    backgroundRow.onTap = ^{
+        [weakSelf ame_push:[[BackgroundSettingsViewController alloc] init] titled:localize(@"prisma.ui.background.settings", nil)];
     };
-    self.effectRow = effectRow;
-
-    // 背景不透明度（uiOpacity 0.1–1.0 → 10–100%；拖动即改 + refreshUIEffect）
-    ZL2SettingRowSlider *opacityRow =
-        [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
-                                   minimum:10 maximum:100 suffix:@"%"];
-    opacityRow.title = localize(@"prisma.ui.background.opacity", nil);
-    [opacityRow ame_setValue:(NSInteger)round(bg.uiOpacity * 100.0)];
-    opacityRow.onValueChanged = ^(NSInteger value) {
-        [BackgroundManager sharedManager].uiOpacity = value / 100.0;
-        [[BackgroundManager sharedManager] refreshUIEffect];
+    ZL2SettingRowAction *galleryRow =
+        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
+    galleryRow.title = localize(@"prisma.ui.wallpaper.gallery", nil);
+    galleryRow.onTap = ^{
+        // 工厂方法返回按设备宽度预配置网格布局的 UICollectionViewController
+        [weakSelf ame_push:[BingWallpaperGalleryViewController galleryController] titled:localize(@"prisma.ui.wallpaper.gallery", nil)];
     };
-    self.opacityRow = opacityRow;
-
-    // 背景模糊强度（blurIntensity 0–1 → 0–100%）
-    ZL2SettingRowSlider *blurRow =
-        [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
-                                   minimum:0 maximum:100 suffix:@"%"];
-    blurRow.title = localize(@"prisma.ui.background.blur", nil);
-    [blurRow ame_setValue:(NSInteger)round(bg.blurIntensity * 100.0)];
-    blurRow.onValueChanged = ^(NSInteger value) {
-        // setter 内部落 Task256 blurUserSet 标记（模糊=0 为真实意图）
-        [BackgroundManager sharedManager].blurIntensity = value / 100.0;
-        [[BackgroundManager sharedManager] refreshUIEffect];
-    };
-    self.blurRow = blurRow;
-
     ZL2SettingCardGroup *group1 = [[ZL2SettingCardGroup alloc] init];
-    [group1 ame_addRows:@[themeRow, languageRow, effectRow, opacityRow, blurRow]];
+    [group1 ame_addRows:@[languageRow, themeRow, backgroundRow, galleryRow]];
     [self ame_addGroup:group1];
     // ★ Task328：插件贡献行动态组上移（Task327 挂页尾 = 用户不可达面重现——
     //   四内置插件已装载而用户仍报"没看到任何功能"：组在第 3 屏外）。上移到
@@ -1719,7 +1658,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
                                  options:styleNames optionKeys:styleKeys];
     styleRow.title = localize(@"preference.title.interface_style", nil);
-    styleRow.subtitle = localize(@"preference.detail.interface_style", nil);
+    styleRow.subtitle = localize(@"cubic.settings.menu.style", nil);
     [styleRow ame_reloadSelectedIndex:(NSInteger)[styleKeys indexOfObject:
         LGCStringFromInterfaceStyle(LGCStoredInterfaceStyle())]];
     styleRow.onSelect = ^(NSInteger index) {
@@ -1765,44 +1704,6 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         LGCSetTextScaleMultiplier((CGFloat)value / 100.0);
     };
     [advGroup ame_addRows:@[pseudoRow, uiScaleRow, textScaleRow]];
-    // 旧壳侧栏隐藏（新壳无侧栏语义——保留键写入兼容但标注现状）
-    ZL2SettingRowSwitch *sidebarRow =
-        [[ZL2SettingRowSwitch alloc] initWithTitle:@"" subtitle:nil];
-    sidebarRow.title = localize(@"preference.title.hidden_sidebar", nil);
-    sidebarRow.subtitle = localize(@"preference.detail.hidden_sidebar", nil);
-    [sidebarRow ame_setOn:getPrefBool(@"general.hidden_sidebar")];
-    sidebarRow.onToggle = ^(BOOL on) {
-        setPrefBool(@"general.hidden_sidebar", on);
-    };
-    [advGroup ame_addRow:sidebarRow];
-    // 自定义三色（强调/文字/卡片，UIColorPicker 平移）+ 一键还原
-    ZL2SettingRowAction *accentRow =
-        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    accentRow.title = localize(@"i18n_str_383", nil);
-    accentRow.subtitle = localize(@"preference.detail.custom_accent_color", nil);
-    accentRow.onTap = ^{ [weakSelf ame344_openColorPickerForKey:@"general.accent_color" title:localize(@"i18n_str_383", nil)]; };
-    ZL2SettingRowAction *textColorRow =
-        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    textColorRow.title = localize(@"i18n_str_384", nil);
-    textColorRow.subtitle = localize(@"preference.detail.custom_text_color", nil);
-    textColorRow.onTap = ^{ [weakSelf ame344_openColorPickerForKey:@"general.text_color" title:localize(@"i18n_str_384", nil)]; };
-    ZL2SettingRowAction *cardColorRow =
-        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    cardColorRow.title = localize(@"i18n_str_385", nil);
-    cardColorRow.subtitle = localize(@"preference.detail.custom_card_color", nil);
-    cardColorRow.onTap = ^{ [weakSelf ame344_openColorPickerForKey:@"general.card_color" title:localize(@"i18n_str_385", nil)]; };
-    ZL2SettingRowAction *resetColorsRow =
-        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    resetColorsRow.title = localize(@"i18n_str_386", nil);
-    resetColorsRow.subtitle = localize(@"prisma.ui.restore.default.accent.text.and.card.colors", nil);
-    resetColorsRow.onTap = ^{
-        setPrefObject(@"general.accent_color", @"");
-        setPrefObject(@"general.text_color", @"");
-        setPrefObject(@"general.card_color", @"");
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"LauncherAppearanceChanged" object:nil];
-    };
-    [advGroup ame_addRows:@[accentRow, textColorRow, cardColorRow, resetColorsRow]];
-    // 应用图标（默认/自定义图库两态；CustomIconManager 链平移）
     NSArray<NSString *> *iconKeys = @[@"AppIcon-Light", @"CustomIcon"];
     NSArray<NSString *> *iconNames = @[
         localize(@"preference.title.appicon-default", nil),
@@ -1835,6 +1736,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
         }
     };
     [advGroup ame_addRow:iconRow];
+    [self cubicAddHeading:localize(@"custom_controls.button_edit.section.appearance", nil)];
     [self ame_addGroup:advGroup];
 
     // --- 组 2：下载源（download.* 四分类真键；值域 official/mirror/speed_first）---
@@ -1890,6 +1792,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 
     ZL2SettingCardGroup *group2 = [[ZL2SettingCardGroup alloc] init];
     [group2 ame_addRows:[sourceRows copy]];
+    [self cubicAddHeading:localize(@"cubic.settings.sources", nil)];
     [self ame_addGroup:group2];
 
     // ── ★ Task344 旧设置全量迁移：下载完整性与公告组 ──
@@ -2027,27 +1930,15 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
                       onCancel:nil];
     };
     [dataGroup ame_addRows:@[exportRow, importRow2, siblingRow, eraseDemoRow, resetWarnRow, resetSetRow]];
+    [self cubicAddHeading:localize(@"cubic.settings.data", nil)];
     [self ame_addGroup:dataGroup];
 
     // --- 组 3：入口 ---
     ZL2SettingCardGroup *group3 = [[ZL2SettingCardGroup alloc] init];
-    ZL2SettingRowAction *backgroundRow =
-        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    backgroundRow.title = localize(@"prisma.ui.background.settings", nil);
-    backgroundRow.onTap = ^{
-        [weakSelf ame_push:[[BackgroundSettingsViewController alloc] init] titled:localize(@"prisma.ui.background.settings", nil)];
-    };
-    ZL2SettingRowAction *galleryRow =
-        [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
-    galleryRow.title = localize(@"prisma.ui.wallpaper.gallery", nil);
-    galleryRow.onTap = ^{
-        // 工厂方法返回按设备宽度预配置网格布局的 UICollectionViewController
-        [weakSelf ame_push:[BingWallpaperGalleryViewController galleryController] titled:localize(@"prisma.ui.wallpaper.gallery", nil)];
-    };
     ZL2SettingRowAction *moreRow =
         [[ZL2SettingRowAction alloc] initWithTitle:@"" subtitle:nil];
     moreRow.title = localize(@"prisma.ui.more.launcher.settings", nil);
-    moreRow.subtitle = localize(@"prisma.ui.interface.scale.accent.colors.announcements.data.export.and.other.op", nil);
+    moreRow.subtitle = localize(@"cubic.settings.more.scope", nil);
     moreRow.onTap = ^{
         [weakSelf ame_push:[[LauncherPreferencesViewController alloc] init] titled:localize(@"prisma.ui.more.settings", nil)];
     };
@@ -2090,7 +1981,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     aiRow.onTap = ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate" object:nil userInfo:@{@"index": @6}];
     };
-    [group3 ame_addRows:@[backgroundRow, galleryRow, gameDirRow, importRow, aiRow, pluginRow, repoRow, moreRow]];
+    [group3 ame_addRows:@[gameDirRow, importRow, aiRow, pluginRow, repoRow, moreRow]];
+    [self cubicAddHeading:localize(@"cubic.settings.tools", nil)];
     [self ame_addGroup:group3];
     // ★ Task327：插件贡献行动态组（Task318 ame.addLauncherRow 的消费端）
     //   ★ Task328：构建点已上移至外观组之后（首屏可视域），见彼处注释
@@ -2174,11 +2066,6 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSString *language = ame_pages_stringOr(getPrefObject(@"general.app_language"), @"system");
     [self.languageRow ame_reloadSelectedIndex:(NSInteger)[langCodes indexOfObject:language]];
     // 效果与两滑条
-    BackgroundManager *bg = [BackgroundManager sharedManager];
-    [self.effectRow ame_reloadSelectedIndex:(bg.uiEffect == BackgroundUIEffectBlur ? 0 : 1)];
-    [self.opacityRow ame_setValue:(NSInteger)round(bg.uiOpacity * 100.0)];
-    [self.blurRow ame_setValue:(NSInteger)round(bg.blurIntensity * 100.0)];
-    // 下载源
     NSArray<NSString *> *sourceKeys = @[@"official_first", @"mirror_first", @"speed_first"];
     for (NSUInteger i = 0; i < self.sourceRows.count && i < self.sourceRowKeys.count; i++) {
         NSString *value =
@@ -2191,26 +2078,6 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 
 #pragma mark - Task344 旧 general 分区助手（旧 VC 平移）
 
-// 自定义颜色选择（旧 openColorPickerForKey 平移；iOS 14+ UIColorPicker）
-- (void)ame344_openColorPickerForKey:(NSString *)fullKey title:(NSString *)title {
-    UIColorPickerViewController *picker = [[UIColorPickerViewController alloc] init];
-    picker.title = title;
-    picker.delegate = self;
-    UIColor *current = ame_pages_colorFromHex(getPrefObject(fullKey));
-    if (current) picker.selectedColor = current;
-    self.ame344_pickingColorKey = fullKey;
-    [self ame_presentVC:picker];
-}
-
-- (void)colorPickerViewControllerDidFinish:(UIColorPickerViewController *)viewController {
-    NSString *key = self.ame344_pickingColorKey;
-    self.ame344_pickingColorKey = nil;
-    if (!key) return;
-    setPrefObject(key, ame_pages_hexFromColor(viewController.selectedColor));
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"LauncherAppearanceChanged" object:nil];
-}
-
-// 兄弟安装数据迁移入口（旧 ame261_siblingImportTapped 1:1 平移）
 - (void)ame261_siblingImportTapped {
     NSArray<NSDictionary *> *ame261_siblings = [DataTransferService ame260_scanSiblingLauncherHomes];
     if (ame261_siblings.count == 0) {

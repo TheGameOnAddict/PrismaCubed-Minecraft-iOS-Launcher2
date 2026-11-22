@@ -3853,3 +3853,17 @@
 
 "preference.title.renderer.mithril_experimental" = "Mithril (Experimental)";
 "preference.title.renderer.tglmt_experimental" = "TGLMT (Experimental)";
+
+"cubic.settings.renderer.location" = "Choose a renderer in My Profiles → Profile Options. Each profile keeps its own choice.";
+"cubic.settings.native.theme" = "Native screen theme";
+"cubic.settings.native.scope" = "Choose the theme for system screens and dialogs. Profiles and browsing use the dark PrismaCubic palette.";
+"cubic.settings.wallpaper.scope" = "Set the wallpaper for game startup and supported panels. Adjust its blur and opacity here.";
+"cubic.settings.menu.style" = "Choose the material used by supported menus and dialogs.";
+"cubic.settings.more.scope" = "Open the full settings list, including color controls for classic screens.";
+"cubic.profile.advanced" = "Advanced Profile Settings";
+"cubic.profile.memory.reset" = "Use automatic memory";
+"cubic.profile.automatic" = "Automatic";
+"cubic.boot.waiting" = "Waiting for the first game frame…";
+"cubic.settings.sources" = "Download sources";
+"cubic.settings.data" = "Backups and resets";
+"cubic.settings.tools" = "Launcher tools";

@@ -3849,3 +3849,17 @@
 
 "preference.title.renderer.mithril_experimental" = "Mithril (實驗性)";
 "preference.title.renderer.tglmt_experimental" = "TGLMT (實驗性)";
+
+"cubic.settings.renderer.location" = "在「我的設定檔」的「設定檔選項」中選擇算繪器。每個設定檔獨立儲存。";
+"cubic.settings.native.theme" = "系統介面主題";
+"cubic.settings.native.scope" = "選擇系統介面與對話框的主題。設定檔與瀏覽頁面使用 PrismaCubic 深色配色。";
+"cubic.settings.wallpaper.scope" = "設定遊戲啟動及支援面板的背景圖片，並調整模糊度與不透明度。";
+"cubic.settings.menu.style" = "選擇選單與對話框使用的材質。";
+"cubic.settings.more.scope" = "開啟完整設定列表，包括經典頁面的色彩設定。";
+"cubic.profile.advanced" = "進階設定檔設定";
+"cubic.profile.memory.reset" = "使用自動記憶體分配";
+"cubic.profile.automatic" = "自動";
+"cubic.boot.waiting" = "正在等待遊戲首幀…";
+"cubic.settings.sources" = "下載來源";
+"cubic.settings.data" = "備份與重設";
+"cubic.settings.tools" = "啟動器工具";
