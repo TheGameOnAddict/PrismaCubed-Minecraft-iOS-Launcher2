@@ -1,3 +1,4 @@
+#import "PerformanceTest.h"
 #import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <objc/runtime.h>
@@ -1441,6 +1442,7 @@ static NSInteger ame283_lastLandscapeDev = 0;
     [self.view addSubview:self.rootView];
 
     self.ctrlView = [[ControlLayout alloc] initWithFrame:getSafeArea(self.view.frame)];
+    self.performanceTest = [PerformanceTest takeForGame:PLProfiles.current.selectedProfileName];
     [self performSelector:@selector(initCategory_Navigation)];
 
     self.surfaceView = [[GameSurfaceView alloc] initWithFrame:self.view.frame];
@@ -6164,7 +6166,11 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
     // 使用 task_vm_info 的 phys_footprint 字段，这是 iOS 上最准确的进程内存占用指标
     // 包含常驻内存、压缩内存、GPU 内存（UMA 架构下），与 Xcode 内存表盘一致
     // 参照 ZL2 MemoryUtils.kt 的系统级内存统计理念，在 iOS 上用 phys_footprint 等价
+    if (fps > 0) [self.performanceTest firstFrameObserved];
     double memoryMB = [self currentPhysFootprintMB];
+    if ([self.performanceTest tickWidth:windowWidth height:windowHeight memoryMiB:memoryMB]) {
+        [NMToast showMessage:NSLocalizedString(@"Performance report saved", nil)];
+    }
 
     // 3. 更新 UI（GameMenuOverlayView 内部会 dispatch 到主线程）
     if ([self.gameMenuOverlay isKindOfClass:[GameMenuOverlayView class]]) {
@@ -6286,6 +6292,7 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
     // ★ Task260（清单 2）：会话销毁 = 玻璃安全闸复位（0 = 无活跃会话）。
     LGCSetGameSessionMCMajor(0);
     // 停止 FPS/内存采样定时器与渲染循环
+    [_performanceTest interrupt];
     [self.statsTimer invalidate];
     self.statsTimer = nil;
     // ★ Task270 P1：launchStageTimer 补入 dealloc 清理链（原仅首帧/错误两路

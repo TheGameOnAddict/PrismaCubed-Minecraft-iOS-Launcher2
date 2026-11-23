@@ -635,6 +635,8 @@ add_executable(AngelAuraAmethyst
   ModTableViewCell.m
   ModsManagerViewController.m
   ModVersion.m
+  PerformanceFrames.c
+  PerformanceTest.m
   ProjectPresentationView.m
   ModProjectCatalog.m
   ModVersionViewController.m

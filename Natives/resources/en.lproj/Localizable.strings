@@ -3881,3 +3881,14 @@
 "prisma.project.changeVersion" = "Change version";
 "prisma.project.noDescription" = "The author hasn’t added a project description.";
 "prisma.project.noCounterpart" = "This project couldn’t be found on this source.";
+
+"Performance Test" = "Performance Test";
+"Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report." = "Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report.";
+"Test Launch" = "Test Launch";
+"Share Latest Report" = "Share Latest Report";
+"prisma.perf.record" = "Record 60 Seconds";
+"prisma.perf.share" = "Share Test Report";
+"Performance report saved" = "Performance report saved";
+"Recording starts in 3 seconds" = "Recording starts in 3 seconds";
+"Use Share Test Report for this run" = "Use Share Test Report for this run";
+"The capture is running. Share after the 60 seconds finish." = "The capture is running. Share after the 60 seconds finish.";

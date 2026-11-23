@@ -11,7 +11,9 @@ dispatch_group_t fatalExitGroup;
 CGRect virtualMouseFrame;
 CGPoint lastVirtualMousePoint;
 
+@class PerformanceTest;
 @interface SurfaceViewController : UIViewController
+@property(nonatomic, strong) PerformanceTest *performanceTest;
 
 @property(nonatomic) ControlLayout *ctrlView;
 @property(nonatomic) GameSurfaceView* surfaceView;

@@ -3877,3 +3877,14 @@
 "prisma.project.changeVersion" = "更改版本";
 "prisma.project.noDescription" = "作者尚未新增專案介紹。";
 "prisma.project.noCounterpart" = "未在此來源找到此專案。";
+
+"Performance Test" = "效能測試";
+"Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report." = "啟動並進入測試場景，然後打開遊戲內齒輪選單，點選「記錄 60 秒」。返回此處即可分享報告。";
+"Test Launch" = "測試啟動";
+"Share Latest Report" = "分享最新報告";
+"prisma.perf.record" = "記錄 60 秒";
+"prisma.perf.share" = "分享測試報告";
+"Performance report saved" = "效能報告已儲存";
+"Recording starts in 3 seconds" = "3 秒後開始記錄";
+"Use Share Test Report for this run" = "可透過「分享測試報告」查看這次記錄";
+"The capture is running. Share after the 60 seconds finish." = "正在記錄。請在 60 秒結束後分享。";

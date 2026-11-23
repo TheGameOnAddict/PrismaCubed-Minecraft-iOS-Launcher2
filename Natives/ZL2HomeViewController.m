@@ -1,3 +1,4 @@
+#import "PerformanceTest.h"
 #import "CubicForm.h"
 #import "ZL2GameAddonsViewController.h"
 //
@@ -1851,6 +1852,7 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
 #pragma mark - Launch Chain（1:1 旧链语义；历史指针：旧右面板续链段，类已 Task343 退役）
 
 - (void)launchButtonTapped {
+    [PerformanceTest claimLaunchRequestForProfile:PLProfiles.current.selectedProfileName];
     if (self.task) {
         // 下载中点击启动按钮 → 反查 DownloadTaskManager 打开统一进度页
         // （任务由 MinecraftResourceDownloadTask 内部注册，按 rawTask 反查 taskId）

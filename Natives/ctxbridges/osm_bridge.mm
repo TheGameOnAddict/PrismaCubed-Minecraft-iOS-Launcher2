@@ -1,3 +1,4 @@
+#include "PerformanceFrames.h"
 #import <Foundation/Foundation.h>
 #import "SurfaceViewController.h"
 
@@ -1362,6 +1363,7 @@ void osm_swap_buffers() {
     // Task 106 相位计时：权威回读+行翻（bundle-direct 激活时本段为空，趋 0）
     {
         double t106_3 = ame106_us(mach_absolute_time());
+        PerformanceOSMPhases(t106_2 - t106_1, t106_3 - t106_2);
         ame106.tReadUs += t106_3 - t106_2;
         if (t106_3 - t106_2 > ame106.tReadMax) ame106.tReadMax = t106_3 - t106_2;
     }
@@ -1514,7 +1516,9 @@ void osm_swap_buffers() {
         }
     }
 
+    uint64_t testQueueStamp = PerformanceQueueStamp();
     dispatch_async(dispatch_get_main_queue(), ^{
+    PerformanceQueueDelivered(testQueueStamp);
     // Task 83：CGImage 尺寸 = 表面缓冲尺寸（旧代码用 windowWidth——FSR
     // 联动下窗口<表面，会把整幅升采样结果再裁一遍）。
     if (cgStretchThisFrame) {

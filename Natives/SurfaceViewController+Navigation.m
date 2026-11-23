@@ -1,3 +1,4 @@
+#import "PerformanceTest.h"
 #import "CustomControlsViewController.h"
 #import "AmeNativeMenu.h"       // ★ Task240：菜单全面系统原生 UIMenu 化
 #import "LauncherPreferences.h"
@@ -213,6 +214,8 @@ static UIColor *ame244_snapshotTint(void) {
         @"game.menu.settings"               // Task232⑰：原为裸英文字串 "Settings"（ localize 找不到键回退原文 = 硬编码残留）
     ];
 
+    if (self.performanceTest) self.menuArray = [self.menuArray arrayByAddingObjectsFromArray:@[@"prisma.perf.record", @"prisma.perf.share"]];
+
     // ★ Task237（用户："现在游戏内菜单打开还是就液态玻璃的覆盖层，根本
     //   没有任何文字，要是不贴边，就只会给我全部屏幕覆盖层灰色"）：菜单
     //   面板整体重建——旧 UITableView + "往表里塞玻璃层"方案（Task229→
@@ -294,6 +297,7 @@ static UIColor *ame244_snapshotTint(void) {
         @"textformat.size",                       // 分辨率调整
         @"gearshape.fill",                        // 设置
     ];
+    if (self.performanceTest) ame237_gmIcons = [ame237_gmIcons arrayByAddingObjectsFromArray:@[@"stopwatch", @"square.and.arrow.up"]];
     NSMutableArray<Ame237MenuRow *> *ame237_rows = [NSMutableArray array];
     for (NSUInteger ame237_i = 0; ame237_i < self.menuArray.count; ame237_i++) {
         NSString *ame237_iconName = (ame237_i < ame237_gmIcons.count) ? ame237_gmIcons[ame237_i] : nil;
@@ -1423,6 +1427,18 @@ static UIColor *ame244_snapshotTint(void) {
             break;
         case 10: // 设置
             [self actionOpenPreferences];
+            break;
+        case 11:
+            [self dismissMenu];
+            if ([self.performanceTest beginCapture]) {
+                [NMToast showMessage:NSLocalizedString(@"Recording starts in 3 seconds", nil)];
+            } else {
+                [NMToast showMessage:NSLocalizedString(@"Use Share Test Report for this run", nil)];
+            }
+            break;
+        case 12:
+            [self dismissMenu];
+            [self.performanceTest shareFrom:self];
             break;
     }
 }

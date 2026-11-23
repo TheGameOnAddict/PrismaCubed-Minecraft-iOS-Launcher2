@@ -106,14 +106,15 @@ preview_mode() {
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
     ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
     ZL2M3Kit                       # 7.0-UI-12：MD3 功能组件库（搜索/chip/开关/对话框/弹层）
-    ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
+    PerformanceTest ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
     ZL2GameDownloadViewController  # 7.0-UI-12：游戏 M3 下载页（旧 DownloadViewController 退场）
     ZL2GameAddonsViewController    # 7.0-UI-14：Addons 加载器选择屏（选版后加载器组合+安装分发）
     ZL2SearchIdViewController      # 7.0-UI-14：按项目 ID 直查页（下载左轨第 6 项）
     ZL2FavoritesStore              # 7.0-UI-14：收藏仓库（plist 快照，搜索卡心形/收藏页共用）
     installer/FabricUtils          # Task336：Addons 页直装执行器（ame336 页内联安装新依赖）
   )
-  local objs=()
+  xcrun clang -c -isysroot "$SDK_SIM" -target "${ARCH}-apple-ios14.0-simulator" "$NATIVES/PerformanceFrames.c" -o "$OUT/PerformanceFrames.o" || { FAIL=1; return; }
+  local objs=("$OUT/PerformanceFrames.o")
   for s in "${sources[@]}"; do
     local base; base="$(basename "$s")"   # Task336：支持 installer/ 子目录 TU（.o 平铺 OUT）
     echo "  编译 $s.m"

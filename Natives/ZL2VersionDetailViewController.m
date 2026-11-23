@@ -1,3 +1,4 @@
+#import "PerformanceTest.h"
 #import "CubicForm.h"
 #import "FolderBrowserViewController.h"
 #import "ZL2AssetSearchViewController.h"
@@ -318,7 +319,15 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
     UIAction *servers = [UIAction actionWithTitle:NSLocalizedString(@"Servers", nil) image:nil identifier:nil handler:^(__kindof UIAction *action) {
         [weakSelf ameV13_selectPage:6];
     }];
-    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, worlds, logs, overview, servers]];
+    UIAction *test = [UIAction actionWithTitle:NSLocalizedString(@"Performance Test", nil) image:[UIImage systemImageNamed:@"stopwatch"] identifier:nil handler:^(__kindof UIAction *action) {
+        ZL2VersionDetailViewController *owner = weakSelf;
+        if (!owner) return;
+        NSString *name = owner.ameV13_profileName;
+        [PerformanceTest showForProfile:name version:PLProfiles.current.profiles[name][@"lastVersionId"]
+            gameDirectory:[ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:name]
+            from:owner launch:^{ [owner cubicPlay]; }];
+    }];
+    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, test, worlds, logs, overview, servers]];
     UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
     [back setTitle:NSLocalizedString(@"‹ Profiles", nil) forState:UIControlStateNormal];
     back.tintColor = [ZL2Theme onPrimary];

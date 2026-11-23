@@ -1,3 +1,4 @@
+#include "PerformanceFrames.h"
 #import "SurfaceViewController.h"
 
 #include "jni.h"
@@ -59,6 +60,7 @@ unsigned int pojavGetAndResetFps() {
 /// 不会触发。SurfaceViewController 在 Vulkan 模式下使用 CADisplayLink 作为
 /// 帧率检测 fallback，每帧通过此函数递增计数器。
 void pojavIncrementFpsCounter() {
+    PerformanceFrame(PerformanceDrawable);
     atomic_fetch_add(&_pojavFpsCounter, 1);
 
     // 首帧渲染检测（与 pojavSwapBuffers 中的逻辑一致）
@@ -817,6 +819,7 @@ void pojavSwapBuffers() {
     }
 
     // FPS 计数（参照 FCL/ZL2 在 native swap buffer 入口计数，反映真实渲染帧率）
+    PerformanceFrame(PerformanceSwap);
     atomic_fetch_add(&_pojavFpsCounter, 1);
 
     // 阶段13：首帧渲染检测（参照 FCL 的 game_ready 回调）
