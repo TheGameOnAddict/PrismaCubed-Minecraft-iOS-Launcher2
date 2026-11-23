@@ -289,7 +289,11 @@ public class GLFWVulkan {
             // ★ Task275 J-P3-7：off-heap calloc 泄漏——上游 LWJGL 模板的 finally-free
             //   在 iOS stub 改写时丢失，每次 Vulkan 建面漏一小块 native 内存。
             try {
-                return vkCreateMetalSurfaceEXT(instance, pCreateInfo, null, surface);
+                int result = vkCreateMetalSurfaceEXT(instance, pCreateInfo, null, surface);
+                if (result == VK10.VK_SUCCESS) {
+                    System.err.println("[PrismaCubic] Vulkan window surface ready");
+                }
+                return result;
             } finally {
                 pCreateInfo.free();
             }

@@ -51,6 +51,10 @@ static NSString *libraryName(void) {
 }
 
 + (void)observeGameLine:(NSString *)line {
+    if ([line hasSuffix:@"[PrismaCubic] Vulkan window surface ready"]) {
+        [self record:@"Vulkan" source:@"context"];
+        return;
+    }
     NSRange info = [line rangeOfString:@"/INFO]: "];
     if (info.location == NSNotFound) return;
     NSRange body = NSMakeRange(NSMaxRange(info), line.length-NSMaxRange(info));
