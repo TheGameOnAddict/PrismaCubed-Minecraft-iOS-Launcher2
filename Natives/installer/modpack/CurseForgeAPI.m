@@ -492,6 +492,21 @@ static NSString *CFA169NormalizeGameVersion(NSString *v) {
     return nil;
 }
 
+- (NSString *)projectDescriptionForID:(NSString *)projectID {
+    if (!projectID.length || [projectID rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location != NSNotFound) return nil;
+    if ([[NSURL URLWithString:self.baseURL].host isEqualToString:@"api.curseforge.com"]) {
+        NSString *path = [NSString stringWithFormat:@"mods/%@/description", projectID];
+        id response = [self getEndpoint:path params:nil];
+        if ([response isKindOfClass:NSDictionary.class] && [response[@"data"] isKindOfClass:NSString.class]) return response[@"data"];
+    }
+    // The keyless MCIM API covers files and project metadata, but omits descriptions.
+    // The public CFWidget response includes the CurseForge publisher's original HTML.
+    ModpackAPI *widget = [[ModpackAPI alloc] initWithURL:@"https://api.cfwidget.com"];
+    id page = [widget getEndpoint:projectID params:nil];
+    if (![page isKindOfClass:NSDictionary.class] || ![[page[@"id"] description] isEqualToString:projectID]) return nil;
+    return [page[@"description"] isKindOfClass:NSString.class] ? page[@"description"] : nil;
+}
+
 - (id)postEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
     NSDictionary *headers = [self headers];
     // Task 171：keyless 镜像路径不再拦截（headers 恒非 nil）。

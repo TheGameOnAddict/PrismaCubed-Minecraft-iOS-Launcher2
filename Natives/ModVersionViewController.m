@@ -446,7 +446,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 - (void)loadProjectMetadata {
     NSUInteger request = self.sourceRequest;
     BOOL curse = self.selectedSource == kSourceCurseForge;
-    NSString *path = [NSString stringWithFormat:@"%@/%@", curse ? @"mods" : @"project", self.currentProjectID];
+    NSString *projectID = self.currentProjectID;
+    NSString *path = [NSString stringWithFormat:@"%@/%@", curse ? @"mods" : @"project", projectID];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         ModpackAPI *api = curse ? (ModpackAPI *)[CurseForgeAPI sharedInstance] : [ModrinthAPI sharedInstance];
         NSDictionary *json = [api getEndpoint:path params:nil];
@@ -455,8 +456,7 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         NSString *body;
         NSURL *baseURL;
         if (curse) {
-            NSDictionary *description = [api getEndpoint:[path stringByAppendingString:@"/description"] params:nil];
-            body = [description isKindOfClass:NSDictionary.class] ? description[@"data"] : nil;
+            body = [(CurseForgeAPI *)api projectDescriptionForID:projectID];
             NSDictionary *links = [project[@"links"] isKindOfClass:NSDictionary.class] ? project[@"links"] : nil;
             baseURL = [NSURL URLWithString:ProjectString(links[@"websiteUrl"])];
             if (!baseURL.host.length) baseURL = [NSURL URLWithString:@"https://www.curseforge.com/"];

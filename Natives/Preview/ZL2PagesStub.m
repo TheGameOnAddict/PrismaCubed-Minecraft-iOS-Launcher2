@@ -628,10 +628,13 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
     dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil); });
 }
 
+- (NSString *)projectDescriptionForID:(NSString *)projectID {
+    return [projectID isEqual:@"12345"] ? PreviewProjectBody(NO) : nil;
+}
+
 // 7.0-UI-14：按ID搜索页单项目直查（同步端点；CurseForge 返回 data 包裹形态）
 - (id)getEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
     if ([endpoint hasSuffix:@"/changelog"]) return @{@"data":@"<p>Dragon flight notes</p>"};
-    if ([endpoint isEqual:@"mods/12345/description"]) return @{@"data":PreviewProjectBody(NO)};
     if ([endpoint isEqual:@"mods/12345/files"]) return @{@"data":@[
         @{@"id":@3, @"modId":@12345, @"fileDate":@"2026-09-01T00:00:00Z", @"gameVersions":@[@"Fabric", @"1.21.1"],
           @"fileName":@"fabric.jar", @"downloadUrl":@"https://example.invalid/fabric.jar"},

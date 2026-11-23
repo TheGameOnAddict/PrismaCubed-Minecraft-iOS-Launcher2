@@ -12,6 +12,8 @@ extern NSString *const CurseForgeResponseSnippetKey;
 @interface CurseForgeAPI : ModpackAPI
 
 + (instancetype)sharedInstance;
+/// Retrieves the publisher HTML. Call from a background queue.
+- (nullable NSString *)projectDescriptionForID:(NSString *)projectID;
 
 /// 7.0-UI-16：最近一次异步搜索响应的 pagination.totalCount（0 = 未知/未搜/
 /// 失败）。ZL2 资产搜索页码控制器 "N / M" 总页数来源；读侧在搜索完成回调
