@@ -718,6 +718,7 @@ static void CubicCheckResults(UIView *host) {
 
 #import "ModVersionViewController.h"
 #import "ModProjectCatalog.h"
+#import "ProjectPresentationView.h"
 #import "ZL2ShellViewController.h"
 #import "ZL2VersionDetailViewController.h"
 #import "ZL2VersionPages.h"
@@ -750,6 +751,28 @@ static UIControl *PreviewModSwitch(UIView *root) {
         if (toggle) return toggle;
     }
     return nil;
+}
+
+static void CheckProjectPresentation(ModVersionViewController *detail, NSString *expectedHeading) {
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:15];
+    __block BOOL ready = NO;
+    __block BOOL evaluating = NO;
+    __block id lastObservation = nil;
+    while (!ready && deadline.timeIntervalSinceNow > 0) {
+        ProjectPresentationView *page = [detail valueForKey:@"presentation"];
+        if (page && !evaluating) {
+            evaluating = YES;
+            NSString *query = @"const a=document.querySelector('article'), img=a?.querySelector('img');return {heading:a?.querySelector('h2')?.textContent||'', strong:!!a?.querySelector('strong'), table:!!a?.querySelector('table'), link:!!a?.querySelector('a[href]'), image:img?.naturalWidth||0, renderer:typeof presentProject};";
+            [page callAsyncJavaScript:query arguments:@{} inFrame:nil inContentWorld:WKContentWorld.defaultClientWorld completionHandler:^(id result, NSError *error) {
+                lastObservation = error ?: result;
+                ready = !error && [result[@"heading"] isEqual:expectedHeading] && [result[@"strong"] boolValue] &&
+                    [result[@"table"] boolValue] && [result[@"link"] boolValue] && [result[@"image"] integerValue] > 0;
+                evaluating = NO;
+            }];
+        }
+        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+    }
+    NSCAssert(ready, @"Missing formatted article: %@ (%@)", expectedHeading, lastObservation);
 }
 
 static void PreviewScreens(UIWindow *window) {
@@ -858,6 +881,19 @@ static void PreviewScreens(UIWindow *window) {
             UITableView *table = [detail valueForKey:@"tableView"];
             UIButton *filter = [detail valueForKey:@"filtersButton"];
             NSCAssert(quickInstallChecked, @"Quick Install did not resolve");
+            UISegmentedControl *tabs = [detail valueForKey:@"tabs"];
+            BOOL curse = [route isEqual:@"curseforge"];
+            NSCAssert(tabs.selectedSegmentIndex == 0, @"Expected the author's presentation on entry");
+            CheckProjectPresentation(detail, curse ? @"Dragon habitats" : @"Dragon field guide");
+            UIStackView *pageStack = [detail valueForKey:@"projectStack"];
+            UIStackView *provider = pageStack.arrangedSubviews.firstObject;
+            NSCAssert([provider.arrangedSubviews.firstObject isKindOfClass:UISegmentedControl.class] &&
+                pageStack.arrangedSubviews[1] == [detail valueForKey:@"detailHeaderView"], @"Unexpected source / card order");
+            UILabel *summary = [detail valueForKey:@"fileSummary"];
+            NSCAssert([summary.text containsString:@"1.20.1"] && [summary.text containsString:@"Forge"], @"Missing compatibility summary");
+            UIButton *choose = [detail valueForKey:@"chooseVersionButton"];
+            [choose sendActionsForControlEvents:UIControlEventTouchUpInside];
+            NSCAssert(tabs.selectedSegmentIndex == 1, @"Version chooser did not open");
             CGFloat collapsed = table.tableHeaderView.bounds.size.height;
             UIButton *expand = [[detail valueForKey:@"detailHeaderView"] valueForKey:@"expandToggleButton"];
             NSCAssert(expand.hidden, @"Short description should fit");
@@ -868,7 +904,6 @@ static void PreviewScreens(UIWindow *window) {
             [filter sendActionsForControlEvents:UIControlEventTouchUpInside];
             NSCAssert(table.tableHeaderView.bounds.size.height > collapsed + 80, @"Filters did not expand");
             [filter sendActionsForControlEvents:UIControlEventTouchUpInside];
-            UISegmentedControl *tabs = [detail valueForKey:@"tabs"];
             UIButton *download = [detail valueForKey:@"downloadButton"];
             NSCAssert(download.enabled, @"Missing compatible download");
             if ([route isEqual:@"curseforge"]) {
@@ -876,10 +911,10 @@ static void PreviewScreens(UIWindow *window) {
                 ModVersion *choice = [detail valueForKey:@"chosenFile"];
                 NSCAssert([choice.fileId isEqual:@"1"], @"Manual file choice lost");
             }
-            tabs.selectedSegmentIndex = 1;
+            tabs.selectedSegmentIndex = 2;
             [tabs sendActionsForControlEvents:UIControlEventValueChanged];
             NSCAssert([table numberOfRowsInSection:0] == 1, @"Missing provider gallery");
-            tabs.selectedSegmentIndex = 2;
+            tabs.selectedSegmentIndex = 3;
             [tabs sendActionsForControlEvents:UIControlEventValueChanged];
             if (![route isEqual:@"curseforge"]) {
                 UILabel *notes = [detail valueForKey:@"tabMessage"];
@@ -887,6 +922,19 @@ static void PreviewScreens(UIWindow *window) {
             }
             tabs.selectedSegmentIndex = 0;
             [tabs sendActionsForControlEvents:UIControlEventValueChanged];
+            if (!installed) {
+                UISegmentedControl *switcher = provider.arrangedSubviews.firstObject;
+                switcher.selectedSegmentIndex = curse ? 0 : 1;
+                [switcher sendActionsForControlEvents:UIControlEventValueChanged];
+                CheckProjectPresentation(detail, curse ? @"Dragon field guide" : @"Dragon habitats");
+                pageStack = [detail valueForKey:@"projectStack"];
+                provider = pageStack.arrangedSubviews.firstObject;
+                switcher = provider.arrangedSubviews.firstObject;
+                switcher.selectedSegmentIndex = curse ? 1 : 0;
+                [switcher sendActionsForControlEvents:UIControlEventValueChanged];
+                CheckProjectPresentation(detail, curse ? @"Dragon habitats" : @"Dragon field guide");
+            }
+            [table setContentOffset:CGPointMake(0, -table.adjustedContentInset.top) animated:NO];
             [window layoutIfNeeded];
         }
         NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";

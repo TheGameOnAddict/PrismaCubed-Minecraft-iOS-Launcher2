@@ -3874,3 +3874,6 @@
 "prisma.project.metadataError" = "無法從此來源載入內容。";
 "prisma.project.noNotes" = "此版本未發布更新日誌。";
 "prisma.project.noMatch" = "沒有適用於 Minecraft %@ 和載入器 %@ 的可下載檔案。開啟專案卡片可查看版本。";
+"prisma.project.changeVersion" = "更改版本";
+"prisma.project.noDescription" = "作者尚未新增專案介紹。";
+"prisma.project.noCounterpart" = "未在此來源找到此專案。";

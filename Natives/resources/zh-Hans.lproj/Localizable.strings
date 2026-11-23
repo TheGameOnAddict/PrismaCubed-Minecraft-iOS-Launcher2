@@ -3877,3 +3877,6 @@
 "prisma.project.metadataError" = "无法从此来源加载内容。";
 "prisma.project.noNotes" = "此版本未发布更新日志。";
 "prisma.project.noMatch" = "没有适用于 Minecraft %@ 和加载器 %@ 的可下载文件。打开项目卡片可查看版本。";
+"prisma.project.changeVersion" = "更改版本";
+"prisma.project.noDescription" = "作者尚未添加项目介绍。";
+"prisma.project.noCounterpart" = "未在此来源找到此项目。";

@@ -635,6 +635,7 @@ add_executable(AngelAuraAmethyst
   ModTableViewCell.m
   ModsManagerViewController.m
   ModVersion.m
+  ProjectPresentationView.m
   ModProjectCatalog.m
   ModVersionViewController.m
   ModVersionTableViewCell.m

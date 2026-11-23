@@ -106,7 +106,7 @@ preview_mode() {
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
     ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
     ZL2M3Kit                       # 7.0-UI-12：MD3 功能组件库（搜索/chip/开关/对话框/弹层）
-    ModVersionViewController ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
+    ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
     ZL2GameDownloadViewController  # 7.0-UI-12：游戏 M3 下载页（旧 DownloadViewController 退场）
     ZL2GameAddonsViewController    # 7.0-UI-14：Addons 加载器选择屏（选版后加载器组合+安装分发）
     ZL2SearchIdViewController      # 7.0-UI-14：按项目 ID 直查页（下载左轨第 6 项）
@@ -149,7 +149,7 @@ preview_mode() {
   # 与 UniformTypeIdentifiers（设置页 UTType 文档选择器）——本脚本不用 -fmodules，
   # 无自动链接
   if ! xcrun clang -isysroot "$SDK_SIM" -target "${ARCH}-apple-ios14.0-simulator" \
-      -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore \
+      -framework WebKit -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore \
       -lz -framework ImageIO -framework AuthenticationServices -framework UniformTypeIdentifiers \
       -o "$OUT/AmeFluentPreview" \
       "${objs[@]}" "$OUT/AmeFluentPreviewMain.o" "$OUT/ZL2PagesStub.o" 2>"$OUT/link.log"; then
@@ -168,6 +168,7 @@ preview_mode() {
   mkdir -p "$brands"
   cp -R "$NATIVES/Assets.xcassets/CubicCurseForge.imageset" "$NATIVES/Assets.xcassets/CubicModrinth.imageset" "$brands/"
   xcrun actool "$brands" --compile "$app" --platform iphonesimulator --minimum-deployment-target 14.0 --target-device iphone || { FAIL=1; return; }
+  cp -R "$NATIVES/resources/ProjectPage" "$app/"
   mkdir -p "$app/en.lproj"
   cp "$NATIVES/resources/en.lproj/Localizable.strings" "$app/en.lproj/"
   for cover in "$NATIVES"/Assets.xcassets/CubicProfileCover*.imageset; do

@@ -3878,3 +3878,6 @@
 "prisma.project.metadataError" = "Couldn’t load this content from the source.";
 "prisma.project.noNotes" = "No changelog was published for this version.";
 "prisma.project.noMatch" = "No downloadable file matched Minecraft %@ and loader %@. Open the project card to review its versions.";
+"prisma.project.changeVersion" = "Change version";
+"prisma.project.noDescription" = "The author hasn’t added a project description.";
+"prisma.project.noCounterpart" = "This project couldn’t be found on this source.";

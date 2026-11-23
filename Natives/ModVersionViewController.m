@@ -5,6 +5,7 @@
 #import "ModVersion.h"
 #import "ModVersionTableViewCell.h"
 #import "ModProjectCatalog.h"
+#import "ProjectPresentationView.h"
 #import "IconLoader.h"
 #import "MarkdownParser.h"
 #import "ModDependencyResolver.h"
@@ -67,7 +68,7 @@ static NSArray<NSDictionary *> *SortOptionItems(void) {
     return items;
 }
 
-typedef NS_ENUM(NSInteger, ProjectTab) { ProjectTabVersions, ProjectTabGallery, ProjectTabChangelog };
+typedef NS_ENUM(NSInteger, ProjectTab) { ProjectTabOverview, ProjectTabVersions, ProjectTabGallery, ProjectTabChangelog };
 
 static NSString *ProjectString(id value) {
     return [value isKindOfClass:NSString.class] ? value : @"";
@@ -146,6 +147,11 @@ static NSString *ProjectNotes(NSString *markup) {
 @property (nonatomic, strong) UISegmentedControl *tabs;
 @property (nonatomic, strong) UIButton *downloadButton;
 @property (nonatomic, strong) UILabel *fileSummary;
+@property (nonatomic, strong) UIButton *chooseVersionButton;
+@property (nonatomic, strong) UIStackView *presentationStack;
+@property (nonatomic, strong) ProjectPresentationView *presentation;
+@property (nonatomic, copy) NSString *presentationStatus;
+@property (nonatomic) BOOL choosingFromInstall;
 @property (nonatomic, strong) UILabel *tabMessage;
 @property (nonatomic, strong) UIView *filesBar;
 @property (nonatomic, strong) ModVersion *chosenFile;
@@ -242,24 +248,38 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     sources.accessibilityLabel = localize(@"i18n_str_462", nil);
     sources.selectedSegmentIndex = curseForge ? 1 : 0;
     [sources addTarget:self action:@selector(changeProjectSource:) forControlEvents:UIControlEventValueChanged];
-    sources.hidden = localFile;
+    UIStackView *providerBar = [[UIStackView alloc] initWithArrangedSubviews:@[sources]];
+    providerBar.layoutMarginsRelativeArrangement = YES;
+    providerBar.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(8, 16, 2, 16);
+    providerBar.hidden = localFile;
     self.downloadButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.downloadButton.backgroundColor = [AmeTheme brandPrimary];
     self.downloadButton.tintColor = UIColor.blackColor;
     self.downloadButton.layer.cornerRadius = 10;
     self.downloadButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
-    [self.downloadButton setTitle:localize(@"resman.mods.download", nil) forState:UIControlStateNormal];
+    [self.downloadButton setTitle:localize(@"i18n_str_904", nil) forState:UIControlStateNormal];
     [self.downloadButton addTarget:self action:@selector(downloadChosenFile) forControlEvents:UIControlEventTouchUpInside];
     [self.downloadButton.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     self.fileSummary = [[UILabel alloc] init];
     self.fileSummary.textColor = UIColor.secondaryLabelColor;
     self.fileSummary.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
     self.fileSummary.numberOfLines = 0;
-    self.tabs = [[UISegmentedControl alloc] initWithItems:@[localize(@"prisma.ui.versions", nil),
+    self.chooseVersionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.chooseVersionButton setTitle:localize(@"prisma.project.changeVersion", nil) forState:UIControlStateNormal];
+    self.chooseVersionButton.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    self.chooseVersionButton.tintColor = UIColor.labelColor;
+    self.chooseVersionButton.backgroundColor = [UIColor colorWithWhite:1 alpha:0.09];
+    self.chooseVersionButton.layer.cornerRadius = 10;
+    self.chooseVersionButton.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
+    [self.chooseVersionButton addTarget:self action:@selector(chooseProjectVersion) forControlEvents:UIControlEventTouchUpInside];
+    [self.chooseVersionButton setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView *installBar = [[UIStackView alloc] initWithArrangedSubviews:@[self.downloadButton, self.chooseVersionButton]];
+    installBar.spacing = 8;
+    self.tabs = [[UISegmentedControl alloc] initWithItems:@[localize(@"prisma.ui.overview", nil), localize(@"prisma.ui.versions", nil),
         localize(@"prisma.project.gallery", nil), localize(@"prisma.project.changelog", nil)]];
     self.tabs.selectedSegmentIndex = self.tab;
     [self.tabs addTarget:self action:@selector(changeProjectTab:) forControlEvents:UIControlEventValueChanged];
-    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[sources, self.downloadButton, self.fileSummary, self.tabs]];
+    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[installBar, self.fileSummary, self.tabs]];
     actions.axis = UILayoutConstraintAxisVertical;
     actions.spacing = 10;
     actions.layoutMarginsRelativeArrangement = YES;
@@ -305,7 +325,10 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     UIStackView *message = [[UIStackView alloc] initWithArrangedSubviews:@[self.tabMessage]];
     message.layoutMarginsRelativeArrangement = YES;
     message.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(0, 16, 0, 16);
-    self.projectStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.detailHeaderView, actions, filesBar, message, self.dependencyStack]];
+    self.presentationStack = [[UIStackView alloc] init];
+    self.presentationStack.axis = UILayoutConstraintAxisVertical;
+    self.presentation = nil;
+    self.projectStack = [[UIStackView alloc] initWithArrangedSubviews:@[providerBar, self.detailHeaderView, actions, filesBar, message, self.presentationStack, self.dependencyStack]];
     if (self.showsInstalledFile) {
         UILabel *installed = [[UILabel alloc] init];
         installed.numberOfLines = 0;
@@ -344,7 +367,42 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     [self handleVersionsResponse:versions error:nil];
 }
 
+- (void)chooseProjectVersion {
+    self.tabs.selectedSegmentIndex = ProjectTabVersions;
+    [self changeProjectTab:self.tabs];
+    self.choosingFromInstall = YES;
+    [self.tableView layoutIfNeeded];
+    if (self.filteredVersions.count) {
+        NSUInteger selected = [self.filteredVersions indexOfObject:self.chosenFile];
+        NSIndexPath *path = [NSIndexPath indexPathForRow:selected == NSNotFound ? 0 : selected inSection:0];
+        [self.tableView scrollToRowAtIndexPath:path atScrollPosition:UITableViewScrollPositionMiddle animated:YES];
+    } else if (self.allVersions.count && !self.filterContainerView.superview) {
+        [self toggleProjectFilters];
+    }
+}
+
+- (NSString *)selectedFileSummary {
+    ModVersion *file = self.chosenFile;
+    NSString *game = self.preferredGameVersion;
+    NSString *loader = self.preferredLoader;
+    if (file) {
+        game = [file.gameVersions containsObject:self.selectedGameVersion] ? self.selectedGameVersion :
+            ([file.gameVersions containsObject:game] ? game : file.gameVersions.firstObject);
+        loader = [file.loaders containsObject:self.selectedLoader.lowercaseString] ? self.selectedLoader :
+            ([file.loaders containsObject:loader.lowercaseString] ? loader : file.loaders.firstObject);
+    }
+    NSMutableArray *parts = [NSMutableArray array];
+    if (game.length) [parts addObject:[@"Minecraft " stringByAppendingString:game]];
+    if (loader.length) [parts addObject:[loader.lowercaseString isEqual:@"neoforge"] ? @"NeoForge" : loader.capitalizedString];
+    NSString *build = file.apiSource == kSourceCurseForge ? ProjectString(file.rawDictionary[@"displayName"]) : file.versionNumber;
+    if (!build.length) build = file.primaryFile[@"filename"];
+    if (build.length) [parts addObject:build];
+    if (!file && self.allVersions) [parts addObject:localize(@"prisma.project.choose", nil)];
+    return [parts componentsJoinedByString:@" · "];
+}
+
 - (void)changeProjectTab:(UISegmentedControl *)control {
+    self.choosingFromInstall = NO;
     self.tab = control.selectedSegmentIndex;
     if (self.tab != ProjectTabVersions) {
         [self.filterContainerView removeFromSuperview];
@@ -357,15 +415,18 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 
 - (void)refreshProjectTab {
     BOOL versions = self.tab == ProjectTabVersions;
-    self.filesBar.hidden = !versions;
+    BOOL local = self.showsInstalledFile && self.apiSource == 0;
+    self.filesBar.hidden = !versions && !local;
+    self.presentationStack.hidden = self.tab != ProjectTabOverview || !self.presentation || local;
+    self.chooseVersionButton.enabled = self.allVersions.count > 0;
     self.filtersButton.hidden = self.allVersions.count == 0;
     self.downloadButton.enabled = ProjectString(self.chosenFile.primaryFile[@"url"]).length > 0;
     self.downloadButton.alpha = self.downloadButton.enabled ? 1 : 0.5;
     NSString *match = localize(@"prisma.project.choose", nil);
-    self.fileSummary.text = self.chosenFile ? [NSString stringWithFormat:@"%@ · %@", self.selectedSource == 2 ? @"CurseForge" : @"Modrinth",
-        self.chosenFile.primaryFile[@"filename"] ?: self.chosenFile.name] : match;
+    self.fileSummary.text = [self selectedFileSummary];
     self.tabMessage.text = nil;
     NSString *message = nil;
+    if (self.tab == ProjectTabOverview && !local && !self.presentation) message = self.presentationStatus ?: localize(@"i18n_str_40", nil);
     if (versions && !self.filteredVersions.count) message = self.versionStatus;
     if (self.tab == ProjectTabGallery && !self.gallery.count)
         message = self.galleryStatus ?: localize(@"i18n_str_40", nil);
@@ -391,6 +452,21 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         NSDictionary *json = [api getEndpoint:path params:nil];
         NSDictionary *project = [json isKindOfClass:NSDictionary.class] ? (curse ? json[@"data"] : json) : nil;
         if (![project isKindOfClass:NSDictionary.class] || !project[@"id"]) project = nil;
+        NSString *body;
+        NSURL *baseURL;
+        if (curse) {
+            NSDictionary *description = [api getEndpoint:[path stringByAppendingString:@"/description"] params:nil];
+            body = [description isKindOfClass:NSDictionary.class] ? description[@"data"] : nil;
+            NSDictionary *links = [project[@"links"] isKindOfClass:NSDictionary.class] ? project[@"links"] : nil;
+            baseURL = [NSURL URLWithString:ProjectString(links[@"websiteUrl"])];
+            if (!baseURL.host.length) baseURL = [NSURL URLWithString:@"https://www.curseforge.com/"];
+        } else {
+            body = project[@"body"];
+            NSString *type = ProjectString(project[@"project_type"]);
+            NSString *slug = ProjectString(project[@"slug"]);
+            baseURL = [[[NSURL URLWithString:@"https://modrinth.com/"] URLByAppendingPathComponent:type] URLByAppendingPathComponent:slug];
+        }
+        BOOL hasDescription = [body isKindOfClass:NSString.class];
         NSArray *images = project[curse ? @"screenshots" : @"gallery"];
         NSMutableArray *gallery = [NSMutableArray array];
         if ([images isKindOfClass:NSArray.class]) for (NSDictionary *entry in images) {
@@ -403,6 +479,14 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (self.sourceRequest != request) return;
+            self.presentationStatus = localize(hasDescription ? @"prisma.project.noDescription" : @"prisma.project.metadataError", nil);
+            if (hasDescription && [body stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) {
+                __weak typeof(self) weakSelf = self;
+                self.presentation = [[ProjectPresentationView alloc] initWithBody:body markdown:!curse baseURL:baseURL heightChanged:^{
+                    [weakSelf updateTableHeaderHeight];
+                }];
+                [self.presentationStack addArrangedSubview:self.presentation];
+            }
             self.gallery = gallery;
             self.galleryStatus = localize(project ? @"prisma.project.noGallery" : @"prisma.project.metadataError", nil);
             if (project && (self.showsInstalledFile || self.selectedSource != self.apiSource)) {
@@ -845,6 +929,8 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     }
 
     self.selectedSource = newSource;
+    self.choosingFromInstall = NO;
+    self.presentationStatus = nil;
     self.ame238_depsSectionView = nil;
     self.allVersions = nil;
     self.filteredVersions = nil;
@@ -985,7 +1071,10 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
 - (void)handleVersionsResponse:(NSArray<ModVersion *> *)versions error:(NSError *)error {
     [self.activityIndicator stopAnimating];
     self.versionStatus = error ? error.localizedDescription : localize(@"prisma.project.noFiles", nil);
-    if (!self.currentProjectID) self.galleryStatus = self.versionStatus;
+    if (!self.currentProjectID) {
+        self.galleryStatus = self.versionStatus;
+        self.presentationStatus = error ? error.localizedDescription : localize(@"prisma.project.noCounterpart", nil);
+    }
     self.allVersions = versions ?: @[];
     self.chosenFile = [ModProjectCatalog latestFile:versions minecraft:self.preferredGameVersion loader:self.preferredLoader];
     [self processFilters];
@@ -1562,6 +1651,11 @@ static inline NSString *ame267_effectiveTargetProfile(NSString *ame267_target) {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.tab == ProjectTabGallery) { [self openGalleryImage:self.gallery[indexPath.row]]; return; }
     self.chosenFile = self.filteredVersions[indexPath.row];
+    if (self.choosingFromInstall) {
+        self.tabs.selectedSegmentIndex = ProjectTabOverview;
+        [self changeProjectTab:self.tabs];
+        [self.tableView setContentOffset:CGPointMake(0, -self.tableView.adjustedContentInset.top) animated:YES];
+    }
     [self ame227_refreshDependenciesFooter];
     [self refreshProjectTab];
     [tableView reloadData];

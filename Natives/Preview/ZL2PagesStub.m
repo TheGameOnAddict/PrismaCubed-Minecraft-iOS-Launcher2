@@ -450,6 +450,14 @@ void customNSLog(const char *file, int lineNumber, const char *functionName, NSS
                      completion:(void (^)(NSArray<ModVersion *> * _Nullable versions, NSError * _Nullable error))completion;
 @end
 
+static NSString *PreviewProjectBody(BOOL markdown) {
+    UIImage *cover = [UIImage imageNamed:@"CubicProfileCover2"];
+    NSString *image = [UIImageJPEGRepresentation(cover, 0.7) base64EncodedStringWithOptions:0] ?: @"";
+    NSString *banner = [NSString stringWithFormat:@"<center><img alt='Dragon habitat' src='data:image/jpeg;base64,%@'></center>", image];
+    if (markdown) return [NSString stringWithFormat:@"## Dragon field guide\n\nObserve **wild dragons** in their native habitats. [Field notes](https://example.org/notes)\n\n%@\n\n| Habitat | Activity |\n| --- | --- |\n| Mountains | Flight |", banner];
+    return [NSString stringWithFormat:@"<h2>Dragon habitats</h2><p>Discover the <strong>mountain dragons</strong>. <a href='https://example.org/notes'>Field notes</a></p>%@<table><tr><td>Mountains</td><td>Flight</td></tr></table>", banner];
+}
+
 static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
     if ([filters[@"name"] isEqual:@"Book of Dragons"]) return @[@{@"id":source == 1 ? @"book-of-dragons" : @"12345", @"title":@"Book of Dragons"}];
     BOOL packs = [filters[@"projectType"] isEqual:@"modpack"];
@@ -529,7 +537,7 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 
 // 7.0-UI-14：按ID搜索页单项目直查（同步端点；预览返回单条 demo 项目卡数据）
 - (id)getEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
-    if ([endpoint isEqual:@"project/book-of-dragons"]) return @{@"id":@"book-of-dragons", @"title":@"Book of Dragons", @"gallery":@[@{@"title":@"Flight", @"url":@"preview:CubicProfileCover2"}]};
+    if ([endpoint isEqual:@"project/book-of-dragons"]) return @{@"id":@"book-of-dragons", @"title":@"Book of Dragons", @"body":PreviewProjectBody(YES), @"slug":@"book-of-dragons", @"project_type":@"mod", @"gallery":@[@{@"title":@"Flight", @"url":@"preview:CubicProfileCover2"}]};
     return @{
         @"project_id": @"demo-project",
         @"slug": @"demo-project",
@@ -623,6 +631,7 @@ static NSArray *CubicSampleCatalog(NSDictionary *filters, NSInteger source) {
 // 7.0-UI-14：按ID搜索页单项目直查（同步端点；CurseForge 返回 data 包裹形态）
 - (id)getEndpoint:(NSString *)endpoint params:(NSDictionary *)params {
     if ([endpoint hasSuffix:@"/changelog"]) return @{@"data":@"<p>Dragon flight notes</p>"};
+    if ([endpoint isEqual:@"mods/12345/description"]) return @{@"data":PreviewProjectBody(NO)};
     if ([endpoint isEqual:@"mods/12345/files"]) return @{@"data":@[
         @{@"id":@3, @"modId":@12345, @"fileDate":@"2026-09-01T00:00:00Z", @"gameVersions":@[@"Fabric", @"1.21.1"],
           @"fileName":@"fabric.jar", @"downloadUrl":@"https://example.invalid/fabric.jar"},
