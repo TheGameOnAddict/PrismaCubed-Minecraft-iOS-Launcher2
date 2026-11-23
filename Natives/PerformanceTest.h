@@ -6,6 +6,7 @@
 + (void)claimLaunchRequestForProfile:(NSString *)profile;
 + (instancetype)takeForGame:(NSString *)profile;
 @property(nonatomic, readonly) BOOL recording;
+- (void)recordLaunchOptions:(NSDictionary *)options;
 - (void)firstFrameObserved;
 - (BOOL)beginCapture;
 - (void)shareFrom:(UIViewController *)controller;

@@ -321,6 +321,7 @@ NSString *const PREF_MOD_MIRROR = @"general.mod_mirror";
             @"stats_label_x": @(-1.0),
             @"stats_label_y": @(-1.0),
             @"stats_label_visible": @YES,
+            @"stats_renderer_visible": @YES,
             // ★ Task238（用户："在默认边边没有贴边"+装机日志
             //   "[PLPreferences] Setter could not find preference
             //    game.gear.docked"）：Task227 的吸边状态键从未注册——

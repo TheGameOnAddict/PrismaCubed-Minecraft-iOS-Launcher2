@@ -47,6 +47,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// 切换 FPS/内存显示的开关状态
 - (void)toggleStatsLabel;
+- (void)toggleRendererLabel;
 
 /// ★ Task227（反馈 #8）：齿轮是否吸边成侧边栏把手（近边拖拽结束时吸附）
 @property (nonatomic, assign, readonly) BOOL isDocked;

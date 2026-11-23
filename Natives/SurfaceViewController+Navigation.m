@@ -211,7 +211,8 @@ static UIColor *ame244_snapshotTint(void) {
         @"game.menu.toggle_virtual_mouse",  // 虚拟鼠标开关
         @"game.menu.toggle_keyboard",       // 游戏内键盘
         @"game.menu.resolution",            // 分辨率调整
-        @"game.menu.settings"               // Task232⑰：原为裸英文字串 "Settings"（ localize 找不到键回退原文 = 硬编码残留）
+        @"game.menu.settings",              // Task232⑰：原为裸英文字串 "Settings"（ localize 找不到键回退原文 = 硬编码残留）
+        @"game.menu.toggle_renderer",
     ];
 
     if (self.performanceTest) self.menuArray = [self.menuArray arrayByAddingObjectsFromArray:@[@"prisma.perf.record", @"prisma.perf.share"]];
@@ -296,6 +297,7 @@ static UIColor *ame244_snapshotTint(void) {
         @"keyboard",                              // 游戏内键盘
         @"textformat.size",                       // 分辨率调整
         @"gearshape.fill",                        // 设置
+        @"display",
     ];
     if (self.performanceTest) ame237_gmIcons = [ame237_gmIcons arrayByAddingObjectsFromArray:@[@"stopwatch", @"square.and.arrow.up"]];
     NSMutableArray<Ame237MenuRow *> *ame237_rows = [NSMutableArray array];
@@ -1429,6 +1431,9 @@ static UIColor *ame244_snapshotTint(void) {
             [self actionOpenPreferences];
             break;
         case 11:
+            [(GameMenuOverlayView *)self.gameMenuOverlay toggleRendererLabel];
+            break;
+        case 12:
             [self dismissMenu];
             if ([self.performanceTest beginCapture]) {
                 [NMToast showMessage:NSLocalizedString(@"Recording starts in 3 seconds", nil)];
@@ -1436,7 +1441,7 @@ static UIColor *ame244_snapshotTint(void) {
                 [NMToast showMessage:NSLocalizedString(@"Use Share Test Report for this run", nil)];
             }
             break;
-        case 12:
+        case 13:
             [self dismissMenu];
             [self.performanceTest shareFrom:self];
             break;

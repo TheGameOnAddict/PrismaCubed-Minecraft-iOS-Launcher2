@@ -43,6 +43,10 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import "CubicBootBackdrop.h"
+#import "CubicRuntimeInfo.h"
+#import "GameMenuOverlayView.h"
 #import "AmeTheme.h"   // accentColor 桩消费（main TU 唯一残留 AmeTheme 引用）
 #import "ZL2Theme.h"
 #import "ZL2HomeViewController.h"
@@ -788,12 +792,95 @@ static void CheckProjectSources(ModVersionViewController *detail, NSArray<NSNumb
     });
 }
 
+static void PreviewBootComponents(UIView *host) {
+    // Compare the selected library with the two renderer strings reported by
+    // Minecraft on the test phone. The simulator has no Minecraft runtime.
+    [CubicRuntimeInfo reset];
+    setenv("AMETHYST_RENDERER", "libmetallum.dylib", 1);
+    NSCAssert([CubicRuntimeInfo.renderer[@"source"] isEqual:@"selection"], @"Expected an unconfirmed selection");
+    [CubicRuntimeInfo observeGameLine:@"[11:13:40] [Render thread/INFO]: OpenGL Renderer: Magma (MobileGL Core) (Apple A19 Pro GPU, Vulkan 1.1.357, Driver 0.2.2211)"];
+    NSCAssert([CubicRuntimeInfo.renderer[@"name"] isEqual:@"Magma"] &&
+              ![CubicRuntimeInfo.renderer[@"source"] isEqual:@"selection"], @"Missing runtime fallback");
+
+    setenv("AMETHYST_RENDERER", "libOSMesa.8.dylib", 1);
+    NSCAssert([CubicRuntimeInfo.renderer[@"source"] isEqual:@"selection"], @"Previous renderer leaked into a new backend");
+    [CubicRuntimeInfo observeNativeRenderer:"zink Vulkan 1.4(Apple A19 Pro GPU (MOLTENVK))"];
+    NSCAssert([CubicRuntimeInfo.renderer[@"name"] isEqual:@"Zink"] &&
+              ![CubicRuntimeInfo.renderer[@"source"] isEqual:@"selection"], @"OSMesa context identity lost");
+    [CubicRuntimeInfo observeGameLine:@"[11:23:48] [Render thread/INFO]: OpenGL Renderer: zink Vulkan 1.4(Apple A19 Pro GPU (MOLTENVK))"];
+    NSCAssert([CubicRuntimeInfo.renderer[@"name"] isEqual:@"Zink"], @"Game and native renderer identity disagree");
+
+    CubicBootBackdrop *backdrop = [[CubicBootBackdrop alloc] initWithFrame:host.bounds];
+    backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [host addSubview:backdrop];
+
+    UIImageView *mark = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicBrand"]];
+    mark.contentMode = UIViewContentModeScaleAspectFit;
+    NSCAssert(mark.image, @"Missing cube asset");
+    UILabel *profile = [UILabel new];
+    profile.text = @"THE GANG";
+    profile.font = [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
+    profile.textColor = UIColor.whiteColor;
+    UILabel *version = [UILabel new];
+    version.text = @"Minecraft 1.20.1 · Forge";
+    version.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    version.textColor = [UIColor colorWithWhite:.83 alpha:1];
+    CubicBootOptionsLabel *options = [CubicBootOptionsLabel new];
+    [options setJavaVersion:@"21.0.8" heap:@"2432 MiB" renderer:CubicRuntimeInfo.renderer[@"name"]];
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[mark, profile, version, options]];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = 8;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [backdrop addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.centerXAnchor constraintEqualToAnchor:backdrop.centerXAnchor],
+        [stack.centerYAnchor constraintEqualToAnchor:backdrop.centerYAnchor],
+        [stack.widthAnchor constraintEqualToAnchor:backdrop.safeAreaLayoutGuide.widthAnchor multiplier:.82],
+        [options.widthAnchor constraintEqualToAnchor:stack.widthAnchor],
+        [mark.heightAnchor constraintEqualToConstant:52],
+        [mark.widthAnchor constraintEqualToConstant:52],
+    ]];
+    [host layoutIfNeeded];
+
+    NSString *text = options.attributedText.string ?: options.text;
+    for (NSString *required in @[@"21.0.8", @"2432", @"Zink"]) {
+        NSCAssert([text containsString:required], @"Missing runtime value %@", required);
+    }
+    NSCAssert(CGRectContainsRect(backdrop.bounds, [options convertRect:options.bounds toView:backdrop]),
+              @"Boot options are outside the viewport");
+    NSUInteger branchCount = 0;
+    for (CALayer *layer in backdrop.layer.sublayers) {
+        if ([layer isKindOfClass:CAShapeLayer.class] && ((CAShapeLayer *)layer).path) {
+            branchCount++;
+            if (!UIAccessibilityIsReduceMotionEnabled()) {
+                NSCAssert(layer.animationKeys.count > 0, @"Missing branch animation");
+            }
+        }
+    }
+    NSCAssert(branchCount > 1, @"Missing crack branches");
+
+    GameMenuOverlayView *hud = [[GameMenuOverlayView alloc] initWithParentView:backdrop];
+    [hud updateFPS:14 memoryUsageMB:4162];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UILabel *stats = [hud valueForKey:@"statsLabel"];
+        NSCAssert([stats.text containsString:@"Zink"] && [stats.text containsString:@"4162"], @"HUD did not report the confirmed renderer");
+        [hud toggleRendererLabel];
+        NSCAssert(![stats.text containsString:@"Zink"] && [stats.text containsString:@"4162"] && !stats.hidden,
+                  @"Hiding renderer also hid frame or memory statistics");
+        [hud toggleRendererLabel];
+        NSCAssert([stats.text containsString:@"Zink"] && CGRectContainsRect(hud.bounds, stats.frame),
+                  @"HUD exceeded its viewport after toggling");
+    });
+}
+
 static void PreviewScreens(UIWindow *window) {
     NSString *route = [NSUserDefaults.standardUserDefaults stringForKey:@"route"];
     ZL2ShellViewController *shell = (id)window.rootViewController;
     UINavigationController *nav = [shell ame_currentNav];
     ZL2HomeViewController *home = (id)nav.topViewController;
     NSCAssert([home isKindOfClass:ZL2HomeViewController.class], @"Home route unavailable");
+    if ([route isEqual:@"boot"]) PreviewBootComponents(shell.view);
     BOOL installed = [route isEqual:@"installed-project"];
     BOOL projectRoute = installed || [route isEqual:@"curseforge"] || [route isEqual:@"modrinth"];
     BOOL quickRoute = [route isEqual:@"quick-install"];

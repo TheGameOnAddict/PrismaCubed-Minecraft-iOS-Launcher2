@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 #include "PerformanceFrames.h"
 #import <Foundation/Foundation.h>
 #import "SurfaceViewController.h"
@@ -1091,7 +1092,10 @@ void osm_apply_current_ll() {
     void *ame268_buf = realloc(br_get_current()->osm.buffer, (size_t)bufW * (size_t)bufH * 4);
     if (ame268_buf != NULL) {
         br_get_current()->osm.buffer = ame268_buf;
-        handle.OSMesaMakeCurrent(br_get_current()->osm.context, br_get_current()->osm.buffer, GL_UNSIGNED_BYTE, bufW, bufH);
+        if (handle.OSMesaMakeCurrent(br_get_current()->osm.context, br_get_current()->osm.buffer, GL_UNSIGNED_BYTE, bufW, bufH) &&
+            handle.glGetString) {
+            [CubicRuntimeInfo observeNativeRenderer:(const char *)handle.glGetString(GL_RENDERER)];
+        }
         handle.OSMesaPixelStore(OSMESA_ROW_LENGTH, bufW);
         handle.OSMesaPixelStore(OSMESA_Y_UP, 0);
     } else {

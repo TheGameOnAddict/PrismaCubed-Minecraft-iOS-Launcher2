@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import "SurfaceViewController.h"
@@ -247,6 +248,9 @@ typedef struct {
 //   3. ame_task41_swap_forensics 的渲染器侧 dispatch（自 EGL 渲染器会话
 //      中 ame_es() 固定解析到 ANGLE，读数全是别家库的状态）。
 static void *ame145_rendererHandle = NULL;
+// Set when the bridge is loaded or replaced. Read GL_RENDERER only with its
+// own context current; the host GLES renderer can differ from Minecraft's GL.
+static atomic_bool reportBoundRenderer;
 
 static ame_es_t ame_es(void) {
     static ame_es_t s_es;
@@ -1459,6 +1463,7 @@ static bool dlsym_EGL() {
     // 供 gl_make_current 的取证读回用同源 glGetString 探测（避免
     // RTLD_DEFAULT 撞上先加载的 ANGLE，见 Task 140 病历）。
     ame145_rendererHandle = dl_handle;
+    atomic_store(&reportBoundRenderer, true);
 
     // ★ Task309：帧率解锁钩子（mg_vsync_hook.m，Task298 首安装点）按用户指令
     //   整体回退退役——装机定性其 vkCreateSwapchainKHR GOT 改绑是 WINDOW_IN_USE
@@ -2167,6 +2172,22 @@ void gl_make_current(gl_render_window_t* bundle) {
                 NSLog(@"[gl_bridge] mg_init_gles() called after eglMakeCurrent");
             } else {
                 NSLog(@"[gl_bridge] mg_init_gles not found (old MobileGlues?)");
+            }
+        }
+
+        if (atomic_exchange(&reportBoundRenderer, false)) {
+            const char *renderer = getenv("AMETHYST_RENDERER");
+            if (ame_mgFrontendActive) {
+                [CubicRuntimeInfo observeNativeRenderer:"MobileGlues"];
+            } else if (renderer && strcmp(renderer, RENDERER_NAME_LTW) == 0) {
+                // This mode requires LTW's own eglMakeCurrent to succeed.
+                [CubicRuntimeInfo observeNativeRenderer:"LTW"];
+            } else if (isSelfEglRenderer(renderer) ||
+                       (renderer && strcmp(renderer, RENDERER_NAME_MTL_ANGLE) == 0)) {
+                const char *(*getString)(unsigned int) = dlsym(ame145_rendererHandle, "glGetString");
+                if (getString && handle.eglGetCurrentContext && handle.eglGetCurrentContext() != EGL_NO_CONTEXT) {
+                    [CubicRuntimeInfo observeNativeRenderer:getString(0x1F01 /* GL_RENDERER */)];
+                }
             }
         }
 

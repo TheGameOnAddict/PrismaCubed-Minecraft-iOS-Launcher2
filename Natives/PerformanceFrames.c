@@ -4,7 +4,7 @@
 #include <string.h>
 #include <time.h>
 
-// One increment plus a clock read per sampled frame. Regular launches only read the flag.
+// Regular launches skip timing, histogram updates and locking.
 static atomic_bool enabled;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t start, previous;
@@ -32,7 +32,12 @@ void PerformanceBegin(void) {
 }
 
 static bool inWindow(uint64_t t) {
-    return atomic_load(&enabled) && t >= start && t - start < PerformanceSeconds * second;
+    if (!atomic_load(&enabled) || t < start) return false;
+    if (t - start < PerformanceSeconds * second) return true;
+    // A stalled UI may miss the completion timer. Stop taking the lock on every
+    // frame as soon as the render thread crosses the end of the capture.
+    atomic_store(&enabled, false);
+    return false;
 }
 
 void PerformanceFrame(enum PerformanceFrameSource source) {

@@ -637,6 +637,8 @@ add_executable(AngelAuraAmethyst
   ModVersion.m
   PerformanceFrames.c
   PerformanceTest.m
+  CubicBootBackdrop.m
+  CubicRuntimeInfo.m
   ProjectPresentationView.m
   ModProjectCatalog.m
   ModVersionViewController.m

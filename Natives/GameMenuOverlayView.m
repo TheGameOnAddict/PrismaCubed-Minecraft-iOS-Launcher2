@@ -7,6 +7,7 @@
 //
 
 #import "GameMenuOverlayView.h"
+#import "CubicRuntimeInfo.h"
 #import "LiquidGlassCompat.h"   // Task232: 悬浮栏玻璃
 #import "LauncherPreferences.h"
 #import "utils.h"        // Task230：localize（齿轮标签文案）
@@ -20,6 +21,7 @@ static NSString *const kPrefStatsLabelX = @"game.stats_label_x";
 static NSString *const kPrefStatsLabelY = @"game.stats_label_y";
 // FPS/内存显示开关的 pref key
 static NSString *const kPrefStatsLabelVisible = @"game.stats_label_visible";
+static NSString *const kPrefRendererVisible = @"game.stats_renderer_visible";
 
 // 按钮尺寸
 static const CGFloat kMenuButtonSize = 44.0;
@@ -50,6 +52,8 @@ static const CGFloat kDragThreshold = 10.0;
 @property (nonatomic, strong) UILabel *ame230_captionLabel;
 // FPS/内存显示标签
 @property (nonatomic, strong) UILabel *statsLabel;
+@property (nonatomic) BOOL rendererVisible;
+@property (nonatomic, copy) NSString *statsText;
 // 拖拽相关状态
 @property (nonatomic, assign) BOOL isDragging;
 @property (nonatomic, assign) CGPoint dragStartPoint;
@@ -84,6 +88,8 @@ static BOOL ame227_g_dockedLeft = NO;
         self.userInteractionEnabled = YES;
         // 默认显示 FPS/内存标签（可通过菜单开关）
         _statsLabelVisible = YES;
+        _rendererVisible = getPrefBool(kPrefRendererVisible);
+        _statsText = @"FPS: -- | MEM: --";
         _overlayHidden = NO;
 
         // 从偏好加载 FPS/内存显示开关状态
@@ -279,7 +285,7 @@ static BOOL ame227_g_dockedLeft = NO;
 
 - (void)setupStatsLabel {
     self.statsLabel = [[UILabel alloc] init];
-    self.statsLabel.text = @"FPS: -- | MEM: --";
+    self.statsLabel.text = self.statsText;
     self.statsLabel.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightBold];
     self.statsLabel.textColor = [UIColor whiteColor];
     self.statsLabel.backgroundColor = [UIColor colorWithRed:0 green:0 blue:0 alpha:0.5];
@@ -301,6 +307,7 @@ static BOOL ame227_g_dockedLeft = NO;
     self.statsLabel.userInteractionEnabled = YES;
 
     [self addSubview:self.statsLabel];
+    [self refreshStatsText];
 }
 
 #pragma mark - hitTest 穿透（关键：让触摸穿透到游戏画面）
@@ -396,7 +403,7 @@ static BOOL ame227_g_dockedLeft = NO;
     [self ame230_layoutCaption];
 
     // 统计标签默认位置：左上角
-    CGFloat defaultLabelX = 70;
+    CGFloat defaultLabelX = CGRectGetWidth(self.statsLabel.bounds) / 2 + 5;
     CGFloat defaultLabelY = bh * 0.05 + 30;
 
     NSNumber *savedLX = getPrefObject(kPrefStatsLabelX);
@@ -704,14 +711,39 @@ static BOOL ame227_g_dockedLeft = NO;
     self.statsLabelVisible = !self.statsLabelVisible;
 }
 
+- (void)toggleRendererLabel {
+    self.rendererVisible = !self.rendererVisible;
+    setPrefBool(kPrefRendererVisible, self.rendererVisible);
+    [self refreshStatsText];
+}
+
+- (void)refreshStatsText {
+    NSString *suffix = @"";
+    if (self.rendererVisible) {
+        NSDictionary *renderer = [CubicRuntimeInfo renderer];
+        BOOL confirmed = ![renderer[@"source"] isEqualToString:@"selection"];
+        NSString *name = confirmed ? renderer[@"name"] : localize(@"game.stats.renderer_pending", nil);
+        suffix = [NSString stringWithFormat:@"  |  %@", name];
+    }
+    self.statsLabel.text = [self.statsText stringByAppendingString:suffix];
+
+    // Reserve the numeric portion so normal FPS fluctuations don't move the pill.
+    CGFloat textWidth = [suffix sizeWithAttributes:@{NSFontAttributeName:self.statsLabel.font}].width;
+    CGFloat width = MIN(CGRectGetWidth(self.bounds), 144 + ceil(textWidth));
+    if (width <= 0 || CGRectGetWidth(self.statsLabel.bounds) == width) return;
+    CGRect oldFrame = self.statsLabel.frame;
+    // Grow toward the interior, keeping the edge nearest the user’s drag position.
+    CGFloat origin = CGRectGetMidX(oldFrame) <= CGRectGetMidX(self.bounds)
+        ? CGRectGetMinX(oldFrame) : CGRectGetMaxX(oldFrame) - width;
+    origin = MAX(0, MIN(CGRectGetWidth(self.bounds) - width, origin));
+    self.statsLabel.frame = CGRectMake(origin, oldFrame.origin.y, width, oldFrame.size.height);
+}
+
 - (void)updateFPS:(NSInteger)fps memoryUsageMB:(double)memoryMB {
-    // 在主线程更新（参照 FCL/ZL2 由游戏循环驱动）
-    // 使用 dispatch_async 避免阻塞调用方
+    if (fps < 0) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (fps >= 0) {
-            self.statsLabel.text = [NSString stringWithFormat:@"FPS: %ld | MEM: %.0fMB",
-                                    (long)fps, memoryMB];
-        }
+        self.statsText = [NSString stringWithFormat:@"FPS: %ld | MEM: %.0fMB", (long)fps, memoryMB];
+        if (!self.statsLabel.hidden) [self refreshStatsText];
     });
 }
 
@@ -729,6 +761,7 @@ static BOOL ame227_g_dockedLeft = NO;
     if (!CGSizeEqualToSize(ame250_now, ame250_lastSize)) {
         ame250_lastSize = ame250_now;
         if (ame250_now.width > 40.0 && ame250_now.height > 40.0) {
+            [self refreshStatsText];
             [self restorePositions];
             NSLog(@"[GameMenu] Task250: bounds changed to %@ -> gear handle re-docked / labels re-restored",
                   NSStringFromCGSize(ame250_now));

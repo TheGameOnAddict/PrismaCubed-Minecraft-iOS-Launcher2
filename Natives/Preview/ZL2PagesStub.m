@@ -56,6 +56,7 @@
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>          // category 补属性（autoPresentDetail/maxRetryCount）的关联对象存储
+#import "LiquidGlassCompat.h"
 #import "LauncherPreferences.h"   // getSelectedJavaHome / setPrefObject / getPrefBool / setPrefBool 声明
 #import "utils.h"                 // parseJSONFromFile 声明
 
@@ -339,9 +340,16 @@ NSString* getSelectedJavaHome(NSString* defaultJRETag, int minVersion) {
     return nil;
 }
 
+// The HUD preview uses the native material and keeps its renderer toggle for
+// the lifetime of this simulator process.
+BOOL LGCIsGlassStyleActive(void) { return NO; }
+void LGCRemoveGlassFromView(UIView *view) {}
+static BOOL previewRendererVisible = YES;
+
 // LauncherPreferences.h: BOOL getPrefBool(NSString *key);
 // 预览无偏好存储：恒 NO（账户页 warnings.local_warn 守卫走默认分支）
 BOOL getPrefBool(NSString *key) {
+    if ([key isEqual:@"game.stats_renderer_visible"]) return previewRendererVisible;
     return NO;
 }
 
@@ -352,6 +360,7 @@ void setPrefObject(NSString *key, id value) {
 
 // LauncherPreferences.h: void setPrefBool(NSString *key, BOOL value);
 void setPrefBool(NSString *key, BOOL value) {
+    if ([key isEqual:@"game.stats_renderer_visible"]) previewRendererVisible = value;
 }
 
 // utils.h: NSMutableDictionary* parseJSONFromFile(NSString *path);

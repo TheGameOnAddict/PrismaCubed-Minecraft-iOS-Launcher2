@@ -2,7 +2,8 @@
 #include <assert.h>
 #include <stdint.h>
 static uint64_t clockNs;
-static uint64_t testClock(void) { return clockNs; }
+static unsigned clockReads;
+static uint64_t testClock(void) { ++clockReads; return clockNs; }
 #define PERFORMANCE_CLOCK testClock
 #include "../Natives/PerformanceFrames.c"
 
@@ -30,6 +31,11 @@ int main(void) {
     assert(s.queueSamples == 1 && s.queueMs == 4);
     clockNs = 63000000000;
     PerformanceFrame(PerformanceSwap);
+    assert(PerformanceQueueStamp() == 0); // No UI timer needed to end sampling.
+    unsigned stoppedReads = clockReads;
+    PerformanceOSMPhases(2, 1);
+    PerformanceFrame(PerformanceSwap);
+    assert(clockReads == stoppedReads);
     s = PerformanceSnapshot(false);
     assert(s.elapsed == 60 && s.intervals == 20 && PerformanceQueueStamp() == 0);
     PerformanceBegin();

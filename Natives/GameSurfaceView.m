@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 #import "GameSurfaceView.h"
 #import "LauncherPreferences.h"
 #import "PLProfiles.h"
@@ -21,6 +22,7 @@
 // 仍由 pojavSwapBuffers 独占——双重计数零风险。displayLink 的 FPS 递增
 // 分支同步退役（Gyro/Controller tick 保留）。
 @interface Ame248FPSMetalLayer : CAMetalLayer
+@property(atomic) BOOL confirmedVulkan;
 @end
 
 @implementation Ame248FPSMetalLayer
@@ -40,10 +42,19 @@
     ame223_bg_park_wait("metal_nextDrawable");
     // 每帧 swapchain 图像获取 = Vulkan 真实帧事件（MoltenVK present 内部
     // 必经点）。非 Vulkan 路径不计数（pojavSwapBuffers 独占）。
+    id<CAMetalDrawable> drawable = [super nextDrawable];
     if (pojavIsActualVulkanPath()) {
-        pojavIncrementFpsCounter();
+        if (drawable) {
+            if (!self.confirmedVulkan) {
+                [CubicRuntimeInfo observeNativeRenderer:"Vulkan"];
+                self.confirmedVulkan = YES;
+            }
+            pojavIncrementFpsCounter();
+        }
+    } else if (self.confirmedVulkan) {
+        self.confirmedVulkan = NO;
     }
-    return [super nextDrawable];
+    return drawable;
 }
 
 @end

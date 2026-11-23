@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 //
 // ZL2SettingPages.m — ZL2 设置子页实现（7.0-UI-13-S 八屏；Task344 扩容十屏：+AI/+调试，旧设置 83 项全量迁移）
 //
@@ -2307,15 +2308,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 // release 文件 JAVA_VERSION="…" 解析（旧页 javaVersionForPath 精简平移；
 // 解析失败返回 nil 由调用方过滤）
 - (nullable NSString *)ame_javaVersionForPath:(NSString *)path {
-    NSString *content = [NSString stringWithContentsOfFile:[path stringByAppendingPathComponent:@"release"]
-                                                  encoding:NSUTF8StringEncoding error:nil];
-    if (!content) return nil;
-    NSRange marker = [content rangeOfString:@"JAVA_VERSION=\""];
-    if (marker.location == NSNotFound) return nil;
-    NSString *rest = [content substringFromIndex:NSMaxRange(marker)];
-    NSRange end = [rest rangeOfString:@"\""];
-    if (end.location == NSNotFound) return nil;
-    return [rest substringToIndex:end.location];
+    return [CubicRuntimeInfo javaVersionAtHome:path];
 }
 
 - (NSInteger)ame_majorVersionForFullVersion:(NSString *)version {

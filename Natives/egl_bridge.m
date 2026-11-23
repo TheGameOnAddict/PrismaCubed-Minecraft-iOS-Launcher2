@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 #include "PerformanceFrames.h"
 #import "SurfaceViewController.h"
 
@@ -338,6 +339,7 @@ static void ame208_nggl4es_boot(void) {
     }
     ame208_init();   // 上下文已 current：硬件探测/能力缓存全部落真上下文
     s_ame208_done = 1;
+    [CubicRuntimeInfo observeNativeRenderer:"NG-GL4ES"];
     NSLog(@"[egl_bridge] Task208: NG-GL4ES initialize_gl4es() called post-MakeCurrent "
           "(resolver=%@, handle=%p) -- hardware probe ran on the real game context",
           ame208_resolver ? @"YES" : @"NO(egpa-missing)", ame208_ng);
@@ -397,6 +399,7 @@ static void ame211_gl4eszl2_boot(void) {
     }
     ame211_init();   // 上下文已 current：硬件探测/能力缓存全部落真上下文
     s_ame211_done = 1;
+    [CubicRuntimeInfo observeNativeRenderer:"GL4ES"];
     NSLog(@"[egl_bridge] Task211: ZL2 classic gl4es initialize_gl4es() called post-MakeCurrent "
           "(resolver=%@, handle=%p) -- hardware probe ran on the real game context",
           ame211_resolver ? @"YES" : @"NO(egpa-missing)", ame211_g4);

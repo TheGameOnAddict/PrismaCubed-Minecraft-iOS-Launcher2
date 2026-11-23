@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -3307,6 +3308,11 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
         PUSH_MARGV_LITERAL("-Xms128M");
     }
     PUSH_MARGV_FORMAT(@"-Xmx%dM", allocmem);
+    if (![defaultJRETag isEqualToString:@"execute_jar"]) {
+        NSString *javaVersion = [CubicRuntimeInfo javaVersionAtHome:javaHome] ?: javaHome.lastPathComponent;
+        [NSNotificationCenter.defaultCenter postNotificationName:@"CubicLaunchOptions" object:nil
+            userInfo:@{@"javaVersion":javaVersion, @"heapMiB":@(allocmem)}];
+    }
     // ============================================================================
     // Task68: GC / safepoint 停顿观测（「加载区块卡顿」归因层）
     // ============================================================================

@@ -8,6 +8,8 @@
 "game.menu.log_output" = "日誌輸出";
 "game.menu.custom_controls" = "自訂控制鍵";
 "game.menu.multiplayer" = "联机";
+"game.menu.toggle_renderer" = "切換渲染器顯示";
+"game.stats.renderer_pending" = "正在偵測算繪器…";
 "game.menu.toggle_stats" = "切換 FPS/記憶體顯示";
 "game.menu.toggle_controls" = "隱藏/顯示控制按鈕";
 "game.menu.toggle_virtual_mouse" = "虛擬滑鼠開關";
@@ -3888,3 +3890,5 @@
 "Recording starts in 3 seconds" = "3 秒後開始記錄";
 "Use Share Test Report for this run" = "可透過「分享測試報告」查看這次記錄";
 "The capture is running. Share after the 60 seconds finish." = "正在記錄。請在 60 秒結束後分享。";
+
+"cubic.boot.options" = "Java %1$@   ·   記憶體 %2$@   ·   算繪器 %3$@";

@@ -1,3 +1,4 @@
+#import "CubicRuntimeInfo.h"
 // Uses Witch Launcher's TGLMT C ABI, pinned to Witch_launcher bd09e27c.
 // The shipped renderer's MIT notice is in resources/licenses/TGLMT.txt.
 #import <Foundation/Foundation.h>
@@ -120,7 +121,10 @@ static void swapBuffers(void) {
         targetSize = size;
     }
     if (api.present(window, (__bridge void *)layer)) {
-        if (!presented) NSLog(@"[Renderer] TGLMT first Metal present succeeded");
+        if (!presented) {
+            [CubicRuntimeInfo observeNativeRenderer:"TGLMT"];
+            NSLog(@"[Renderer] TGLMT first Metal present succeeded");
+        }
         presented = YES;
         presentFailed = NO;
     } else if (!presentFailed) {

@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "smoke mode: screens (8 screens in both orientations) / cubic / syntax / preview / all"
+        description: "smoke mode: screens / projects / performance (boot in both orientations) / cubic / syntax / preview / all"
         required: false
         default: "all"
 

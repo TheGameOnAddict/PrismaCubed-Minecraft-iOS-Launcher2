@@ -1,5 +1,6 @@
 #import "PerformanceTest.h"
 #import "PerformanceFrames.h"
+#import "CubicRuntimeInfo.h"
 #import "PLProfiles.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <sys/utsname.h>
@@ -112,6 +113,9 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 }
 
 - (void)save {
+    NSDictionary *renderer = [CubicRuntimeInfo renderer];
+    self.report[@"renderer"] = renderer;
+    self.report[@"rendererLibrary"] = [renderer[@"library"] length] ? renderer[@"library"] : nil;
     NSDictionary *snapshot = [self snapshot];
     NSURL *url = self.url;
     dispatch_async(reportQueue(), ^{
@@ -172,11 +176,18 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     launching = nil;
     if (test) {
         test.report[@"status"] = @"waiting_for_scene";
+        test.report[@"profileName"] = PLProfiles.current.selectedProfile[@"name"] ?: profile;
         test.report[@"configuredRenderer"] = [PLProfiles resolveKeyForCurrentProfile:@"renderer"] ?: @"auto";
         test.report[@"gameSurfaceAfterSeconds"] = @(NSProcessInfo.processInfo.systemUptime - test.launchUptime);
         [test save];
     }
     return test;
+}
+
+- (void)recordLaunchOptions:(NSDictionary *)options {
+    if (!options.count) return;
+    self.report[@"launchOptions"] = [options copy];
+    [self save];
 }
 
 - (void)firstFrameObserved {
@@ -231,7 +242,15 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 }
 
 - (BOOL)tickWidth:(int)width height:(int)height memoryMiB:(double)memory {
-    if (!self.recording) return NO;
+    if (!self.recording) {
+        // A test can crash while loading or exploring, before Record is tapped.
+        // Persist the first confirmed renderer and any later fallback in that window.
+        if ([self.report[@"status"] isEqual:@"waiting_for_scene"]) {
+            NSDictionary *renderer = [CubicRuntimeInfo renderer];
+            if (![renderer isEqual:self.report[@"renderer"]]) [self save];
+        }
+        return NO;
+    }
     PerformanceSummary s = PerformanceSnapshot(false);
     if (s.elapsed <= 0) return NO;
     NSArray *thermal = @[@"nominal",@"fair",@"serious",@"critical"];
@@ -239,8 +258,6 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     [self.samples addObject:@{@"elapsedSeconds":@(s.elapsed), @"width":@(width), @"height":@(height),
         @"footprintMiB":@(memory), @"thermal":state < thermal.count ? thermal[state] : @"unknown",
         @"lowPower":@(NSProcessInfo.processInfo.lowPowerModeEnabled)}];
-    const char *renderer = getenv("AMETHYST_RENDERER");
-    if (renderer) self.report[@"rendererLibrary"] = [NSString stringWithUTF8String:renderer].lastPathComponent;
     NSInteger checkpoint = (NSInteger)s.elapsed / 5;
     if (checkpoint == self.checkpoint && s.elapsed < PerformanceSeconds) return NO;
     self.checkpoint = checkpoint;

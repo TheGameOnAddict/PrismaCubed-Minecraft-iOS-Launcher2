@@ -1,4 +1,5 @@
 #import "SceneDelegate.h"
+#include <math.h>
 #import "ios_uikit_bridge.h"
 #import "utils.h"
 #import "LauncherPreferences.h"
@@ -594,6 +595,60 @@ static void ame274_presentAfterSettling(UIViewController *presenter, UIViewContr
     [ame274_host presentViewController:target animated:YES completion:nil];
 }
 
+// The startup log already belongs to the new process. Match attachments to the
+// report the user actually opened, even if reopening the launcher rotated a log.
+static NSURL *crashFile(NSString *home, NSString *name, NSDate *reportDate) {
+    NSString *path = [home stringByAppendingPathComponent:name];
+    NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    if (![attributes.fileType isEqualToString:NSFileTypeRegular]) return nil;
+    if (reportDate && fabs([attributes.fileModificationDate timeIntervalSinceDate:reportDate]) > 120) return nil;
+    return [NSURL fileURLWithPath:path];
+}
+
+static NSArray *crashShareItems(NSString *home, NSString *content, NSString *headline, NSDate *reportDate) {
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSString *name in @[@"ame273_crash_report.last.txt", @"ame273_crash_report.txt"]) {
+        NSURL *file = crashFile(home, name, nil);
+        if (file && [[NSString stringWithContentsOfURL:file encoding:NSUTF8StringEncoding error:nil] isEqualToString:content]) {
+            [items addObject:file];
+            break;
+        }
+    }
+    // Still share the displayed report if the underlying file was moved or replaced.
+    if (items.count == 0) [items addObject:content];
+
+    NSRange match = [content rangeOfString:@"\\bhs_err_pid[0-9]+\\.log\\b" options:NSRegularExpressionSearch];
+    NSString *jvmFile = match.location == NSNotFound ? nil : [content substringWithRange:match];
+    if (jvmFile && reportDate) {
+        NSURL *file = crashFile(home, jvmFile, reportDate);
+        if (file) [items addObject:file];
+    }
+
+    if (reportDate && (jvmFile || headline.length >= 12)) {
+        for (NSString *name in @[@"latestlog.old.txt", @"latestlog.crash.txt"]) {
+            NSURL *file = crashFile(home, name, reportDate);
+            if (!file) continue;
+            NSFileHandle *reader = [NSFileHandle fileHandleForReadingFromURL:file error:nil];
+            unsigned long long size = 0;
+            NSData *tail = nil;
+            const NSUInteger limit = 256 * 1024;
+            if ([reader seekToEndReturningOffset:&size error:nil] &&
+                [reader seekToOffset:(size > limit ? size - limit : 0) error:nil]) {
+                tail = [reader readDataUpToLength:limit error:nil];
+            }
+            [reader closeAndReturnError:nil];
+            // Compare byte sequences: the bounded read can start mid-UTF-8 character.
+            NSString *marker = jvmFile ?: headline;
+            NSData *needle = [marker dataUsingEncoding:NSUTF8StringEncoding];
+            if (tail.length && [tail rangeOfData:needle options:0 range:NSMakeRange(0, tail.length)].location != NSNotFound) {
+                [items addObject:file];
+                break;
+            }
+        }
+    }
+    return items;
+}
+
 /// 读取 $POJAV_HOME/ame273_crash_report.txt（上次会话非零退出的崩溃原因，
 /// 由 main_hook ame273_writeCrashReport 在 hooked_exit 内同步落盘）→ 弹窗
 /// 展示"崩溃类别 + 关键原因行 + Fabric 修复建议 + 详情摘要"，动作：
@@ -608,6 +663,7 @@ static void ame274_presentAfterSettling(UIViewController *presenter, UIViewContr
         NSString *content = [NSString stringWithContentsOfFile:path
                                                       encoding:NSUTF8StringEncoding error:nil];
         if (content.length == 0) return;
+        NSDate *reportDate = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil].fileModificationDate;
 
         // ---- 解析 key: value + detail 块 ----
         NSString *exitCode = nil, *catCn = nil, *catEn = nil, *headline = nil, *fix = nil;
@@ -706,22 +762,23 @@ static void ame274_presentAfterSettling(UIViewController *presenter, UIViewContr
             [UIPasteboard generalPasteboard].string = content;
             NSLog(@"[SceneDelegate] Task273: crash reason copied to pasteboard (%lu chars)", (unsigned long)content.length);
         }]];
-        [ame273_alert addAction:[UIAlertAction actionWithTitle:localize(@"ame273.crash.view_full_log", nil)
+        [ame273_alert addAction:[UIAlertAction actionWithTitle:localize(@"crash.share_log", nil)
             style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            NSString *logPath = [home stringByAppendingPathComponent:@"latestlog.txt"];
-            UIActivityViewController *ame273_share = [[UIActivityViewController alloc]
-                initWithActivityItems:@[logPath, [NSURL fileURLWithPath:logPath]]
-                                applicationActivities:nil];
-            ame273_share.popoverPresentationController.sourceView = ame273_anchor.view;
-            ame273_share.popoverPresentationController.sourceRect =
-                CGRectMake(presenter.view.bounds.size.width / 2.0,
-                           presenter.view.bounds.size.height / 2.0, 1, 1);
-            // ★ Task274-g（G6）：alert handler 触发时本 alert 正在收尾，直接
-            //   present 撞 presentation-in-progress（疑似首点无响应）——
-            //   等 0.5s 收尾动画走完，再从稳定顶端呈现（ame274_presentAfterSettling）。
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                ame274_presentAfterSettling(ame273_anchor, ame273_share, 1);
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                NSArray *items = crashShareItems(home, content, headline, reportDate);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    UIActivityViewController *share = [[UIActivityViewController alloc]
+                        initWithActivityItems:items applicationActivities:nil];
+                    share.popoverPresentationController.sourceView = ame273_anchor.view;
+                    CGRect bounds = ame273_anchor.view.bounds;
+                    share.popoverPresentationController.sourceRect =
+                        CGRectMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds), 1, 1);
+                    // Let the alert finish dismissing before presenting the activity sheet.
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), ^{
+                        ame274_presentAfterSettling(ame273_anchor, share, 1);
+                    });
+                });
             });
         }]];
         [ame273_alert addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil)

@@ -27,7 +27,8 @@
 #import "UIKit+hook.h"
 #import "ios_uikit_bridge.h"
 #import "LanPortDetector.h"
-#import "BackgroundManager.h"
+#import "CubicBootBackdrop.h"
+#import "CubicRuntimeInfo.h"
 #import "AmeNativeMenu.h"   // Task247（T9）：伪玻璃档 ⚙ 按钮菜单走磨砂面板路由
 #import "LiquidGlassCompat.h"   // Task247（T9）：LGCIsPseudoGlassStyleActive 风格分档判定
 #import "AmeTheme.h"   // ★ 7.0-UI-3f：Fluent 设计令牌（仅启动器铬件色；游戏画布/HUD/控制按钮色一律不动）
@@ -523,7 +524,8 @@ static BOOL ame83_fsr_capable_renderer(NSString *renderer) {
 //        - 命中 → 返回对应控件，用户可拖动/点击
 //        - 未命中 → 返回 nil，触摸继续穿透到游戏画面
 @property(nonatomic, strong) UIView *launchOverlayView;
-@property(nonatomic, strong) CAGradientLayer *launchGradientLayer;
+@property(nonatomic, strong) CubicBootOptionsLabel *bootOptionsLabel;
+@property(nonatomic, copy) NSDictionary *bootOptions;
 
 @property(nonatomic, strong) UILabel *launchTitleLabel;
 // ★ Task222（清单第 16 项）：高级启动进度（阶段文案 + 微光进度条 + 耗时 + 信息胶囊）
@@ -1442,6 +1444,7 @@ static NSInteger ame283_lastLandscapeDev = 0;
     [self.view addSubview:self.rootView];
 
     self.ctrlView = [[ControlLayout alloc] initWithFrame:getSafeArea(self.view.frame)];
+    [CubicRuntimeInfo reset];
     self.performanceTest = [PerformanceTest takeForGame:PLProfiles.current.selectedProfileName];
     [self performSelector:@selector(initCategory_Navigation)];
 
@@ -1718,10 +1721,6 @@ static NSInteger ame283_lastLandscapeDev = 0;
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    // 更新启动遮罩层渐变背景的 frame（旋转/尺寸变化时）
-    if (self.launchGradientLayer && self.launchOverlayView) {
-        self.launchGradientLayer.frame = self.launchOverlayView.bounds;
-    }
     // ★ Task261（用户："切小窗再重新放大回去，输入会错误"自适应恢复）：
     //   iPadOS 26 自由窗口缩放【不】走 viewWillTransitionToSize（旋转专属），
     //   信念链（screenScale/surface/windowWidth/drawableSize）在小窗期间与
@@ -3217,19 +3216,6 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 ///   │        [ 取消启动 ]              │
 ///   └─────────────────────────────────┘
 - (void)setupLaunchOverlay {
-    // ============================================================
-    // FCL 风格启动界面：中间转圈圈 + 显示自定义启动器背景
-    // ============================================================
-    // 参照 FCL (FoldCraftLauncher) 的启动加载界面：
-    //   - 背景显示启动器的自定义壁纸（如果有）
-    //   - 屏幕正中央显示一个大的旋转加载指示器
-    //   - 指示器下方显示简短的标题文字（如"正在启动 Minecraft"）
-    //   - 不显示进度条、百分比、阶段文案、信息卡片等多余元素
-    //   - 底部保留一个小的"取消启动"按钮
-    //
-    // 之前的实现包含了图标、进度条、百分比、已耗时、信息卡片、
-    // 阶段轮转文案等大量元素，过于复杂。FCL 的设计理念是简洁：
-    // 用户只需要知道"正在加载"即可，不需要知道详细的阶段和进度。
     self.launchStartTime = [NSDate timeIntervalSinceReferenceDate];
     self.launchOverlayDismissed = NO;
 
@@ -3244,54 +3230,10 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     self.launchOverlayView.userInteractionEnabled = NO;
     [self.view addSubview:self.launchOverlayView];
 
-    // ========================================================================
-    // 背景层：显示自定义启动器背景
-    // ========================================================================
-    // 有自定义壁纸时：遮罩【自带】壁纸图层 + 暗化蒙层（增强文字可读性）
-    // 无自定义壁纸时：使用深色渐变作为回退
-    if ([[BackgroundManager sharedManager] hasBackground]) {
-        // ★ Task223（清单第 14 项“启动画面依旧没有显示自定义壁纸”根修）：
-        //   旧实现只是把遮罩设透明——期望窗口层的全局背景容器透出来；但
-        //   SurfaceViewController 成为根 VC 后其不透明视图把容器盖住，
-        //   实机表现 = 永远黑幕。新实现：遮罩内部直接铺 ame223_current-
-        //   WallpaperImage（降采样位图），与视图层级完全解耦。
-        self.launchOverlayView.backgroundColor = [UIColor clearColor];
-        UIImage *ame223_wall = [[BackgroundManager sharedManager] ame223_currentWallpaperImage];
-        if (ame223_wall != nil) {
-            UIImageView *ame223_wiv = [[UIImageView alloc] initWithImage:ame223_wall];
-            ame223_wiv.frame = self.launchOverlayView.bounds;
-            ame223_wiv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            ame223_wiv.contentMode = UIViewContentModeScaleAspectFill;
-            ame223_wiv.clipsToBounds = YES;
-            ame223_wiv.userInteractionEnabled = NO;
-            [self.launchOverlayView addSubview:ame223_wiv];
-        } else {
-            // 视频背景无法静态直取：黑底保底（文字可读优先）
-            self.launchOverlayView.backgroundColor = [UIColor blackColor];
-        }
-        UIView *dimOverlay = [[UIView alloc] initWithFrame:self.launchOverlayView.bounds];
-        dimOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        dimOverlay.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.78];
-        dimOverlay.userInteractionEnabled = NO;
-        [self.launchOverlayView addSubview:dimOverlay];
-    } else {
-        // 无自定义背景：使用深色渐变
-        CAGradientLayer *gradient = [CAGradientLayer layer];
-        gradient.frame = self.launchOverlayView.bounds;
-        gradient.colors = @[
-            (__bridge id)[UIColor colorWithRed:0.14 green:0.12 blue:0.11 alpha:1.0].CGColor,
-            (__bridge id)[UIColor colorWithRed:0.03 green:0.03 blue:0.05 alpha:1.0].CGColor,
-        ];
-        gradient.locations = @[@0.0, @1.0];
-        gradient.startPoint = CGPointMake(0.5, 0.0);
-        gradient.endPoint = CGPointMake(0.5, 1.0);
-        [self.launchOverlayView.layer insertSublayer:gradient atIndex:0];
-        self.launchGradientLayer = gradient;
-    }
+    CubicBootBackdrop *stone = [[CubicBootBackdrop alloc] initWithFrame:self.launchOverlayView.bounds];
+    stone.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.launchOverlayView addSubview:stone];
 
-    // ========================================================================
-    // 中央内容容器（居中显示转圈圈 + 标题）
-    // ========================================================================
     UIView *centerContainer = [[UIView alloc] init];
     centerContainer.translatesAutoresizingMaskIntoConstraints = NO;
     centerContainer.userInteractionEnabled = NO;
@@ -3327,6 +3269,11 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     versionLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
     versionLabel.textColor = [UIColor colorWithWhite:0.83 alpha:1];
     [centerContainer addSubview:versionLabel];
+    self.bootOptionsLabel = [CubicBootOptionsLabel new];
+    [self.bootOptionsLabel setJavaVersion:nil heap:nil renderer:nil];
+    [centerContainer addSubview:self.bootOptionsLabel];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(cubicLaunchOptions:)
+        name:@"CubicLaunchOptions" object:nil];
 
     self.launchTitleLabel = [[UILabel alloc] init];
     self.launchTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -3421,7 +3368,10 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
         [versionLabel.topAnchor constraintEqualToAnchor:self.launchTitleLabel.bottomAnchor constant:3],
         [versionLabel.leadingAnchor constraintEqualToAnchor:centerContainer.leadingAnchor],
         [versionLabel.trailingAnchor constraintEqualToAnchor:centerContainer.trailingAnchor],
-        [self.launchStageLabel.topAnchor constraintEqualToAnchor:versionLabel.bottomAnchor constant:12],
+        [self.bootOptionsLabel.topAnchor constraintEqualToAnchor:versionLabel.bottomAnchor constant:8],
+        [self.bootOptionsLabel.leadingAnchor constraintEqualToAnchor:centerContainer.leadingAnchor],
+        [self.bootOptionsLabel.trailingAnchor constraintEqualToAnchor:centerContainer.trailingAnchor],
+        [self.launchStageLabel.topAnchor constraintEqualToAnchor:self.bootOptionsLabel.bottomAnchor constant:10],
         [self.launchStageLabel.leadingAnchor constraintEqualToAnchor:centerContainer.leadingAnchor],
         [self.launchStageLabel.trailingAnchor constraintEqualToAnchor:centerContainer.trailingAnchor],
 
@@ -3521,6 +3471,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 - (void)ame267_onLogLine:(NSNotification *)note {
     NSString *line = note.userInfo[@"line"];
     if (![line isKindOfClass:NSString.class]) return;
+    [CubicRuntimeInfo observeGameLine:line];
     static BOOL s_ame267_fallbackToasted = NO;
     if (s_ame267_fallbackToasted) return;
     if ([line containsString:@"Using graphics backend Vulkan"] &&
@@ -3560,6 +3511,23 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 ///    不可靠，时间轴是 Pojav 系启动器的通用形态），阶段切换带淡入淡出；
 /// 2. 首个周期挂载微光扫过动画（track 首次 layout 后才有真实宽度）；
 /// 3. 刷新已耗时（等宽数字，秒级）。
+- (void)cubicLaunchOptions:(NSNotification *)notification {
+    NSDictionary *options = notification.userInfo;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.bootOptions = options;
+        [self.performanceTest recordLaunchOptions:options];
+        [self refreshBootOptions];
+    });
+}
+
+- (void)refreshBootOptions {
+    if (!self.bootOptions || self.launchOverlayDismissed) return;
+    NSDictionary *renderer = [CubicRuntimeInfo renderer];
+    [self.bootOptionsLabel setJavaVersion:self.bootOptions[@"javaVersion"]
+                                     heap:[NSString stringWithFormat:@"%@ MiB", self.bootOptions[@"heapMiB"]]
+                                 renderer:renderer[@"name"]];
+}
+
 - (void)cubicRuntimeStarted:(NSNotification *)notification {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!self.launchOverlayDismissed) self.launchStageLabel.text = localize(@"cubic.boot.waiting", nil);
@@ -3568,6 +3536,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 
 - (void)updateLaunchStage {
     if (self.launchOverlayDismissed) return;
+    [self refreshBootOptions];
 
     NSTimeInterval elapsed = [NSDate timeIntervalSinceReferenceDate] - self.launchStartTime;
 
@@ -3638,7 +3607,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
                          completion:^(BOOL finished) {
             [self.launchOverlayView removeFromSuperview];
             self.launchOverlayView = nil;
-            self.launchGradientLayer = nil;
+            self.bootOptionsLabel = nil;
             [self.launchCancelButton removeFromSuperview];
             self.launchCancelButton = nil;
             [[NSNotificationCenter defaultCenter] removeObserver:self name:@"PojavFirstFrameRendered" object:nil];
@@ -3671,7 +3640,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 
         [self.launchOverlayView removeFromSuperview];
         self.launchOverlayView = nil;
-        self.launchGradientLayer = nil;
+        self.bootOptionsLabel = nil;
         [self.launchCancelButton removeFromSuperview];
         self.launchCancelButton = nil;
         // ★ Task242：错误/取消路径同样补悬浮件 z 序提升（同 onFirstFrame
@@ -6310,7 +6279,7 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"AME172_SDLStopTextInput" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidBecomeActiveNotification object:nil];   // Task247
     self.launchOverlayView = nil;
-    self.launchGradientLayer = nil;
+    self.bootOptionsLabel = nil;
 
     // 关键修复（UI 累积异常）：移除 5 个块式通知观察者。
     // 之前只移除了 PojavFirstFrameRendered，未移除以下 5 个块观察者，
