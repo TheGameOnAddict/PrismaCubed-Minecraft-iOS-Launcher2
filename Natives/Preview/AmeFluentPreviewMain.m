@@ -753,26 +753,39 @@ static UIControl *PreviewModSwitch(UIView *root) {
     return nil;
 }
 
-static void CheckProjectPresentation(ModVersionViewController *detail, NSString *expectedHeading) {
-    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:15];
-    __block BOOL ready = NO;
-    __block BOOL evaluating = NO;
-    __block id lastObservation = nil;
-    while (!ready && deadline.timeIntervalSinceNow > 0) {
-        ProjectPresentationView *page = [detail valueForKey:@"presentation"];
-        if (page && !evaluating) {
-            evaluating = YES;
-            NSString *query = @"const a=document.querySelector('article'), img=a?.querySelector('img');return {heading:a?.querySelector('h2')?.textContent||'', strong:!!a?.querySelector('strong'), table:!!a?.querySelector('table'), link:!!a?.querySelector('a[href]'), image:img?.naturalWidth||0, renderer:typeof presentProject};";
-            [page callAsyncJavaScript:query arguments:@{} inFrame:nil inContentWorld:WKContentWorld.defaultClientWorld completionHandler:^(id result, NSError *error) {
-                lastObservation = error ?: result;
-                ready = !error && [result[@"heading"] isEqual:expectedHeading] && [result[@"strong"] boolValue] &&
-                    [result[@"table"] boolValue] && [result[@"link"] boolValue] && [result[@"image"] integerValue] > 0;
-                evaluating = NO;
-            }];
+static void CheckProjectPresentation(ModVersionViewController *detail, NSString *expectedHeading,
+                                     NSDate *deadline, void (^completion)(void)) {
+    ProjectPresentationView *page = [detail valueForKey:@"presentation"];
+    void (^observed)(id, NSError *) = ^(id result, NSError *error) {
+        if (!error && [result[@"heading"] isEqual:expectedHeading] && [result[@"strong"] boolValue] &&
+            [result[@"table"] boolValue] && [result[@"link"] boolValue] && [result[@"image"] integerValue] > 0) {
+            completion();
+            return;
         }
-        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        NSCAssert(deadline.timeIntervalSinceNow > 0, @"Missing formatted article: %@ (%@)", expectedHeading, error ?: result);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 8), dispatch_get_main_queue(), ^{
+            CheckProjectPresentation(detail, expectedHeading, deadline, completion);
+        });
+    };
+    if (!page) { observed(nil, nil); return; }
+    NSString *query = @"const a=document.querySelector('article'), img=a?.querySelector('img');return {heading:a?.querySelector('h2')?.textContent||'', strong:!!a?.querySelector('strong'), table:!!a?.querySelector('table'), link:!!a?.querySelector('a[href]'), image:img?.naturalWidth||0, renderer:typeof presentProject};";
+    [page callAsyncJavaScript:query arguments:@{} inFrame:nil inContentWorld:WKContentWorld.defaultClientWorld completionHandler:observed];
+}
+
+static void CheckProjectSources(ModVersionViewController *detail, NSArray<NSNumber *> *sources, void (^done)(void)) {
+    if (!sources.count) { done(); return; }
+    UIStackView *stack = [detail valueForKey:@"projectStack"];
+    UIStackView *provider = stack.arrangedSubviews.firstObject;
+    UISegmentedControl *control = provider.arrangedSubviews.firstObject;
+    NSInteger index = sources.firstObject.integerValue;
+    if (control.selectedSegmentIndex != index) {
+        control.selectedSegmentIndex = index;
+        [control sendActionsForControlEvents:UIControlEventValueChanged];
     }
-    NSCAssert(ready, @"Missing formatted article: %@ (%@)", expectedHeading, lastObservation);
+    NSString *heading = index ? @"Dragon habitats" : @"Dragon field guide";
+    CheckProjectPresentation(detail, heading, [NSDate dateWithTimeIntervalSinceNow:20], ^{
+        CheckProjectSources(detail, [sources subarrayWithRange:NSMakeRange(1, sources.count - 1)], done);
+    });
 }
 
 static void PreviewScreens(UIWindow *window) {
@@ -876,6 +889,31 @@ static void PreviewScreens(UIWindow *window) {
             [page layoutIfNeeded];
         }
         if (quickRoute) NSCAssert(downloaded && [nav.topViewController isKindOfClass:ZL2AssetSearchViewController.class], @"Quick install did not stay on the results screen");
+        void (^capture)(void) = ^{
+            NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";
+            CGSize size = window.bounds.size;
+            NSCAssert((size.width < size.height) == [orientation isEqual:@"portrait"], @"Unexpected viewport %@", NSStringFromCGSize(size));
+            NSString *directory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+            NSString *name = [NSString stringWithFormat:@"cubic-%@-%@.png",route,orientation];
+            UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:window.bounds];
+            NSData *png = [renderer PNGDataWithActions:^(UIGraphicsImageRendererContext *context) {
+                [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:YES];
+            }];
+            if (projectRoute) {
+                [nav popViewControllerAnimated:NO];
+                NSCAssert(nav.topViewController == home, @"Lost previous screen");
+                [home cubicBrowseModpacks];
+                UIGestureRecognizer *edge = [shell valueForKey:@"sectionBackGesture"];
+                NSCAssert([edge.delegate gestureRecognizerShouldBegin:edge], @"Browse has no edge back");
+                [shell ame_popCurrentIfPossible];
+                NSCAssert(!home.isBrowsingModpacks && ![edge.delegate gestureRecognizerShouldBegin:edge], @"Edge back at profile root");
+                [shell showPageAtIndex:4];
+                [shell showPageAtIndex:3];
+                [shell ame_popCurrentIfPossible];
+                NSCAssert([[shell valueForKey:@"currentIndex"] integerValue] == 4, @"Lost section history");
+            }
+            NSCAssert([png writeToFile:[directory stringByAppendingPathComponent:name] atomically:YES], @"Could not save %@",name);
+        };
         if (projectRoute) {
             ModVersionViewController *detail = (id)nav.topViewController;
             UITableView *table = [detail valueForKey:@"tableView"];
@@ -884,7 +922,6 @@ static void PreviewScreens(UIWindow *window) {
             UISegmentedControl *tabs = [detail valueForKey:@"tabs"];
             BOOL curse = [route isEqual:@"curseforge"];
             NSCAssert(tabs.selectedSegmentIndex == 0, @"Expected the author's presentation on entry");
-            CheckProjectPresentation(detail, curse ? @"Dragon habitats" : @"Dragon field guide");
             UIStackView *pageStack = [detail valueForKey:@"projectStack"];
             UIStackView *provider = pageStack.arrangedSubviews.firstObject;
             NSCAssert([provider.arrangedSubviews.firstObject isKindOfClass:UISegmentedControl.class] &&
@@ -922,44 +959,15 @@ static void PreviewScreens(UIWindow *window) {
             }
             tabs.selectedSegmentIndex = 0;
             [tabs sendActionsForControlEvents:UIControlEventValueChanged];
-            if (!installed) {
-                UISegmentedControl *switcher = provider.arrangedSubviews.firstObject;
-                switcher.selectedSegmentIndex = curse ? 0 : 1;
-                [switcher sendActionsForControlEvents:UIControlEventValueChanged];
-                CheckProjectPresentation(detail, curse ? @"Dragon field guide" : @"Dragon habitats");
-                pageStack = [detail valueForKey:@"projectStack"];
-                provider = pageStack.arrangedSubviews.firstObject;
-                switcher = provider.arrangedSubviews.firstObject;
-                switcher.selectedSegmentIndex = curse ? 1 : 0;
-                [switcher sendActionsForControlEvents:UIControlEventValueChanged];
-                CheckProjectPresentation(detail, curse ? @"Dragon habitats" : @"Dragon field guide");
-            }
-            [table setContentOffset:CGPointMake(0, -table.adjustedContentInset.top) animated:NO];
-            [window layoutIfNeeded];
+            NSArray *sources = installed ? @[@0] : (curse ? @[@1, @0, @1] : @[@0, @1, @0]);
+            CheckProjectSources(detail, sources, ^{
+                [table setContentOffset:CGPointMake(0, -table.adjustedContentInset.top) animated:NO];
+                [window layoutIfNeeded];
+                capture();
+            });
+            return;
         }
-        NSString *orientation = PreviewOrientation() == UIInterfaceOrientationMaskPortrait ? @"portrait" : @"landscape";
-        CGSize size = window.bounds.size;
-        NSCAssert((size.width < size.height) == [orientation isEqual:@"portrait"], @"Unexpected viewport %@", NSStringFromCGSize(size));
-        NSString *directory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-        NSString *name = [NSString stringWithFormat:@"cubic-%@-%@.png",route,orientation];
-        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:window.bounds];
-        NSData *png = [renderer PNGDataWithActions:^(UIGraphicsImageRendererContext *context) {
-            [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:YES];
-        }];
-        if (projectRoute) {
-            [nav popViewControllerAnimated:NO];
-            NSCAssert(nav.topViewController == home, @"Lost previous screen");
-            [home cubicBrowseModpacks];
-            UIGestureRecognizer *edge = [shell valueForKey:@"sectionBackGesture"];
-            NSCAssert([edge.delegate gestureRecognizerShouldBegin:edge], @"Browse has no edge back");
-            [shell ame_popCurrentIfPossible];
-            NSCAssert(!home.isBrowsingModpacks && ![edge.delegate gestureRecognizerShouldBegin:edge], @"Edge back at profile root");
-            [shell showPageAtIndex:4];
-            [shell showPageAtIndex:3];
-            [shell ame_popCurrentIfPossible];
-            NSCAssert([[shell valueForKey:@"currentIndex"] integerValue] == 4, @"Lost section history");
-        }
-        NSCAssert([png writeToFile:[directory stringByAppendingPathComponent:name] atomically:YES], @"Could not save %@",name);
+        capture();
     });
 }
 
