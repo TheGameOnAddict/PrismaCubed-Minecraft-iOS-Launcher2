@@ -5,6 +5,9 @@
                   from:(UIViewController *)controller launch:(void (^)(void))launch;
 + (NSDictionary *)sceneForDirectory:(NSString *)directory since:(NSDate *)date;
 + (nullable NSURL *)latestReportForProfile:(NSString *)profile;
++ (nullable NSURL *)activeReportURL;
++ (nullable NSURL *)activeCaptureMarkerURL;
++ (NSDictionary *)reportWithHitchEvidence:(NSDictionary *)report atURL:(NSURL *)url;
 + (void)claimLaunchRequestForProfile:(NSString *)profile;
 + (instancetype)takeForGame:(NSString *)profile;
 @property(nonatomic, readonly) BOOL recording;

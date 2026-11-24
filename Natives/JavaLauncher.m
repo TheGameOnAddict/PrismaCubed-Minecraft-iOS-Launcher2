@@ -1,4 +1,6 @@
 #import "CubicRuntimeInfo.h"
+#import "CubicJVMPauses.h"
+#import "PerformanceTest.h"
 #import "CubicDiagnostics.h"
 #include <dirent.h>
 #include <dlfcn.h>
@@ -3321,6 +3323,15 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     PUSH_MARGV_FORMAT(@"-Xmx%dM", allocmem);
     if (![defaultJRETag isEqualToString:@"execute_jar"]) {
         NSString *javaVersion = [CubicRuntimeInfo javaVersionAtHome:javaHome] ?: javaHome.lastPathComponent;
+        NSURL *report = [PerformanceTest activeReportURL];
+        if (report) {
+            NSURL *marker = [PerformanceTest activeCaptureMarkerURL];
+            if (marker) PUSH_MARGV_FORMAT(@"-Dprismacubic.diagnostics.capture=%@", marker.path);
+            if (javaVersion.integerValue >= 17) {
+                NSString *pauseArgument = CubicPrepareJVMPauseArgument(report);
+                if (pauseArgument) PUSH_MARGV_FORMAT(@"%@", pauseArgument);
+            }
+        }
         [NSNotificationCenter.defaultCenter postNotificationName:@"CubicLaunchOptions" object:nil
             userInfo:@{@"javaVersion":javaVersion, @"heapMiB":@(allocmem)}];
     }

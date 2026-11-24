@@ -1,5 +1,7 @@
 #import "PerformanceTest.h"
 #import "PerformanceFrames.h"
+#import "CubicJVMPauses.h"
+#import "CubicHitchReport.h"
 #import "CubicRuntimeInfo.h"
 #import "CubicDiagnostics.h"
 #import "PLProfiles.h"
@@ -17,6 +19,19 @@
 #endif
 
 static PerformanceTest *requested, *launching;
+static NSURL *activeReport;
+static NSURL *activeMarker;
+
+// Only test reports created by this launcher can select a private sampler file.
+static NSURL *captureMarkerForReport(NSURL *url) {
+    NSString *name = url.lastPathComponent;
+    if (!name || [name rangeOfString:@"^Prisma-[0-9]{13}-[a-fA-F0-9]{8}\\.json$"
+        options:NSRegularExpressionSearch].location == NSNotFound) return nil;
+    NSURL *root = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
+    return [[root URLByAppendingPathComponent:@"PrismaFrameSamples" isDirectory:YES]
+        URLByAppendingPathComponent:[name.stringByDeletingPathExtension stringByAppendingPathExtension:@"start"]];
+}
+
 static dispatch_queue_t reportQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
@@ -159,6 +174,45 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     return sceneContext(directory, date);
 }
 
++ (NSURL *)activeReportURL {
+    @synchronized (self) { return activeReport; }
+}
+
++ (NSURL *)activeCaptureMarkerURL {
+    @synchronized (self) { return activeMarker; }
+}
+
+// Runs on the report writer or the ZIP worker. A checkpoint can precede the
+// Java sampler's final atomic write, so refresh the evidence again at export.
++ (NSDictionary *)reportWithHitchEvidence:(NSDictionary *)report atURL:(NSURL *)url {
+    NSNumber *epoch = report[@"captureWindowStartEpochMs"];
+    NSDictionary *timing = report[@"frameTiming"];
+    if (![epoch isKindOfClass:NSNumber.class] || ![timing isKindOfClass:NSDictionary.class]) return report;
+    NSNumber *elapsed = timing[@"measuredSeconds"];
+    if (![elapsed isKindOfClass:NSNumber.class] || elapsed.doubleValue <= 0 || elapsed.doubleValue > PerformanceSeconds)
+        return report;
+    NSURL *marker = captureMarkerForReport(url);
+    if (!marker) return report;
+    NSMutableDictionary *updated = [report mutableCopy];
+    NSDictionary *saved = report[@"jvmPauses"];
+    if (![saved isKindOfClass:NSDictionary.class] || ![saved[@"coversWindowStart"] isEqual:@YES]) {
+        NSDictionary *pauses = CubicReadJVMPauses(url, epoch.doubleValue, elapsed.doubleValue);
+        if (pauses && (!saved || [pauses[@"coversWindowStart"] isEqual:@YES])) updated[@"jvmPauses"] = pauses;
+    }
+    NSURL *sidecar = [marker URLByAppendingPathExtension:@"json"];
+    int parent = open(marker.URLByDeletingLastPathComponent.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    NSData *bytes = readFile(parent, sidecar.lastPathComponent.fileSystemRepresentation, 1024 * 1024 + 1, nil);
+    if (parent >= 0) close(parent);
+    id java = bytes.length && bytes.length <= 1024 * 1024 ? [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil] : nil;
+    if (![java isKindOfClass:NSDictionary.class] || ![java[@"captureStartEpochMs"] isEqual:epoch]) java = nil;
+    // Keep the terminal interpretation when iOS has since evicted the cache.
+    if (java || ![updated[@"hitchAnalysis"] isKindOfClass:NSDictionary.class]) {
+        NSDictionary *analysis = CubicHitchAnalysis(updated, java, updated[@"jvmPauses"]);
+        if (analysis) updated[@"hitchAnalysis"] = analysis;
+    }
+    return updated;
+}
+
 - (NSDictionary *)snapshot {
     NSMutableDictionary *copy = [self.report mutableCopy];
     copy[@"samples"] = [self.samples copy];
@@ -175,7 +229,9 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     NSURL *url = self.url;
     dispatch_async(reportQueue(), ^{
         NSError *error;
-        NSData *data = [NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:&error];
+        BOOL terminal = [snapshot[@"status"] isEqual:@"completed"] || [snapshot[@"status"] isEqual:@"interrupted"];
+        NSDictionary *payload = terminal ? [PerformanceTest reportWithHitchEvidence:snapshot atURL:url] : snapshot;
+        NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&error];
         if (![data writeToURL:url options:NSDataWritingAtomic error:&error]) NSLog(@"[PerformanceTest] checkpoint failed (%ld)", (long)error.code);
     });
 }
@@ -253,6 +309,13 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 + (instancetype)takeForGame:(NSString *)profile {
     PerformanceTest *test = [launching.profile isEqual:profile] ? launching : nil;
     launching = nil;
+    NSURL *marker = test ? captureMarkerForReport(test.url) : nil;
+    if (marker && ![NSFileManager.defaultManager createDirectoryAtURL:marker.URLByDeletingLastPathComponent
+        withIntermediateDirectories:YES attributes:nil error:nil]) marker = nil;
+    @synchronized (self) {
+        activeReport = test.url;
+        activeMarker = marker;
+    }
     if (test) {
         test.report[@"status"] = @"waiting_for_scene";
         test.report[@"profileName"] = PLProfiles.current.selectedProfile[@"name"] ?: profile;
@@ -298,7 +361,14 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         dispatch_async(dispatch_get_main_queue(), ^{ self.context = scene; [self save]; });
     });
     self.metalDevice = MTLCreateSystemDefaultDevice();
+    long long epoch = llround(NSDate.date.timeIntervalSince1970 * 1000) + PerformanceLeadInSeconds * 1000;
     PerformanceBegin();
+    self.report[@"captureWindowStartEpochMs"] = @(epoch);
+    NSURL *marker = PerformanceTest.activeCaptureMarkerURL;
+    if (marker) {
+        NSString *signal = [NSString stringWithFormat:@"%lld\n", epoch];
+        [signal writeToURL:marker atomically:YES encoding:NSASCIIStringEncoding error:nil];
+    }
     [self save];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
     return YES;
@@ -324,6 +394,32 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         timing[@"p95IntervalMsCeil"] = @(s.p95ms);
         timing[@"p99IntervalMsCeil"] = @(s.p99ms);
         timing[@"maxIntervalMs"] = @(s.longestMs);
+    }
+    NSMutableArray *slowest = [NSMutableArray arrayWithCapacity:s.slowFrameCount];
+    for (unsigned i = 0; i < s.slowFrameCount; i++) {
+        PerformanceSlowFrame frame = s.slowFrames[i];
+        NSMutableDictionary *entry = [@{@"endSeconds":@(frame.endSeconds), @"intervalMs":@(frame.intervalMs)} mutableCopy];
+        if (frame.hasSwapPhases) {
+            entry[@"swapMs"] = @(frame.swapMs);
+            entry[@"outsideSwapMs"] = @(frame.outsideSwapMs);
+        }
+        if (frame.hasEGLPhases) {
+            entry[@"prePresentMs"] = @(frame.prePresentMs);
+            entry[@"eglPresentMs"] = @(frame.eglPresentMs);
+        }
+        if (frame.hasThreadCPU) entry[@"threadCpuMs"] = @(frame.threadCpuMs);
+        [slowest addObject:entry];
+    }
+    timing[@"slowestIntervals"] = slowest;
+    if (s.phaseIntervalCount) {
+        timing[@"swapPhaseIntervals"] = @(s.phaseIntervalCount);
+        timing[@"meanSwapMs"] = @(s.swapTotalMs / s.phaseIntervalCount);
+        timing[@"meanOutsideSwapMs"] = @(s.outsideSwapTotalMs / s.phaseIntervalCount);
+    }
+    if (s.eglIntervalCount) {
+        timing[@"eglPhaseIntervals"] = @(s.eglIntervalCount);
+        timing[@"meanPrePresentMs"] = @(s.prePresentTotalMs / s.eglIntervalCount);
+        timing[@"meanEGLPresentMs"] = @(s.eglPresentTotalMs / s.eglIntervalCount);
     }
     if (s.osmSamples) timing[@"osmPhases"] = @{@"samples":@(s.osmSamples), @"meanFinishMs":@(s.finishMs/s.osmSamples), @"meanReadbackPhaseMs":@(s.readbackMs/s.osmSamples)};
     if (s.queueSamples) timing[@"osmMainQueue"] = @{@"samples":@(s.queueSamples), @"meanWaitMs":@(s.queueMs/s.queueSamples)};
@@ -382,7 +478,11 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 }
 
 - (void)interrupt {
-    if (self.recording) [self updateSummary:PerformanceSnapshot(true) stopped:YES];
+    if (self.recording) {
+        NSURL *marker = PerformanceTest.activeCaptureMarkerURL;
+        if (marker) [NSFileManager.defaultManager removeItemAtURL:marker error:nil];
+        [self updateSummary:PerformanceSnapshot(true) stopped:YES];
+    }
 }
 
 @end

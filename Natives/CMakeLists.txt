@@ -639,7 +639,9 @@ add_executable(AngelAuraAmethyst
   PerformanceTest.m
   CubicBootBackdrop.m
   CubicRuntimeInfo.m
+  CubicJVMPauses.m
   CubicDiagnostics.m
+  CubicHitchReport.m
   CubicDiagnosticText.m
   ProjectPresentationView.m
   ModProjectCatalog.m
