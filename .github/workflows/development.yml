@@ -16,32 +16,14 @@ jobs:
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            /patches/mobilegl-ordered-texture-updates.patch
-            /scripts/build_pinned_mobilegl.sh
-            /Natives/resources/Frameworks/libMoltenVK.dylib
-      - name: Select compiler and build patched iPhone renderer
-        shell: bash
-        run: |
-          set -euo pipefail
-          for app in /Applications/Xcode_26*.app; do
-            if [ -d "$app" ]; then export DEVELOPER_DIR="$app/Contents/Developer"; break; fi
-          done
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-          cmake --version
-          if ! command -v ninja >/dev/null; then
-            curl -fLsS --retry 3 https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-mac.zip -o "$RUNNER_TEMP/ninja.zip"
-            mkdir "$RUNNER_TEMP/ninjabin"
-            unzip -q "$RUNNER_TEMP/ninja.zip" -d "$RUNNER_TEMP/ninjabin"
-            export PATH="$RUNNER_TEMP/ninjabin:$PATH"
-          fi
-          export CMAKE_GENERATOR=Ninja
-          bash scripts/build_pinned_mobilegl.sh "$RUNNER_TEMP/driver" /usr/bin/make "$(sysctl -n hw.logicalcpu)"
-      - uses: actions/upload-artifact@v4
+            /scripts/test_ipa_entitlements.py
+      - name: Fetch pinned, verified iPhone renderer
+        uses: actions/download-artifact@v4
         with:
           name: Magma-verified-arm64
-          path: ${{ runner.temp }}/driver/libMobileGL.dylib
-          if-no-files-found: error
+          run-id: 45440757552
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/driver
       - uses: actions/download-artifact@v4
         with:
           name: com.prisma-devs.prisma-ios.ipa
@@ -62,7 +44,7 @@ jobs:
           app="${apps[0]}"
           driver="$app/Frameworks/libMobileGL.dylib"
           test -f "$driver"
-          codesign -d --entitlements - "$app" > "$RUNNER_TEMP/entitlements.plist"
+          python3 "$GITHUB_WORKSPACE/scripts/test_ipa_entitlements.py" "$app/AngelAuraAmethyst" "$RUNNER_TEMP/entitlements.plist"
           plutil -lint "$RUNNER_TEMP/entitlements.plist"
           cp "$RUNNER_TEMP/driver/libMobileGL.dylib" "$driver"
           strip -x "$driver"
@@ -70,7 +52,7 @@ jobs:
           codesign --force --sign - --timestamp=none --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
           codesign --verify --verbose "$driver"
           codesign --verify --verbose "$app"
-          codesign -d --entitlements - "$app" > "$RUNNER_TEMP/signed-entitlements.plist"
+          python3 "$GITHUB_WORKSPACE/scripts/test_ipa_entitlements.py" "$app/AngelAuraAmethyst" "$RUNNER_TEMP/signed-entitlements.plist"
           python3 - <<'PY'
           import os, pathlib, plistlib
           root = pathlib.Path(os.environ["RUNNER_TEMP"])
