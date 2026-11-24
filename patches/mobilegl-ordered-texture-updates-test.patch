@@ -1,0 +1,71 @@
+diff --git a/Natives/external/MobileGL/MobileGL/MG_IntegrationTest/Scenarios/SampledSetStalenessScenario.cpp b/Natives/external/MobileGL/MobileGL/MG_IntegrationTest/Scenarios/SampledSetStalenessScenario.cpp
+index 8fb3df4..6b9e255 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_IntegrationTest/Scenarios/SampledSetStalenessScenario.cpp
++++ b/Natives/external/MobileGL/MobileGL/MG_IntegrationTest/Scenarios/SampledSetStalenessScenario.cpp
+@@ -137,6 +137,66 @@ void main() {
+ 
+     } // namespace
+ 
++    TEST_F(SampledSetStalenessScenario, RepeatedHostWritesPreserveEachVertexPaletteDraw) {
++        if (!Ready()) GTEST_SKIP() << "Headless GL fixture unavailable";
++        const char* vertex = R"(#version 430 core
++uniform sampler2D palette;
++flat out vec4 color;
++void main() {
++    vec2 corner = vec2((gl_VertexID & 1) == 0 ? -1.0 : 1.0,
++                       (gl_VertexID & 2) == 0 ? -1.0 : 1.0);
++    gl_Position = vec4(corner, 0.0, 1.0);
++    color = texelFetch(palette, ivec2(gl_InstanceID, 0), 0);
++})";
++        const char* fragment = R"(#version 430 core
++flat in vec4 color;
++out vec4 fragColor;
++void main() { fragColor = color; })";
++        std::string error;
++        GLuint program = CompileProgram(vertex, fragment, &error);
++        ASSERT_NE(program, 0u) << error;
++
++        BindFbo(m_target);
++        glUseProgram(program);
++        glBindVertexArray(m_vao);
++        glActiveTexture(GL_TEXTURE0);
++        glBindTexture(GL_TEXTURE_2D, m_texture);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++        glDisable(GL_BLEND);
++        glDisable(GL_SCISSOR_TEST);
++        glDisable(GL_DEPTH_TEST);
++        glUniform1i(glGetUniformLocation(program, "palette"), 0);
++
++        // The larger upload crosses Magma's 128 KiB eager-submit threshold.
++        // Both must preserve the first draw when the SAME texel is overwritten.
++        for (int rows : {8, 1024}) {
++            SCOPED_TRACE(rows);
++            std::vector<float> initial(8 * rows * 4, 0.0f);
++            initial[0] = initial[3] = 1.0f;
++            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 8, rows, 0, GL_RGBA, GL_FLOAT, initial.data());
++            glViewport(0, 0, kFboSize / 2, kFboSize);
++            glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, 1);
++            const float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
++            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_FLOAT, green);
++            glViewport(kFboSize / 2, 0, kFboSize / 2, kFboSize);
++            glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, 1);
++
++            // No readback, flush, finish or presentation between the two draws.
++            const Image image = ReadPixels(kFboSize, kFboSize);
++            EXPECT_EQ(FirstGLError(), 0u);
++            const Rgba8 left = image.At(kFboSize / 4, kFboSize / 2);
++            const Rgba8 right = image.At(3 * kFboSize / 4, kFboSize / 2);
++            EXPECT_EQ(left.r, 255);
++            EXPECT_EQ(left.g, 0);
++            EXPECT_EQ(right.r, 0);
++            EXPECT_EQ(right.g, 255);
++        }
++        glUseProgram(0);
++        glDeleteProgram(program);
++        Gl().EndFrame();
++    }
++
+     // The full sequence, ordered so the ONLY state change between the two draws is the filter.
+     TEST_F(SampledSetStalenessScenario, AQueuedClearIsMaterialisedWhenAFilterChangeCompletesTheTexture) {
+         if (!Ready() || IsSkipped()) return;
