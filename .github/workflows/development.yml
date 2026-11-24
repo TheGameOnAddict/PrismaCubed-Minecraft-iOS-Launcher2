@@ -7,8 +7,7 @@ permissions:
   actions: read
 
 env:
-  APP_REVISION: 6d7abfea52d4a8a24af1a3a8c2bed7f93887824b
-  BASELINE: bc4ea4243401652feb956ecddd282749be581f1b
+  APP_REVISION: 5ed699f0d38e212d87e165b3dd92fcf86be98b98
 
 jobs:
   build:
@@ -37,6 +36,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$APP_REVISION"
+          cc -std=c11 -pthread scripts/test_performance_frames.c -o "$RUNNER_TEMP/test-performance-frames"
+          "$RUNNER_TEMP/test-performance-frames"
           git submodule update --init --depth 1 --jobs 2 Natives/external/AFNetworking Natives/external/ZeroTierFramework
           sdk_xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
           if [ -d "$sdk_xcode" ]; then export DEVELOPER_DIR="$sdk_xcode/Contents/Developer"; fi
@@ -46,7 +47,7 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CROSSCOMPILING=true -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
             -DCMAKE_OSX_SYSROOT="$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=fix/profile-creation-and-startup-refresh \
+            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=perf/magma-frame-pacing-memory-capture \
             -DCONFIG_COMMIT="${APP_REVISION:0:7}" -DCONFIG_RELEASE=0
           cmake --build Natives/build --config Debug --target AngelAuraAmethyst --parallel "$(sysctl -n hw.logicalcpu)"
           exe=Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
@@ -55,35 +56,27 @@ jobs:
           python3 - "$exe" <<'PY'
           from pathlib import Path
           import sys
-          assert b'6d7abfe' in Path(sys.argv[1]).read_bytes()
+          assert b'5ed699f' in Path(sys.argv[1]).read_bytes()
           PY
       - name: Save native executable for packaging retries
         uses: actions/upload-artifact@v4
         with:
-          name: prisma-launcher-6d7abfe
+          name: prisma-launcher-5ed699f
           path: source/Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
       - name: Download last complete app payload
         uses: actions/download-artifact@v4
         with:
-          name: com.prisma-devs.prisma-ios.ipa
-          run-id: 45450410927
+          name: PrismaCubic-6d7abfe-iPhone
+          run-id: 45463598812
           github-token: ${{ github.token }}
           path: baseline
-      - name: Download previously tested Magma package
-        uses: actions/download-artifact@v4
-        with:
-          name: PrismaCubic-Magma-driver-test
-          run-id: 45444268762
-          github-token: ${{ github.token }}
-          path: tested
-      - name: Sign and verify test package against both previous builds
+      - name: Sign and verify launcher against phone-tested build
         shell: bash
         run: |
           set -euo pipefail
           archive=(baseline/*.ipa)
           test "${#archive[@]}" = 1
           base="$GITHUB_WORKSPACE/${archive[0]}"
-          fixture="$GITHUB_WORKSPACE/tested/PrismaCubic-Magma-driver-test.ipa"
           mkdir -p "$RUNNER_TEMP/repacked" result
           ditto -x -k "$base" "$RUNNER_TEMP/repacked"
           cd "$RUNNER_TEMP/repacked"
@@ -97,45 +90,39 @@ jobs:
           chmod +x "$exe"
           otool -L "$exe" | tail -n+2 | awk '{print $1}' | sort > "$RUNNER_TEMP/current.linkage"
           diff -u "$RUNNER_TEMP/baseline.linkage" "$RUNNER_TEMP/current.linkage"
-          unzip -p "$fixture" "$driver" > "$driver"
           codesign --verify --verbose "$driver"
-          files=("$exe" "$driver" "$app/_CodeSignature")
-          for lang in en zh-CN zh-Hans zh-Hant; do
-            localized="$lang.lproj/Localizable.strings"
-            cp "$GITHUB_WORKSPACE/source/Natives/resources/$localized" "$app/$localized"
-            files+=("$app/$localized")
-          done
+          files=("$exe" "$app/_CodeSignature")
           codesign --force --sign - --timestamp=none --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
           codesign --verify --verbose "$app"
           python3 "$helper" "$exe" "$RUNNER_TEMP/final.plist"
           cmp "$RUNNER_TEMP/entitlements.plist" "$RUNNER_TEMP/final.plist"
           dest="$GITHUB_WORKSPACE/result"
-          zip -qry "$dest/PrismaCubic-6d7abfe.ipa" Payload
+          zip -qry "$dest/PrismaCubic-5ed699f.ipa" Payload
           zip -qry "$dest/signed-overlay.zip" "${files[@]}"
-          python3 - "$dest/PrismaCubic-6d7abfe.ipa" "$base" "$fixture" "$dest/signed-overlay.zip" <<'PY'
+          python3 - "$dest/PrismaCubic-5ed699f.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
           from pathlib import Path
           import hashlib, sys, zipfile
-          out, baseline, tested, overlay = map(Path, sys.argv[1:])
-          with zipfile.ZipFile(out) as a, zipfile.ZipFile(baseline) as b, zipfile.ZipFile(tested) as t, zipfile.ZipFile(overlay) as o:
+          out, baseline, overlay = map(Path, sys.argv[1:])
+          with zipfile.ZipFile(out) as a, zipfile.ZipFile(baseline) as b, zipfile.ZipFile(overlay) as o:
               ignored = set(o.namelist())
               indexed = lambda z: {i.filename:(i.file_size,i.CRC) for i in z.infolist() if not i.is_dir() and i.filename not in ignored}
               assert indexed(a) == indexed(b)
               for name in ignored:
                   if not name.endswith('/'): assert a.read(name) == o.read(name)
               driver = 'Payload/AngelAuraAmethyst.app/Frameworks/libMobileGL.dylib'
-              assert a.read(driver) == t.read(driver)
+              assert a.read(driver) == b.read(driver)
               assert b'Ordered texture upload deferred: an earlier draw is still pending' in a.read(driver)
-              assert b'6d7abfe' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
+              assert b'5ed699f' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
           for path in (out,overlay):
               print(path.name,hashlib.sha256(path.read_bytes()).hexdigest())
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-6d7abfe-iPhone
-          path: result/PrismaCubic-6d7abfe.ipa
+          name: PrismaCubic-5ed699f-iPhone
+          path: result/PrismaCubic-5ed699f.ipa
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-6d7abfe-signed-overlay
+          name: PrismaCubic-5ed699f-signed-overlay
           path: result/signed-overlay.zip
           if-no-files-found: error
