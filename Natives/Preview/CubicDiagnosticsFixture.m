@@ -86,6 +86,42 @@ void CubicRunDiagnosticsFixture(void) {
         NSURL *dest = [docs URLByAppendingPathComponent:[NSString stringWithFormat:@"fixture-%@.zip",name]];
         NSCAssert([files copyItemAtURL:zip toURL:dest error:&error], @"Could not retrieve early exit ZIP: %@",error);
     }
+    // MobileGL reuses one file across all profiles. Run across midnight, then
+    // overwrite it from another profile and finally restore a stale copy.
+    [files removeItemAtURL:[root URLByAppendingPathComponent:@"ame273_crash_report.last.txt"] error:nil];
+    [files removeItemAtURL:[sessions URLByAppendingPathComponent:@"session.json"] error:nil];
+    format.dateFormat = @"yyyy-MM-dd HH:mm:ss";
+    NSDate *start = [format dateFromString:@"2026-01-18 23:59:57"];
+    NSDate *end = [start dateByAddingTimeInterval:15];
+    NSDictionary *mobileSession = @{@"id":run, @"profile":@"example", @"pid":@11111, @"directory":@"instances/example",
+        @"renderer":@{@"library":@"libMobileGL.dylib"}, @"start":@(start.timeIntervalSince1970)};
+    NSData *mobileData = [NSJSONSerialization dataWithJSONObject:mobileSession options:0 error:nil];
+    NSCAssert([mobileData writeToURL:[sessions URLByAppendingPathComponent:@"session.json"] atomically:YES], @"Could not write renderer session");
+    NSURL *mobileFile = [root URLByAppendingPathComponent:@"mobilegl.log"];
+    NSMutableString *driver = [NSMutableString stringWithString:@"[00:00:01] [macOS UnknownThread/INFO]: Initializing MobileGL...\n[00:00:01] [macOS UnknownThread/INFO]: Renderer Name: Magma\n[00:00:01] [macOS UnknownThread/INFO]: --accessToken renderer-canary\n"];
+    for (NSUInteger i = 0; i < 7000; i++) {
+        [driver appendFormat:@"[00:00:%02lu] [macOS UnknownThread/FATAL]: Vulkan error VK_ERROR_DEVICE_LOST (-4)\n"
+                              @"[00:00:%02lu] [macOS UnknownThread/FATAL]: Present, vkQueuePresentKHR\n",
+                              (unsigned long)(i%10+2),(unsigned long)(i%10+2)];
+    }
+    [driver appendString:@"[00:00:12] [macOS UnknownThread/FATAL]: final fence operation\n"];
+    writeFixture(driver,mobileFile,end);
+    NSURL *otherFile = [sessions URLByAppendingPathComponent:@"other.json"];
+    for (NSString *name in @[@"mobilegl", @"mobilegl-other-run", @"mobilegl-stale"]) {
+        if ([name isEqual:@"mobilegl-other-run"]) {
+            NSDictionary *other = @{@"id":NSUUID.UUID.UUIDString, @"profile":@"other", @"pid":@22222,
+                @"start":@([end timeIntervalSince1970]-2)};
+            NSCAssert([[NSJSONSerialization dataWithJSONObject:other options:0 error:nil] writeToURL:otherFile atomically:YES], @"Could not create other profile");
+        } else if ([name isEqual:@"mobilegl-stale"]) {
+            [files removeItemAtURL:otherFile error:nil];
+            writeFixture(@"[23:55:00] [macOS UnknownThread/INFO]: Initializing MobileGL...\nold renderer output\n",mobileFile,end);
+        }
+        NSError *error = nil;
+        NSURL *zip = [CubicDiagnostics archiveForProfile:@"example" directory:game.path crashReport:nil documents:root performanceReport:metrics error:&error];
+        NSCAssert(zip, @"Could not create renderer ZIP: %@",error);
+        NSURL *destination = [docs URLByAppendingPathComponent:[NSString stringWithFormat:@"fixture-%@.zip",name]];
+        NSCAssert([files copyItemAtURL:zip toURL:destination error:&error], @"Could not retrieve renderer fixture: %@",error);
+    }
     [files removeItemAtURL:root error:nil];
     writeFixture(@"ok", [docs URLByAppendingPathComponent:@"fixture-diagnostics.done"], now);
 }

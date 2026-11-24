@@ -19,6 +19,18 @@ def verify(directory, scenario):
     assert manifest["profile"] == "example"
     assert set(manifest["included"]) == entries.keys() - {"manifest.json"}
     assert "hs_err_pid99999.log" not in entries and "level.dat" not in entries
+    if scenario.startswith("mobilegl"):
+        if scenario == "mobilegl":
+            driver = entries["mobilegl.log"]
+            assert b"Initializing MobileGL" in driver and b"Renderer Name: Magma" in driver
+            assert b"renderer-canary" not in driver
+            assert b"middle omitted for export" in driver and b"repeated warning/error" in driver
+            assert 1 <= driver.count(b"VK_ERROR_DEVICE_LOST") <= 8
+            assert driver.rstrip().endswith(b"final fence operation") and len(driver) < 4096
+        else:
+            assert "mobilegl.log" not in entries and "mobilegl.log" in manifest["unavailable"]
+        print(f"{scenario}: verified renderer log association and excerpt")
+        return
     if scenario.startswith("early"):
         assert "game-latest.log" in manifest["unavailable"] and "game-latest.log" not in entries
         assert "hs_err_pid12260.log" not in entries and "hs_err_pid12260.log" not in manifest["unavailable"]
@@ -55,5 +67,5 @@ def verify(directory, scenario):
 
 
 if __name__ == "__main__":
-    for scenario in ("matched", "profile", "stale", "early", "early-profile"):
+    for scenario in ("matched", "profile", "stale", "early", "early-profile", "mobilegl", "mobilegl-other-run", "mobilegl-stale"):
         verify(Path(sys.argv[1]), scenario)

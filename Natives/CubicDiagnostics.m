@@ -2,6 +2,7 @@
 #import "CubicDiagnosticText.h"
 #import "PerformanceTest.h"
 #import <unistd.h>
+#import <stdlib.h>
 #import <sys/utsname.h>
 #if __has_include("config.h")
 #import "config.h"
@@ -147,6 +148,50 @@ static NSString *fatalSection(NSString *text, NSDate *date, NSString *crash) {
     return [prefix stringByAppendingString:selected];
 }
 
+// MobileGL truncates this shared file on startup. Its lines carry local wall
+// clock times; anchor the initialization line to the session's calendar day.
+static NSData *mobileGLExcerpt(NSURL *file, NSDictionary *session, NSDate *written) {
+    NSData *sample = logBytes(file,512*1024,NO);
+    NSString *text = logString(sample);
+    NSString *clock = match(text, @"(?<=^\\[)[0-9]{2}:[0-9]{2}:[0-9]{2}(?=\\] \\[[^\\r\\n]*?/INFO\\]: Initializing MobileGL)");
+    if (!clock || ![written isEqualToDate:modified(file)]) return nil;
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:[session[@"start"] doubleValue]];
+    NSDateFormatter *format = [NSDateFormatter new];
+    format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    format.defaultDate = start;
+    format.dateFormat = @"HH:mm:ss";
+    NSDate *init = [format dateFromString:clock];
+    if (!init) return nil;
+    if ([init timeIntervalSinceDate:start] <= -1)
+        init = [NSCalendar.currentCalendar dateByAddingUnit:NSCalendarUnitDay value:1 toDate:init options:0];
+    if ([init compare:written] == NSOrderedDescending) return nil;
+
+    // Redact before counting: otherwise hiding a repeated line could separate
+    // sensitive keys from their continuation values. Preserve the final lines
+    // verbatim, including the last Vulkan operation reported before shutdown.
+    NSString *redacted = logString(CubicRedactedDiagnosticData(sample));
+    if (!redacted.length) return nil;
+    NSArray<NSString *> *lines = [redacted componentsSeparatedByString:@"\n"];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    NSMutableString *excerpt = [NSMutableString string];
+    NSUInteger omitted = 0;
+    NSUInteger tail = lines.count > 9 ? lines.count - 9 : 0;
+    for (NSUInteger i = 0; i < lines.count; i++) {
+        NSString *line = lines[i];
+        if (i == tail && omitted)
+            [excerpt appendFormat:@"[Omitted %lu repeated warning/error lines from the sampled excerpt]\n",(unsigned long)omitted];
+        if (i < tail && line.length > 11 && [line hasPrefix:@"["] && [line characterAtIndex:9] == ']') {
+            NSString *message = [line substringFromIndex:11];
+            if ([message containsString:@"/FATAL]:"] || [message containsString:@"/ERROR]:"] || [message containsString:@"/WARN]:"]) {
+                if ([seen containsObject:message]) { omitted++; continue; }
+                [seen addObject:message];
+            }
+        }
+        if (i+1 < lines.count || line.length) [excerpt appendFormat:@"%@\n",line];
+    }
+    return [excerpt dataUsingEncoding:NSUTF8StringEncoding];
+}
+
 static NSURL *activeSessionURL;
 static NSMutableDictionary *activeSession;
 static dispatch_queue_t sessionWrites(void) {
@@ -172,6 +217,7 @@ static dispatch_queue_t sessionWrites(void) {
     NSString *relative = within(game,docs) ? [canonical(game) substringFromIndex:canonical(docs).length+1] : @"";
     NSString *run = NSUUID.UUID.UUIDString;
     NSDictionary *session = @{@"id":run, @"profile":profile, @"directory":relative, @"version":version ?: @"",
+        @"mobileGLLogEnabled":@(getenv("MOBILEGL_LOG_FILE_PATH") != NULL),
         @"pid":@(getpid()), @"start":@(NSDate.date.timeIntervalSince1970)};
     if ([files() createDirectoryAtURL:root withIntermediateDirectories:YES attributes:nil error:nil]) {
         dispatch_sync(sessionWrites(), ^{
@@ -208,20 +254,26 @@ static dispatch_queue_t sessionWrites(void) {
         NSDate *when = reportDate(crash);
         NSURL *root = child(out,@".sessions");
         NSArray *sessions = newestMatching(root,[NSPredicate predicateWithFormat:@"SELF ENDSWITH %@",@".json"],128);
-        NSDictionary *session = nil;
+        NSURL *mobileGL = child(docs,@"mobilegl.log");
+        NSDate *rendererWrite = regular(mobileGL) ? modified(mobileGL) : nil;
+        NSDictionary *session = nil, *rendererOwner = nil;
         NSString *explicitPID = match(crash,@"(?<=hs_err_pid)[0-9]+(?=\\.log)");
         NSString *explicitRun = snapshotRun(exitSnapshot(crash,docs,when));
         for (NSURL *file in sessions) {
             NSDictionary *s = loadJSON(file);
             if (![s[@"id"] isKindOfClass:NSString.class] || ![s[@"pid"] isKindOfClass:NSNumber.class] ||
                 ![s[@"start"] isKindOfClass:NSNumber.class] || ![s[@"profile"] isKindOfClass:NSString.class]) continue;
+            // The global renderer file belongs to the last recorded launch that
+            // started before its write. Check all profiles, even on a profile export.
+            if (rendererWrite && [s[@"start"] doubleValue] <= rendererWrite.timeIntervalSince1970 &&
+                [s[@"start"] doubleValue] > [rendererOwner[@"start"] doubleValue]) rendererOwner = s;
+            if (session) continue;
             if (explicitRun && ![s[@"id"] isEqual:explicitRun]) continue;
             if (profile.length && ![s[@"profile"] isEqual:profile]) continue;
             if (!profile.length && (!when || (!explicitRun.length && !explicitPID.length))) continue;
             if (explicitPID.length && ![[s[@"pid"] stringValue] isEqual:explicitPID]) continue;
             if (when && [s[@"start"] doubleValue] > when.timeIntervalSince1970+1) continue;
             session = s;
-            break;
         }
         if (session && !game && [session[@"directory"] length]) {
             NSURL *candidate = child(docs,session[@"directory"]);
@@ -293,6 +345,15 @@ static dispatch_queue_t sessionWrites(void) {
             if (tagged || matchedCrash || matchedProfile) { launcher = bytes; break; }
         }
         add(@"launcher.log", CubicRedactedDiagnosticData(launcher));
+        NSDictionary *observed = session[@"renderer"];
+        NSString *library = [observed isKindOfClass:NSDictionary.class] ? observed[@"library"] : nil;
+        BOOL expectsMobileGL = [session[@"mobileGLLogEnabled"] boolValue] ||
+            [library isEqual:@"libMobileGL.dylib"] || [library isEqual:@"libMobileGL-gles.dylib"];
+        if (expectsMobileGL) {
+            BOOL sameRun = [rendererOwner[@"id"] isEqual:session[@"id"]] &&
+                (!when || [rendererWrite timeIntervalSinceDate:when] < 2);
+            add(@"mobilegl.log",sameRun ? mobileGLExcerpt(mobileGL,session,rendererWrite) : nil);
+        }
         if (!performance && [session[@"profile"] length]) performance = [PerformanceTest latestReportForProfile:session[@"profile"]];
         NSData *measurements = logBytes(performance,1024*1024,YES);
         id run = measurements ? [NSJSONSerialization JSONObjectWithData:measurements options:0 error:nil] : nil;
