@@ -3898,3 +3898,9 @@
 "Export failed" = "匯出失敗";
 
 "prisma.profile.content_missing" = "找不到或無法存取已匯入的遊戲資料夾。請還原此資料夾或重新匯入模組包後再啟動。";
+
+"prisma.profile.invalid_name" = "名稱不能以點開頭，也不能包含斜線或控制字元。";
+
+"prisma.profile.invalid_registry" = "無法儲存設定檔清單。";
+
+"prisma.profile.library_changed" = "目前的設定檔庫已變更。請在目標設定檔庫中重新開啟新增設定檔。";

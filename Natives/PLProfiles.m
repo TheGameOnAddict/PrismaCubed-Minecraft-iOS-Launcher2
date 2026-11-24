@@ -8,6 +8,8 @@
 #import "LauncherPreferences.h"
 #import "PLProfiles.h"
 #import "ModpackLayout.h"
+#include <unistd.h>
+#include <fcntl.h>
 #import "utils.h"
 
 static PLProfiles* current;
@@ -225,27 +227,68 @@ static NSString *importedInstancesDirectory(void) {
     return [obj description] ?: @"";
 }
 
-- (void)save {
-    // ★ Task274-h S3：全树遍历（jsonSanitizedObject 递归枚举）+ 落盘整体在实例锁内，
-    //   防并发变更打断枚举（枚举中字典被改 = 崩溃面）。
-    @synchronized (self) {
-        id sanitized = [self jsonSanitizedObject:self.profileDict];
-        ModpackTranslateProfileDirectories(sanitized, importedInstancesDirectory(), YES);
-        if ([NSJSONSerialization isValidJSONObject:sanitized]) {
-            saveJSONToFile(sanitized, self.profilePath);
-        } else {
-            // ★ Task274-h S9：失败路径可见日志（带上下文+键数量）——此前仅一句
-            //   固定文案，isValidJSONObject 不过时整次保存被静默丢弃无从排查。
-            NSDictionary *ame274_profiles = ([self.profileDict isKindOfClass:[NSDictionary class]]
-                ? self.profileDict[@"profiles"] : nil);
-            NSLog(@"[PLProfiles] SAVE FAILED: profileDict still contains invalid JSON types after sanitization"
-                  @" (topLevelKeys=%@, profileCount=%ld, selectedProfile=%@, path=%@)",
-                  ([self.profileDict isKindOfClass:[NSDictionary class]] ? [self.profileDict allKeys] : nil),
-                  (long)([ame274_profiles isKindOfClass:[NSDictionary class]] ? [(NSDictionary *)ame274_profiles count] : -1),
-                  self.profileDict[@"selectedProfile"],
-                  self.profilePath);
-        }
+- (NSError *)writeProfileRegistry {
+    id sanitized = [self jsonSanitizedObject:self.profileDict];
+    ModpackTranslateProfileDirectories(sanitized, importedInstancesDirectory(), YES);
+    if (![NSJSONSerialization isValidJSONObject:sanitized]) {
+        return [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteInapplicableStringEncodingError
+            userInfo:@{NSLocalizedDescriptionKey:localize(@"prisma.profile.invalid_registry", nil)}];
     }
+    return saveJSONToFile(sanitized, self.profilePath);
+}
+
+- (void)save {
+    @synchronized (self) {
+        NSError *error = [self writeProfileRegistry];
+        if (error) NSLog(@"[PLProfiles] Could not save registry: %@", error);
+    }
+}
+
+- (BOOL)createProfile:(NSDictionary *)profile withName:(NSString *)name error:(NSError **)error {
+    @synchronized (self) {
+        if (![profile isKindOfClass:NSDictionary.class] || !name.length ||
+            ![self.profileDict isKindOfClass:NSMutableDictionary.class] || !self.profilePath.isAbsolutePath ||
+            (self.profileDict[@"profiles"] && ![self.profileDict[@"profiles"] isKindOfClass:NSDictionary.class])) {
+            if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteUnknownError
+                userInfo:@{NSLocalizedDescriptionKey:localize(@"prisma.profile.invalid_registry", nil)}];
+            return NO;
+        }
+        if (self.profiles[name]) {
+            if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteFileExistsError
+                userInfo:@{NSLocalizedDescriptionKey:localize(@"profile.error.name_exists", nil)}];
+            return NO;
+        }
+        NSString *profilesFolder = [self.profilePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"profiles"];
+        NSString *uuid = NSUUID.UUID.UUIDString;
+        int parent = -1;
+        if (mkdir(profilesFolder.fileSystemRepresentation, 0755) == 0 || errno == EEXIST) {
+            parent = open(profilesFolder.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        }
+        if (parent < 0 || mkdirat(parent, uuid.UTF8String, 0755) != 0) {
+            int reason = errno;
+            if (parent >= 0) close(parent);
+            if (error) *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:reason userInfo:@{NSFilePathErrorKey:profilesFolder}];
+            return NO;
+        }
+        id previousSelection = self.profileDict[@"selectedProfile"];
+        NSMutableDictionary *entry = [profile mutableCopy];
+        entry[@"gameDir"] = [@"profiles" stringByAppendingPathComponent:uuid];
+        self.profiles[name] = entry;
+        self.profileDict[@"selectedProfile"] = (id)name;
+        NSError *writeError = [self writeProfileRegistry];
+        if (writeError) {
+            [self.profiles removeObjectForKey:name];
+            self.profileDict[@"selectedProfile"] = previousSelection;
+            unlinkat(parent, uuid.UTF8String, AT_REMOVEDIR); // Only undo the directory if it is still empty.
+            close(parent);
+            if (error) *error = writeError;
+            return NO;
+        }
+        close(parent);
+    }
+    [NSNotificationCenter.defaultCenter postNotificationName:@"SelectedProfileChanged" object:name];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"ReloadProfileList" object:nil];
+    return YES;
 }
 
 - (void)saveProfile:(NSMutableDictionary<NSString *, NSString *> *)profile withName:(NSString *)name {
@@ -288,6 +331,41 @@ static NSString *importedInstancesDirectory(void) {
         }
         changes(profiles);
         [self save];   // 同锁可重入（saveProfile 先例）
+    }
+}
+
+- (BOOL)removePrivateGameDirectoryForProfileNamed:(NSString *)name error:(NSError **)error {
+    @synchronized (self) {
+        NSString *relative = self.profiles[name][@"gameDir"];
+        if (![relative isKindOfClass:NSString.class]) return NO;
+        NSString *leaf = relative.lastPathComponent;
+        if (![[NSUUID alloc] initWithUUIDString:leaf] ||
+            ![relative isEqualToString:[@"profiles" stringByAppendingPathComponent:leaf]]) return NO;
+
+        NSString *root = self.profilePath.stringByDeletingLastPathComponent.stringByResolvingSymlinksInPath;
+        NSString *container = [root stringByAppendingPathComponent:@"profiles"];
+        NSString *path = [root stringByAppendingPathComponent:relative];
+        // A link in place of the managed parent can lead outside this registry.
+        if (![container.stringByResolvingSymlinksInPath isEqual:container]) {
+            if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteNoPermissionError
+                                               userInfo:@{NSFilePathErrorKey:container}];
+            return YES;
+        }
+        for (NSString *key in self.profiles) {
+            if ([key isEqual:name]) continue;
+            NSString *other = self.profiles[key][@"gameDir"];
+            if (![other isKindOfClass:NSString.class] || !other.length) continue;
+            if (!other.isAbsolutePath) other = [root stringByAppendingPathComponent:other];
+            NSString *resolved = other.stringByResolvingSymlinksInPath.lowercaseString;
+            NSString *owned = path.lowercaseString;
+            if ([resolved isEqual:owned] || [resolved hasPrefix:[owned stringByAppendingString:@"/"]]) return YES;
+        }
+        NSError *failure = nil;
+        if (![NSFileManager.defaultManager removeItemAtPath:path error:&failure] &&
+            !([failure.domain isEqual:NSCocoaErrorDomain] && failure.code == NSFileNoSuchFileError)) {
+            if (error) *error = failure;
+        }
+        return YES;
     }
 }
 

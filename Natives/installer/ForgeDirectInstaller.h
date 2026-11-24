@@ -38,6 +38,8 @@ typedef NS_ENUM(NSInteger, ForgeDirectInstallerErrorCode) {
                          progress:(void (^)(double progress, NSString *stageMessage))progress
                             error:(NSError **)error;
 
++ (NSInteger)inferJavaMajorVersionFromVersionId:(NSString *)versionId;
+
 + (BOOL)hasVerifiedRuntime:(NSString *)versionId;
 
 + (BOOL)isNewFormatInstaller:(NSString *)installerPath;

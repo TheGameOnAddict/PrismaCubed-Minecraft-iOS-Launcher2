@@ -18,6 +18,10 @@
 - (NSString *)selectedProfileName;
 - (void)setSelectedProfileName:(NSString *)name;
 - (void)save;
+- (BOOL)createProfile:(NSDictionary *)profile withName:(NSString *)name error:(NSError **)error;
+
+/// Returns YES for a managed profiles/<UUID> directory. A removal error leaves the profile registered.
+- (BOOL)removePrivateGameDirectoryForProfileNamed:(NSString *)name error:(NSError **)error;
 
 /// Prevent content tools from creating an empty replacement for a missing imported game directory.
 + (BOOL)checkContentDirectoryForProfileName:(NSString *)profileName error:(NSError **)error;

@@ -3902,3 +3902,9 @@
 "Export failed" = "Export failed";
 
 "prisma.profile.content_missing" = "The imported game folder is missing or unavailable. Restore the folder or reimport the modpack to play.";
+
+"prisma.profile.invalid_name" = "Use a name that starts with a visible character other than a period and contains no slashes or control characters.";
+
+"prisma.profile.invalid_registry" = "The profile library could not be saved.";
+
+"prisma.profile.library_changed" = "The active library changed. Reopen New Profile in the library you want to use.";

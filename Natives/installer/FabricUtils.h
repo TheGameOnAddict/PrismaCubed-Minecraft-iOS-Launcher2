@@ -30,4 +30,11 @@
                             installAPI:(BOOL)installAPI
                             completion:(void (^)(BOOL success, NSString *profileId, NSError *error))completion;
 
++ (void)ame336_installFabricLikeVendor:(NSString *)vendor
+                           gameVersion:(NSString *)gameVersion
+                         loaderVersion:(NSString *)loaderVersion
+                            installAPI:(BOOL)installAPI
+                       registerProfile:(BOOL)registerProfile
+                            completion:(void (^)(BOOL success, NSString *profileId, NSError *error))completion;
+
 @end
