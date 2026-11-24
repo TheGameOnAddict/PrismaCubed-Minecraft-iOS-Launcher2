@@ -4,7 +4,7 @@
 A. 帧相位归因仪器（present vs build 分相计时）——66e57f0 双日志定案的
    下轮设备日志判读硬指标：
    - gl_bridge.m 计数器块 + ame_egl_swap_phase_stats 读取即重置
-   - gl_swap_buffers：build 在入口记录（先于 Task48 卫兵）、present 只包
+   - gl_swap_buffers：build 在入口记录（先于几何采样）、present 只包
      eglSwapBuffers 本体、成败两路都计
    - utils.h 声明
    - SurfaceViewController 心跳 pres=%u/%ums build=%u/%ums 上报
@@ -23,7 +23,7 @@ import re
 import subprocess
 import sys
 
-ROOT = "/home/z/my-project/Amethyst-iOS-MyRemastered"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 results = []
 
 
@@ -65,17 +65,23 @@ check("A4 心跳调用 + 格式串 pres/build",
 m_swap = gb.index("void gl_swap_buffers()")
 swap_body = gb[m_swap:m_swap + 4000]
 i_build = swap_body.find("ame77_record_build(")
-i_guard = swap_body.find("ame48_swap_geometry_guard(")
+i_guard = swap_body.find("ame_task41_swap_forensics(")
 i_p0 = swap_body.find("ame77_t_present0 = ame77_now_us();")
 i_swap_call = swap_body.find("handle.eglSwapBuffers(g_EglDisplay")
 i_p1 = swap_body.find("ame77_t_present1 = ame77_now_us();")
 i_fail = swap_body.find("if (!swapResult)")
-check("A5a build 入口记录先于 Task48 卫兵",
+check("A5a build 入口记录先于几何采样",
       0 < i_build < i_guard, f"i_build={i_build} i_guard={i_guard}")
 check("A5b present 计时夹住 eglSwapBuffers（p0<call<p1）",
       0 < i_p0 < i_swap_call < i_p1, f"{i_p0},{i_swap_call},{i_p1}")
 check("A5c present 记录在失败早退之前（成败都计）",
       0 < i_p1 < i_fail, f"i_p1={i_p1} i_fail={i_fail}")
+
+probe = gb[gb.index("static void ame_task41_swap_forensics"):gb.index("int drawFb = 0, readFb = 0, viewport")]
+check("A5d Normal swaps skip symbol resolution",
+      0 < probe.index("if (!probe) return;") < probe.index("ame_es_t es = ame_es();") < probe.index("dlsym("))
+check("A5e Drift logging reuses the sampled surface dimensions",
+      "recordDrawableDrift(sw, sh);" in gb and "ame48_swap_geometry_guard" not in swap_body)
 
 check("A6 Task76 锚点不回退",
       "ame76_record_swap(ame53_now_ms());" in swap_body

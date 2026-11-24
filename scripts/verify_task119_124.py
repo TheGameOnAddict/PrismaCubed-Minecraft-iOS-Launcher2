@@ -50,9 +50,10 @@ check("A1 mgl_fsr.mm 存在且含任务头注释（蜷缩根因记录）",
 check("A2 CMakeLists 收录 mgl_fsr.mm 且强制 objective-c++ 方言（Task83 教训）",
       "ctxbridges/mgl_fsr.mm" in cml and
       cml.find("set_source_files_properties(ctxbridges/mgl_fsr.mm") > 0)
-check("A3 gl_swap_buffers 挂钩：ame48 卫兵之后、eglSwapBuffers 调用之前",
-      gb.find("ame_mgl_fsr_before_swap();") > gb.find("ame48_swap_geometry_guard(currentBundle);") and
-      gb.find("ame_mgl_fsr_before_swap();") < gb.find("handle.eglSwapBuffers("))
+swap_body = gb[gb.index("void gl_swap_buffers() {"):gb.index("void gl_swap_interval(")]
+check("A3 gl_swap_buffers runs FSR before geometry sampling and present",
+      0 < swap_body.find("ame_mgl_fsr_before_swap();") < swap_body.find("ame_task41_swap_forensics(")
+      < swap_body.find("handle.eglSwapBuffers("))
 check("A4 gl_init_context 成功后调用 ame_mgl_fsr_context_reset（上下文重建重编）",
       "ame_mgl_fsr_context_reset();" in gb and
       gb.find("ame_mgl_fsr_context_reset()") > gb.find("g_ame50_gl_owns_layer"))

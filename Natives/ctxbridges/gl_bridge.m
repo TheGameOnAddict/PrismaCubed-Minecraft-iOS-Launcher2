@@ -696,9 +696,18 @@ static BOOL ame_task53_realign_surface(void) {
     return NO;
 }
 
+static void recordDrawableDrift(EGLint sw, EGLint sh);
+
 // 探针 + 自愈主入口。swapIndex 从 1 计。
 // 0 = undecided, 1 = normal, 2 = geo-heal blit
 static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapIndex) {
+    static int s_mode = 0;          // 0 undecided / 1 normal / 2 blit
+    // 1) In normal operation, sample geometry periodically so a resize can enter recovery.
+    // 2) During recovery, sample every swap until the viewport and surface agree again.
+    // Check before resolving renderer symbols, which would otherwise run on every swap.
+    const BOOL probe = (swapIndex <= 5) || (swapIndex % 200 == 0) || s_mode != 1;
+    if (!probe) return;
+
     ame_es_t es = ame_es();
     // Task146：自 EGL 渲染器（Mithril / MobileGL 家族）改走渲染器自身 dispatch。
     // 病历：ame_es() 固定从 Task41 候选（ANGLE libGLESv2）解析；自 EGL 渲染
@@ -732,25 +741,6 @@ static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapInde
         }
     }
     if (es.getIntegerv == NULL || es.bindFramebuffer == NULL) return;
-
-    static int s_mode = 0;          // 0 undecided / 1 normal / 2 blit
-    // Task 76：取证降频 —— 健康 NORMAL 态下 swap 前零 GL/EGL 查询。
-    //
-    // 背景（bef0f08 双日志定案）：本函数自 Task41 起每帧在渲染线程跑
-    //   3 次 glGetIntegerv + while(glGetError) 清错 + 2 次 eglQuerySurface；
-    // 上游 Amethyst 的 swap 路径（ame_geo_check_and_heal）零 GL 状态查询。
-    // MobileGlues 场次下这些查询直达 raw ANGLE，绕过前端状态机：
-    //   1) glGetError 清空底层错误队列 —— MobileGlues 的错误转译依赖该
-    //      队列，清空等于吞掉本应转译给 MC 的 GL 错误（正确性风险）；
-    //   2) 每帧 5 次跨层查询是纯诊断税（Task58 后几何恒 NORMAL，多轮
-    //      设备日志 0 失配）。
-    // 降频策略：前 5 帧、每 200 帧、以及任何非 NORMAL 态（未决/补偿中）
-    // 保持全量取证与执法；稳定 NORMAL 帧直接返回。逐帧几何执法由 Task48
-    // guard（surface vs drawable 漂移检测）继续承担，viewport vs surface
-    // 判定随 probe 帧复核——失配场景（旋转/resize）总会先经过 s_mode!=1
-    // 或最多 200 帧内的 probe 帧，无检测盲区。
-    const BOOL probe = (swapIndex <= 5) || (swapIndex % 200 == 0) || s_mode != 1;
-    if (!probe) return;
 
     int drawFb = 0, readFb = 0, viewport[4] = {0, 0, 0, 0};
     // Task204：0x8CA9/0x8CAA（GL_DRAW/READ_FRAMEBUFFER_BINDING）被本设备
@@ -923,6 +913,7 @@ static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapInde
         if (es.querySurface(g_EglDisplay, surface, EGL_WIDTH, &sw) &&
             es.querySurface(g_EglDisplay, surface, EGL_HEIGHT, &sh)) {
             surfW = sw; surfH = sh;
+            recordDrawableDrift(sw, sh);
         }
         // Task 58 一次性指纹：修正后的读数（下轮设备日志验证点——预期
         // surface == viewport，latch NORMAL，geo-heal/blit 全不触发）。
@@ -1287,7 +1278,7 @@ static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapInde
 //（声明已前置至 Task49 静态区——见 g_ame48_layer_cf）
 static int   g_ame48_expected_w = 0;         // 期望表面宽（创建钉扎值）
 static int   g_ame48_expected_h = 0;         // 期望表面高
-static long  g_ame48_drift_swaps = 0;        // surface != drawable 的连续帧数（纯取证）
+static long  g_ame48_drift_samples = 0;        // surface != drawable 的连续采样数（纯取证）
 static int   g_ame48_recreates = 0;          // 历史保留（Task50 起不再重建）
 static uint64_t g_ame48_last_recreate_ms = 0;
 
@@ -1300,7 +1291,7 @@ static void ame48_record_creation(CALayer *layer, EGLDisplay dpy, EGLSurface sur
     if (layer != nil) {
         g_ame48_layer_cf = (void *)CFBridgingRetain(layer);
     }
-    g_ame48_drift_swaps = 0;
+    g_ame48_drift_samples = 0;
     g_ame48_recreates = 0;
     g_ame48_last_recreate_ms = 0;
     g_ame48_expected_w = 0;
@@ -1321,48 +1312,25 @@ static void ame48_record_creation(CALayer *layer, EGLDisplay dpy, EGLSurface sur
           g_ame48_layer_cf, g_ame48_expected_w, g_ame48_expected_h);
 }
 
-/// 交换卫兵：gl_swap_buffers 每帧调用（渲染线程、上下文 current）。
-/// Task 50：本函数已降级为**纯取证**（只读 + 日志，零写入）。
-///
-/// 622166a 设备日志证明旧卫兵的全部三个自愈动作无效且有害：
-///   1. 跨线程写 drawableSize（渲染线程 vs 主线程 CA 提交树状态分叉：
-///      心跳读到 drawable=2360x1640 而卫兵读到 1640x2360，全日志 0 条
-///      "Task48 pin" = 逐帧钉扎从未生效）；
-///   2. 同 layer 二次 eglCreateWindowSurface 恒 EGL_BAD_ALLOC 0x3003；
-///   3. 钉扎与 updateSavedResolution（旋转时主线程写 2x）互相打架。
-/// Task60 之后几何由"原生 scale 像素单一事实源"保证一致（gl_init_context
-/// 创建时对齐 + updateSavedResolution GL 分支跟随 bounds x scale 像素），
-/// 本函数只保留漂移取证（surface vs drawable，同为像素口径）。
-/// ANGLE 会随 layer 自然 resize（622166a 的 surface 转置事件即实证），
-/// 瞬态失配由 Task49 geo-heal blit 兜底（双向 latch，几何恢复即退出）。
-static void ame48_swap_geometry_guard(basic_render_window_t *bundle) {
-    if (bundle == NULL || bundle->gl.surface == EGL_NO_SURFACE) return;
-    CALayer *layer = (__bridge CALayer *)g_ame48_layer_cf;
-    if (layer == nil || ![layer isKindOfClass:CAMetalLayer.class]) return;
-    ame_es_t es = ame_es();
-    if (es.querySurface == NULL) return;
-
-    EGLint sw = 0, sh = 0;
-    if (!es.querySurface(g_EglDisplay, bundle->gl.surface, EGL_WIDTH, &sw) ||
-        !es.querySurface(g_EglDisplay, bundle->gl.surface, EGL_HEIGHT, &sh)) {
-        return;  // 查询失败（EGL 错误）不干预
-    }
+// The swap probe has already queried the active renderer's EGL surface.
+static void recordDrawableDrift(EGLint sw, EGLint sh) {
     if (sw <= 0 || sh <= 0) return;
-
+    CALayer *layer = (__bridge CALayer *)g_ame48_layer_cf;
+    if (![layer isKindOfClass:CAMetalLayer.class]) return;
     CAMetalLayer *ml = (CAMetalLayer *)layer;
     CGSize d = ml.drawableSize;
     int dw = (int)round(d.width), dh = (int)round(d.height);
 
     if (dw != sw || dh != sh) {
-        g_ame48_drift_swaps++;
-        if (g_ame48_drift_swaps == 1 || g_ame48_drift_swaps % 200 == 0) {
-            NSLog(@"[GLGeo] Task50 drift (info only): surface=%dx%d drawable=%dx%d bounds=%.0fx%.0f (consecutive=%ld) -- ANGLE resizes with layer; transient mismatch covered by geo-heal blit",
+        g_ame48_drift_samples++;
+        if (g_ame48_drift_samples == 1 || g_ame48_drift_samples % 200 == 0) {
+            NSLog(@"[GLGeo] Task50 drift (info only): surface=%dx%d drawable=%dx%d bounds=%.0fx%.0f (consecutiveSamples=%ld) -- ANGLE resizes with layer; transient mismatch covered by geo-heal blit",
                   (int)sw, (int)sh, dw, dh,
                   layer.bounds.size.width, layer.bounds.size.height,
-                  g_ame48_drift_swaps);
+                  g_ame48_drift_samples);
         }
     } else {
-        g_ame48_drift_swaps = 0;
+        g_ame48_drift_samples = 0;
     }
 }
 
@@ -1969,7 +1937,7 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
             }
         }
         // Task 48：记录呈现 layer（CFBridgingRetain）与期望表面尺寸，
-        // 供 ame48_swap_geometry_guard 逐帧自愈使用。
+        // 供呈现几何采样使用。
         // Task 166：记录的是【EGL surface 的真实宿主层】——Metal FSR 会话下
         // 即私有交换层 Layer B（drawableSize=render-res，与 EGL attribs 同源），
         // 卫兵的 surface-vs-layer 比较因此恒等静止；视图真层（Layer A）不在此
@@ -2254,13 +2222,9 @@ void gl_swap_buffers() {
     // 探针的耗时归入 neither（Task76 后探针帧极稀，可忽略）。
     uint64_t ame77_t_entry = ame77_now_us();
     ame77_record_build(ame77_t_entry);
-    // Task 48 呈现几何卫兵：先于一切交换动作执行（可能在内部重建表面，
-    // 重建后 ame_brCurrent->gl.surface 已更新，后续探针/交换都作用于新表面）。
-    ame48_swap_geometry_guard(br_get_current());
     // Task 119：MobileGL 预交换 FSR1 EASU——渲染器为 MobileGL 且 FSR 联动
     // 激活时，把 MC 的半分辨率帧升采样铺满默认帧缓冲（= MobileGL 内部
     // swapchain image），eglSwapBuffers 直呈。其余渲染器零开销返回。
-    // 必须在卫兵之后（卫兵可能重建表面，EASU 画进最终表面）。
     ame_mgl_fsr_before_swap();
     // 黑屏取证（Task 32）：记录每次 swap 的真实结果。
     // 成功：首次打一条日志（证明呈现路径至少活过一次）；之后交给原子计数器，

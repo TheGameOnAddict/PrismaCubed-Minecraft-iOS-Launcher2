@@ -46,10 +46,13 @@ void PerformanceFrame(enum PerformanceFrameSource source) {
     uint64_t t = PERFORMANCE_CLOCK();
     if (inWindow(t) && (!stats.source || stats.source == source)) {
         stats.source = source;
-        stats.counts[(t - start) / second]++;
+        unsigned bucket = (unsigned)((t - start) / second);
+        stats.counts[bucket]++;
         if (previous) {
             uint64_t delta = t - previous;
-            histogram[(delta + 999999) / 1000000]++;
+            unsigned msCeil = (unsigned)((delta + 999999) / 1000000);
+            histogram[msCeil]++;
+            if (msCeil > stats.maxIntervalMsCeil[bucket]) stats.maxIntervalMsCeil[bucket] = msCeil;
             stats.intervals++;
             stats.over50ms += delta > 50000000;
             stats.over100ms += delta > 100000000;
@@ -94,12 +97,15 @@ PerformanceSummary PerformanceSnapshot(bool stop) {
     out.elapsed = t > start ? (t - start) / 1e9 : 0;
     if (out.elapsed > PerformanceSeconds) out.elapsed = PerformanceSeconds;
     if (stop || out.elapsed >= PerformanceSeconds) atomic_store(&enabled, false);
-    unsigned seen = 0, mid = (out.intervals + 1) / 2, high = (out.intervals * 95 + 99) / 100;
-    for (unsigned ms = 0; seen < high; ms++) {
+    unsigned seen = 0, mid = (out.intervals + 1) / 2;
+    unsigned high = (out.intervals * 95ULL + 99) / 100;
+    unsigned tail = (out.intervals * 99ULL + 99) / 100;
+    for (unsigned ms = 0; seen < tail; ms++) {
         unsigned before = seen;
         seen += histogram[ms];
         if (before < mid && seen >= mid) out.p50ms = ms;
-        if (seen >= high) out.p95ms = ms;
+        if (before < high && seen >= high) out.p95ms = ms;
+        if (seen >= tail) out.p99ms = ms;
     }
     pthread_mutex_unlock(&lock);
     return out;
