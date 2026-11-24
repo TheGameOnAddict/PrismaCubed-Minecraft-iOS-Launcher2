@@ -61,6 +61,9 @@ static NSTimeInterval kBingRequestTimeout = 12.0;
         _ioQueue = dispatch_queue_create("com.air.bingwallpaper.io", DISPATCH_QUEUE_SERIAL);
         [self ame_loadMetadataFromDisk];
 
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(gameRuntimeStarted:)
+                                                 name:@"CubicGameRuntimeStarted" object:nil];
+
         // Task151：回前台也触发一次自动刷新（长驻进程跨天补今日图）
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(autoRefreshAndApplyIfEnabled)
@@ -299,7 +302,7 @@ static NSTimeInterval kBingRequestTimeout = 12.0;
 #pragma mark - Auto Refresh & Apply（默认开启主链路）
 
 - (void)autoRefreshAndApplyIfEnabled {
-    if (!self.isEnabled) return;
+    if (!self.isEnabled || BackgroundManager.sharedManager.gameSurfaceVisible) return;
 
     // 用户自定义壁纸优先：来源非 bing 且已有背景 → 让位
     BackgroundManager *bg = [BackgroundManager sharedManager];
@@ -330,7 +333,7 @@ static NSTimeInterval kBingRequestTimeout = 12.0;
 
 /// 应用今日图（含全部守卫：开关/用户优先/同图跳过；离线时走磁盘缓存）
 - (void)ame_applyTodayIfPermitted {
-    if (!self.isEnabled) return;
+    if (!self.isEnabled || BackgroundManager.sharedManager.gameSurfaceVisible) return;
 
     BackgroundManager *bg = [BackgroundManager sharedManager];
     if ([bg hasBackground] && ![bg isBingSource]) return; // 刷新期间用户设了自定义壁纸
@@ -342,7 +345,7 @@ static NSTimeInterval kBingRequestTimeout = 12.0;
     [self ensureImageForItem:today completion:^(NSString *_Nullable path, NSError *_Nullable error) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf || !path) return;
-        if (!strongSelf.isEnabled) return;
+        if (!strongSelf.isEnabled || BackgroundManager.sharedManager.gameSurfaceVisible) return;
 
         BackgroundManager *bgManager = [BackgroundManager sharedManager];
         if ([bgManager hasBackground] && ![bgManager isBingSource]) return; // 双检
@@ -536,6 +539,10 @@ static NSTimeInterval kBingRequestTimeout = 12.0;
 - (nullable UIImage *)cachedThumbnailForItem:(BingWallpaperItem *)item {
     if (!item) return nil;
     return [self.thumbCache objectForKey:item.startdate];
+}
+
+- (void)gameRuntimeStarted:(NSNotification *)notification {
+    [self purgeMemoryCache];
 }
 
 - (void)purgeMemoryCache {

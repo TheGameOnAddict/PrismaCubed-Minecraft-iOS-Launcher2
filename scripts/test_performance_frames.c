@@ -25,10 +25,14 @@ int main(void) {
     PerformanceOSMPhases(2000, 500);
     PerformanceSummary s = PerformanceSnapshot(false);
     assert(s.counts[0] == 21 && s.intervals == 20);
-    assert(s.p50ms == 16 && s.p95ms == 16 && s.longestMs == 200);
+    assert(s.p50ms == 16 && s.p95ms == 16 && s.p99ms == 200 && s.longestMs == 200);
     assert(s.over50ms == 1 && s.over100ms == 1);
+    assert(s.maxIntervalMsCeil[0] == 200 && s.maxIntervalMsCeil[1] == 0);
     assert(s.osmSamples == 1 && s.finishMs == 2 && s.readbackMs == .5);
     assert(s.queueSamples == 1 && s.queueMs == 4);
+    clockNs = 4000000001;
+    PerformanceFrame(PerformanceSwap);
+    assert(PerformanceSnapshot(false).maxIntervalMsCeil[1] == 497);
     clockNs = 63000000000;
     PerformanceFrame(PerformanceSwap);
     assert(PerformanceQueueStamp() == 0); // No UI timer needed to end sampling.
@@ -37,7 +41,7 @@ int main(void) {
     PerformanceFrame(PerformanceSwap);
     assert(clockReads == stoppedReads);
     s = PerformanceSnapshot(false);
-    assert(s.elapsed == 60 && s.intervals == 20 && PerformanceQueueStamp() == 0);
+    assert(s.elapsed == 60 && s.intervals == 21 && PerformanceQueueStamp() == 0);
     PerformanceBegin();
     clockNs += 3000000000;
     PerformanceQueueDelivered(stamp);

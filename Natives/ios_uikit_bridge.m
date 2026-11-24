@@ -1,5 +1,7 @@
 #import "authenticator/BaseAuthenticator.h"
 #import "AppDelegate.h"
+#import "BackgroundManager.h"
+#import "BingWallpaperManager.h"
 #import "SceneDelegate.h"
 #import "LauncherNavigationController.h"
 #import "LauncherPreferences.h"
@@ -520,6 +522,7 @@ void UIKit_launchMinecraftSurfaceVC(UIWindow* window, NSDictionary* metadata) {
         if (tmpRootVC == nil) {
             tmpRootVC = window.rootViewController;
         }
+        [BackgroundManager.sharedManager setGameSurfaceVisible:YES inWindow:window];
         window.rootViewController = [[SurfaceViewController alloc] initWithMetadata:metadata];
         if (@available(iOS 16.0, *)) {
             [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
@@ -569,6 +572,8 @@ void UIKit_returnToSplitView() {
             // 失效场景（JVM 崩后异常链 / 分代换根丢失）即触达）
             window.rootViewController = [[ZL2ShellViewController alloc] init];
         }
+        [BackgroundManager.sharedManager setGameSurfaceVisible:NO inWindow:window];
+        [BingWallpaperManager.sharedManager autoRefreshAndApplyIfEnabled];
         if (@available(iOS 16.0, *)) {
             [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
         } else {

@@ -297,6 +297,7 @@ extern BOOL Amethyst_EnforceSDL3Presentation(void);
     UIViewController *rootVC = [[ZL2ShellViewController alloc] init];
     [UIView transitionWithView:self.window duration:0.3 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
         self.window.rootViewController = rootVC;
+        [BackgroundManager.sharedManager setGameSurfaceVisible:NO inWindow:self.window];
     } completion:nil];
 }
 

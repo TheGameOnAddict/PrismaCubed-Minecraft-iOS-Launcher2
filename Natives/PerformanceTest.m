@@ -10,6 +10,8 @@
 #import <unistd.h>
 #import <dirent.h>
 #import <math.h>
+#import <Metal/Metal.h>
+#import <os/proc.h>
 #if __has_include("config.h")
 #import "config.h"
 #endif
@@ -145,6 +147,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 @property(nonatomic) NSTimeInterval launchUptime;
 @property(nonatomic) NSMutableDictionary *report;
 @property(nonatomic) NSMutableArray *samples;
+@property(nonatomic, strong) id<MTLDevice> metalDevice;
 @property(nonatomic) BOOL recording;
 @property(nonatomic) NSInteger checkpoint;
 @property(nonatomic) NSDictionary *context;
@@ -294,6 +297,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         NSDictionary *scene = sceneContext(self.gameDirectory, self.created);
         dispatch_async(dispatch_get_main_queue(), ^{ self.context = scene; [self save]; });
     });
+    self.metalDevice = MTLCreateSystemDefaultDevice();
     PerformanceBegin();
     [self save];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
@@ -304,17 +308,22 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 
 - (BOOL)updateSummary:(PerformanceSummary)s stopped:(BOOL)stopped {
     NSMutableArray *counts = [NSMutableArray array];
+    NSMutableArray *bucketMaxima = [NSMutableArray array];
     unsigned frames = 0;
     for (unsigned i=0; i < ceil(s.elapsed) && i < PerformanceSeconds; i++) {
         [counts addObject:@(s.counts[i])];
+        [bucketMaxima addObject:@(s.maxIntervalMsCeil[i])];
         frames += s.counts[i];
     }
     NSMutableDictionary *timing = [@{@"measuredSeconds":@(s.elapsed), @"framesPerBucket1s":counts,
-        @"frameEvents":@(frames), @"intervalCount":@(s.intervals), @"intervalsOver50ms":@(s.over50ms), @"intervalsOver100ms":@(s.over100ms),
+        @"maxIntervalMsCeilPerBucket1s":bucketMaxima, @"frameEvents":@(frames), @"intervalCount":@(s.intervals), @"intervalsOver50ms":@(s.over50ms), @"intervalsOver100ms":@(s.over100ms),
         @"eventSource":s.source == PerformanceSwap ? @"GL swap entry" : s.source == PerformanceDrawable ? @"drawable acquisition" : @"none"} mutableCopy];
     if (s.elapsed > 0) timing[@"averageFPS"] = @(frames/s.elapsed);
     if (s.intervals) {
-        timing[@"p50IntervalMsCeil"] = @(s.p50ms); timing[@"p95IntervalMsCeil"] = @(s.p95ms); timing[@"maxIntervalMs"] = @(s.longestMs);
+        timing[@"p50IntervalMsCeil"] = @(s.p50ms);
+        timing[@"p95IntervalMsCeil"] = @(s.p95ms);
+        timing[@"p99IntervalMsCeil"] = @(s.p99ms);
+        timing[@"maxIntervalMs"] = @(s.longestMs);
     }
     if (s.osmSamples) timing[@"osmPhases"] = @{@"samples":@(s.osmSamples), @"meanFinishMs":@(s.finishMs/s.osmSamples), @"meanReadbackPhaseMs":@(s.readbackMs/s.osmSamples)};
     if (s.queueSamples) timing[@"osmMainQueue"] = @{@"samples":@(s.queueSamples), @"meanWaitMs":@(s.queueMs/s.queueSamples)};
@@ -322,6 +331,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     BOOL finished = s.elapsed >= PerformanceSeconds;
     if (finished || stopped) {
         self.recording = NO;
+        self.metalDevice = nil;
         self.report[@"status"] = finished ? @"completed" : @"interrupted";
         [NSNotificationCenter.defaultCenter removeObserver:self];
     }
@@ -343,9 +353,15 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     if (s.elapsed <= 0) return NO;
     NSArray *thermal = @[@"nominal",@"fair",@"serious",@"critical"];
     NSUInteger state = NSProcessInfo.processInfo.thermalState;
-    [self.samples addObject:@{@"elapsedSeconds":@(s.elapsed), @"width":@(width), @"height":@(height),
+    NSMutableDictionary *sample = [@{@"elapsedSeconds":@(s.elapsed), @"width":@(width), @"height":@(height),
         @"footprintMiB":@(memory), @"thermal":state < thermal.count ? thermal[state] : @"unknown",
-        @"lowPower":@(NSProcessInfo.processInfo.lowPowerModeEnabled)}];
+        @"lowPower":@(NSProcessInfo.processInfo.lowPowerModeEnabled)} mutableCopy];
+    // Metal allocations can overlap the process footprint on unified-memory devices.
+    if (self.metalDevice) sample[@"metalAllocatedMiB"] = @(self.metalDevice.currentAllocatedSize / 1048576.0);
+    if (@available(iOS 13.0, *)) {
+        sample[@"processAvailableMiB"] = @(os_proc_available_memory() / 1048576.0);
+    }
+    [self.samples addObject:sample];
     NSInteger checkpoint = (NSInteger)s.elapsed / 5;
     if (checkpoint == self.checkpoint && s.elapsed < PerformanceSeconds) return NO;
     self.checkpoint = checkpoint;

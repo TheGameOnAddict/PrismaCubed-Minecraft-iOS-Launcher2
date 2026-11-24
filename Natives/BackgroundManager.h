@@ -43,6 +43,10 @@ typedef NS_ENUM(NSInteger, BackgroundUIEffect) {
 // Global background container
 @property (nonatomic, strong, readonly, nullable) UIView *globalBackgroundContainer;
 
+/// The main window is shared by the launcher and the game. UI-thread only.
+@property (nonatomic, readonly) BOOL gameSurfaceVisible;
+- (void)setGameSurfaceVisible:(BOOL)visible inWindow:(UIWindow *)window;
+
 // Apply background globally
 - (void)applyBackgroundToWindow:(UIWindow *)window;
 - (void)applyBackgroundToSplitViewController:(UISplitViewController *)splitVC;
