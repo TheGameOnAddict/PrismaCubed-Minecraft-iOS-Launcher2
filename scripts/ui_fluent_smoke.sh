@@ -217,6 +217,13 @@ PLIST
   xcrun simctl bootstatus "$device" -b >/dev/null 2>&1 || true
   xcrun simctl install "$device" "$app" || { echo "✗ 安装失败"; FAIL=1; return; }
 
+  if [[ "$MODE" == "profiles" ]]; then
+    local registry_test="$OUT/test-profile-registry"
+    xcrun clang "${COMMON[@]}" -framework Foundation -framework UIKit "$ROOT/scripts/test_profile_registry.m" \
+      "$NATIVES/PLProfiles.m" -o "$registry_test" || { FAIL=1; return; }
+    xcrun simctl spawn "$device" "$registry_test" || { FAIL=1; return; }
+  fi
+
   if [[ "$MODE" == "screens" || "$MODE" == "projects" || "$MODE" == "performance" || "$MODE" == "profiles" ]]; then
     local routes=(home browse profile mods menu accounts create import installing downloads download-log)
     if [[ "$MODE" == "projects" ]]; then routes=(quick-install curseforge modrinth installed-project); fi
