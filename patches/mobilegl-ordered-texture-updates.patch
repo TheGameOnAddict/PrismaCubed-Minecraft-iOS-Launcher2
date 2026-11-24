@@ -1,0 +1,463 @@
+diff --git a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.cpp b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.cpp
+index 222e7cd..0363a83 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.cpp
++++ b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.cpp
+@@ -1287,9 +1287,9 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+         if (texture == nullptr) {
+             return;
+         }
+-        auto it = m_textureResources.find(MakeTextureIdentity(texture));
++        auto it = m_textureResources.find(MakeTextureIdentity(&StorageTextureOf(*texture)));
+         if (it != m_textureResources.end()) {
+-            it->second.lastRecordingGeneration = m_recordingGeneration;
++            StampResourceRecordingUse(it->second, *texture);
+         }
+     }
+ 
+@@ -1321,7 +1321,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+                         "UpdateTrackedImageLayoutAfterAttachmentWrite: textureId=%d mipLevel=%u out of range %u",
+                         texture->GetExternalIndex(), writtenMipLevel, resource.mipLevels);
+         // Pre-pass stream bookkeeping: the render pass that just ended wrote this image.
+-        StampResourceRecordingUse(resource);
++        StampResourceRecordingUse(resource, *texture);
+ 
+         if (resource.layout != newLayout && resource.mipLevels > 1) {
+             VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+@@ -1405,7 +1405,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+                                               VK_ACCESS_SHADER_READ_BIT, resource->aspect, 0, resource->mipLevels);
+         MOBILEGL_ASSERT(ok, "TransitionTextureForSampling: transition failed for textureId=%d", texture.GetExternalIndex());
+         // Pre-pass stream bookkeeping: a command referencing the image was recorded.
+-        StampResourceRecordingUse(*resource);
++        StampResourceRecordingUse(*resource, texture);
+         return ok;
+     }
+ 
+@@ -1436,7 +1436,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+         MOBILEGL_ASSERT(ok, "TransitionTextureForStorageImage: transition failed for textureId=%d",
+                         texture.GetExternalIndex());
+         // Pre-pass stream bookkeeping: a command referencing the image was recorded.
+-        StampResourceRecordingUse(*resource);
++        StampResourceRecordingUse(*resource, texture);
+         return ok;
+     }
+ 
+@@ -1586,7 +1586,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+             return false;
+         }
+ 
+-        StampResourceRecordingUse(*source);
++        StampResourceRecordingUse(*source, texture);
+         outSnapshot = {.imageView = snapshot.sampledView, .layout = snapshot.layout};
+         DeferResourceRelease(Move(snapshot));
+         return true;
+@@ -3089,16 +3089,12 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+             }
+         }
+ 
+-        // Rare mid-frame hazard, kept at parity with the old per-upload
+-        // submits: this image already has an upload recorded in the OPEN batch
+-        // and has since been referenced by the frame's open recording (drawn).
+-        // Appending here would merge both uploads into the same pre-frame
+-        // submission the old code split into two; flush first so the second
+-        // upload lands in its own later submission, exactly like before.
+-        if (m_uploadBatchOpen && WasTouchedThisRecording(outResource) &&
+-            std::find(m_uploadBatchImages.begin(), m_uploadBatchImages.end(), outResource.image) !=
+-                m_uploadBatchImages.end()) {
+-            FlushPendingUploads();
++        // An upload submission always runs before the open frame recording.
++        // The renderer submits older uses before consuming changed host texels.
++        // If that submission failed, keep the dirty data for the next recording.
++        if (HasHostWriteAfterUse() && WasTouchedThisRecording(outResource)) {
++            MGLOG_E_ONCE("Ordered texture upload deferred: an earlier draw is still pending");
++            return false;
+         }
+         // Bound the staging bytes a single batch can pin before its fence can
+         // reclaim them.
+diff --git a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.h b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.h
+index 117b842..e0d198f 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.h
++++ b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VkTextureManager.h
+@@ -542,9 +542,17 @@ public:
+     // recording; a resource whose stamp does not match was not referenced by
+     // any command in the open recording, so its out-of-pass work may safely
+     // execute ahead of the whole recording (in the pre command buffer).
+-    void AdvanceRecordingGeneration() { ++m_recordingGeneration; }
+-    void StampResourceRecordingUse(TextureResource& resource) const {
+-        resource.lastRecordingGeneration = m_recordingGeneration;
++    void AdvanceRecordingGeneration() {
++        m_recordingGeneration = MG_State::GLState::ITextureObject::NewRecordingToken();
++    }
++    Bool HasHostWriteAfterUse() const {
++        return MG_State::GLState::ITextureObject::HasHostWriteAfterUse(m_recordingGeneration);
++    }
++    void StampResourceRecordingUse(TextureResource& resource, const MG_State::GLState::ITextureObject& texture) const {
++        if (!WasTouchedThisRecording(resource)) {
++            resource.lastRecordingGeneration = m_recordingGeneration;
++            texture.StampRecordingUse(m_recordingGeneration);
++        }
+     }
+     // Map-lookup variant for callers that only hold the GL texture object.
+     void StampTextureRecordingUse(MG_State::GLState::ITextureObject* texture);
+@@ -630,7 +638,7 @@ private:
+     Uint64 m_textureImageEpoch = 1;
+     // See AdvanceRecordingGeneration. Starts above every resource's default
+     // stamp of 0 so a fresh resource counts as untouched.
+-    Uint64 m_recordingGeneration = 1;
++    Uint64 m_recordingGeneration = MG_State::GLState::ITextureObject::NewRecordingToken();
+ 
+     Bool SyncTexture(MG_State::GLState::ITextureObject &texture,
+                      TextureResource &outResource);
+diff --git a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.cpp b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.cpp
+index b600511..f481042 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.cpp
++++ b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.cpp
+@@ -3081,14 +3081,14 @@ void main() {
+         });
+         MOBILEGL_ASSERT(succeeded, "VkBufferManager initialization failed.");
+         m_bufferManager.SetCopyCommandProvider(this);
++        // Command-buffer state and texture-use tracking apply even without timestamp queries.
++        m_frameContext.SetRecordingObserver(this);
+         if (m_timerQuerySupported) {
+             m_timerQueryManager = MakeUnique<VkTimerQueryManager>();
+-            if (m_timerQueryManager->Initialize({.device = m_device,
++            if (!m_timerQueryManager->Initialize({.device = m_device,
+                                                  .frameCount = m_frameContext.GetFrameCount(),
+                                                  .timestampValidBits = m_timestampValidBits,
+                                                  .timestampPeriodNs = m_timestampPeriodNs})) {
+-                m_frameContext.SetRecordingObserver(this);
+-            } else {
+                 MGLOG_W("VkTimerQueryManager initialization failed; timer queries disabled");
+                 m_timerQueryManager.reset();
+                 m_timerQuerySupported = false;
+@@ -3229,6 +3229,21 @@ void main() {
+         MGLOG_D("VulkanRenderer initialized");
+     }
+ 
++    // Only the render thread checks this marker, before building command state.
++    // Submit the old uploads AND their consumers before a later upload of the
++    // same image. This is a queue boundary, not a GPU completion wait.
++    Bool VulkanRenderer::SubmitBeforeTextureUpload() {
++        if (!m_textureManager->HasHostWriteAfterUse()) {
++            return true;
++        }
++        if (!FlushPendingCommands()) {
++            MGLOG_E_ONCE("Ordered texture upload deferred: an earlier draw is still pending");
++            return false;
++        }
++        m_lastSampledSetValid = false;
++        return true;
++    }
++
+     void VulkanRenderer::Shutdown() {
+         if (m_instance == VK_NULL_HANDLE && m_device == VK_NULL_HANDLE && m_surface == VK_NULL_HANDLE) {
+             return;
+@@ -6256,7 +6271,7 @@ void main() {
+             // store. Stamping ahead of the sum compare below is benign - a declined
+             // draw re-runs the full path, which stamps the same resources, and an
+             // over-stamp only delays garbage collection by one generation.
+-            m_textureManager->StampResourceRecordingUse(*resource);
++            m_textureManager->StampResourceRecordingUse(*resource, *sampledTexture);
+         }
+         if (contentSum != snap.sampledContentSum || paramsSum != snap.sampledParamsSum) {
+             return false;
+@@ -6371,6 +6386,9 @@ void main() {
+     Bool VulkanRenderer::SetupDraw(FrameContext::FrameData& frame, GLenum mode, Flags<DrawSetupAspect> aspects,
+                                    const DrawCmdParam& drawParams,
+                                    const IndexBufferView* pIndexBufferView) {
++        if (!SubmitBeforeTextureUpload()) {
++            return false;
++        }
+         // Sync each sampled texture at most once across this whole draw: the layout
+         // probe loop, the post-transition loop, and ResolveSamplerDescriptor would
+         // otherwise each re-run the full SyncTexture path on the same textures.
+@@ -6729,7 +6747,7 @@ void main() {
+             if (auto* fastResource = sampledResources[sampledIndex];
+                 fastResource != nullptr && !m_clearManager->HasPendingClear(sampledTexture) &&
+                 IsValidSampledImageLayout(fastResource->layout)) {
+-                m_textureManager->StampResourceRecordingUse(*fastResource);
++                m_textureManager->StampResourceRecordingUse(*fastResource, *sampledTexture);
+                 continue;
+             }
+             const Bool clearReady = MaterializePendingClearForTexture(frame.commandBuffer, *sampledTexture);
+@@ -6750,7 +6768,7 @@ void main() {
+             // Pre-pass stream bookkeeping: the draw about to be recorded reads
+             // this image, so later out-of-pass work on it can no longer jump
+             // ahead of the recording.
+-            m_textureManager->StampResourceRecordingUse(*transitionedResource);
++            m_textureManager->StampResourceRecordingUse(*transitionedResource, *sampledTexture);
+             MGLOG_D("SetupDraw: sampled textureId=%d layout(after)=%s(%d)",
+                     sampledTexture->GetExternalIndex(), VkImageLayoutToString(transitionedResource->layout),
+                     static_cast<Int>(transitionedResource->layout));
+@@ -6962,6 +6980,9 @@ void main() {
+     }
+ 
+     void VulkanRenderer::DispatchCompute(GLuint numGroupsX, GLuint numGroupsY, GLuint numGroupsZ) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         m_textureManager->CollectGarbage();
+         auto& frame = m_frameContext.GetCurrent();
+         // The DISPATCH accessor: with a pipeline bound this is its compute stage program
+@@ -7015,6 +7036,9 @@ void main() {
+     }
+ 
+     void VulkanRenderer::DispatchComputeIndirect(GLintptr indirect) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         m_textureManager->CollectGarbage();
+         auto& frame = m_frameContext.GetCurrent();
+         // See DispatchCompute: the dispatch accessor, not the draw one.
+@@ -7182,6 +7206,9 @@ void main() {
+     }
+ 
+     void VulkanRenderer::Clear(GLbitfield mask) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         m_clearManager->CollectGarbage();
+         if ((mask & (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)) == 0) {
+             return;
+@@ -7367,6 +7394,9 @@ void main() {
+     void VulkanRenderer::QueueClearBufferPayloadForFramebuffer(
+             const MG_State::GLState::FramebufferObject& framebuffer, GLenum buffer, GLint drawbuffer,
+             const ClearAttachmentPayload& clearPayload) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         m_clearManager->CollectGarbage();
+         // GL 3.3 §3.1: when RASTERIZER_DISCARD is enabled, Clear and ClearBuffer* are ignored.
+         if (MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::RasterizerDiscard)) {
+@@ -8526,6 +8556,9 @@ void main() {
+                                               GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
+                                               GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
+                                               GLbitfield mask, GLenum filter) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         static constexpr GLbitfield kSupportedBlitMask =
+             GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT;
+         if ((mask & ~kSupportedBlitMask) != 0) {
+@@ -9128,6 +9161,9 @@ void main() {
+ 
+     void VulkanRenderer::CopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
+                                            GLint x, GLint y, GLsizei width, GLsizei height) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         if (width <= 0 || height <= 0) {
+             return;
+         }
+@@ -9447,6 +9483,9 @@ void main() {
+                                           const CopyImageEndpoint& dstEndpoint,
+                                           GLenum dstTarget, GLint dstLevel, GLint dstX, GLint dstY, GLint dstZ,
+                                           GLsizei srcWidth, GLsizei srcHeight, GLsizei srcDepth) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         MOBILEGL_ASSERT(srcEndpoint.Exists() && dstEndpoint.Exists(),
+                         "CopyImageSubData requires valid source and destination images.");
+         // The frontend already declines a zero or negative extent, so anything else here is a
+@@ -9859,6 +9898,9 @@ void main() {
+ 
+     void VulkanRenderer::ReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type,
+                                     void* pixels) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         if (width <= 0 || height <= 0) {
+             return;
+         }
+@@ -10657,6 +10699,9 @@ void main() {
+     void VulkanRenderer::GetTextureImage(const SharedPtr<MG_State::GLState::ITextureObject>& textureObject,
+                                          TextureUploadTarget textureUploadTarget, GLint level, GLenum format,
+                                          GLenum type, GLsizei bufSize, GLvoid* pixels) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         if (textureObject == nullptr || textureObject->GetStorageType() != TextureStorageType::Mipmap) {
+             return;
+         }
+@@ -10871,6 +10916,9 @@ void main() {
+     }
+ 
+     void VulkanRenderer::GenerateMipmap(GLenum target) {
++        if (!SubmitBeforeTextureUpload()) {
++            return;
++        }
+         const auto textureTarget = MG_Util::ConvertGLEnumToTextureTarget(target);
+         // Whatever is left here is a coverage gap in this backend, not a broken invariant, so it
+         // declines (leaving the mip chain unwritten) rather than asserting the process down. What
+@@ -12234,14 +12282,16 @@ void main() {
+         if (m_device == VK_NULL_HANDLE || m_graphicsQueue == VK_NULL_HANDLE) {
+             return true;
+         }
+-        // Every submission is recorded with the frame serial it was made under, so the wait can be
+-        // narrowed to the first submission at or past the requested serial instead of draining the
+-        // whole queue. OnSubmitsCompletedUpTo calls NotifyFrameSerialComplete for every record it
+-        // retires, so the completed-serial floor still advances correctly after one fence wait.
+-        for (const auto& record : m_inFlightSubmits) {
++        // A frame may contain several host-write flushes before presentation.
++        // All submissions bearing the requested serial must be complete.
++        for (SizeT i = 0; i < m_inFlightSubmits.size(); ++i) {
++            const auto& record = m_inFlightSubmits[i];
+             if (record.frameSerial < serial || record.fence == VK_NULL_HANDLE) {
+                 continue;
+             }
++            if (i + 1 < m_inFlightSubmits.size() && m_inFlightSubmits[i + 1].frameSerial == serial) {
++                continue;
++            }
+             if (vkWaitForFences(m_device, 1, &record.fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
+                 break; // fall through to the drain below
+             }
+@@ -12293,6 +12343,9 @@ void main() {
+     }
+ 
+     void VulkanRenderer::RegisterSubmit(VkFence fence, Bool pooledFence) {
++        if (m_textureManager) {
++            m_textureManager->AdvanceRecordingGeneration();
++        }
+         ++m_submitCounter;
+         m_inFlightSubmits.push_back({m_submitCounter, m_bufferManager.GetFrameSerial(), fence, pooledFence});
+     }
+@@ -12319,10 +12372,11 @@ void main() {
+         while (!m_inFlightSubmits.empty() && m_inFlightSubmits.front().submitIndex <= submitIndex) {
+             SubmitRecord record = m_inFlightSubmits.front();
+             m_inFlightSubmits.erase(m_inFlightSubmits.begin());
+-            // Frame-serial completion piggybacks on submission completion.
+-            // NotifyFrameSerialComplete refuses the current (still-recording)
+-            // serial, so mid-frame flush records do not mark it early.
+-            m_bufferManager.NotifyFrameSerialComplete(record.frameSerial);
++            // A signaled prefix of a frame does not retire buffers that a later
++            // submission of the same frame still reads.
++            if (m_inFlightSubmits.empty() || m_inFlightSubmits.front().frameSerial != record.frameSerial) {
++                m_bufferManager.NotifyFrameSerialComplete(record.frameSerial);
++            }
+             if (!record.pooledFence || m_device == VK_NULL_HANDLE) {
+                 continue; // frame-slot fences are reset/destroyed by FrameContext
+             }
+diff --git a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.h b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.h
+index c3d3085..49aa986 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.h
++++ b/Natives/external/MobileGL/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.h
+@@ -475,6 +475,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
+         VkFence AcquirePooledSubmitFence();
+         void DestroySubmitFencePool();
+         Bool HasPendingRecordedWork() const;
++        Bool SubmitBeforeTextureUpload();
+         // Frame-boundary housekeeping for paths that never reach Present's
+         // tail (present-less readback loops, suspended presentation, blocking
+         // sync waits): runs the same per-frame drains Present performs, but
+diff --git a/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.cpp b/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.cpp
+index 039e301..98aa856 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.cpp
++++ b/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.cpp
+@@ -281,6 +281,11 @@ namespace MobileGL {
+                 return value;
+             }
+ 
++            void TextureObjectBase::NoteHostWrite() {
++                ++m_contentVersion;
++                NoteRecordedContentWrite();
++            }
++
+             void TextureObjectBase::BumpContentVersion() {
+                 ++m_contentVersion;
+             }
+@@ -351,7 +356,7 @@ namespace MobileGL {
+             void TextureObjectWithOneMipmap::MarkStorageDirty(TextureUploadTarget uploadTarget, Uint mipmapLevel,
+                                                               Bool dirty) {
+                 if (dirty) {
+-                    ++m_contentVersion;
++                    NoteHostWrite();
+                 }
+                 m_textureStorage.MarkDirty(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, dirty);
+             }
+@@ -362,7 +367,7 @@ namespace MobileGL {
+ 
+             void TextureObjectWithOneMipmap::MarkStorageDirtyRegion(TextureUploadTarget uploadTarget, Uint mipmapLevel,
+                                                                     IntVec3 offset, IntVec3 size) {
+-                ++m_contentVersion;
++                NoteHostWrite();
+                 m_textureStorage.MarkDirtyRegion(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, offset,
+                                                  size);
+             }
+diff --git a/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.h b/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.h
+index 48ef277..ee204c9 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.h
++++ b/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject.h
+@@ -12,6 +12,7 @@
+ #include "MG_Util/Types.h"
+ #include "../SamplerState/SamplerObject.h"
+ #include <Includes.h>
++#include <atomic>
+ #include <MG_Util/Math/VectorTypes.h>
+ 
+ namespace MobileGL::MG_State::GLState {
+@@ -24,6 +25,36 @@ namespace MobileGL::MG_State::GLState {
+         using TargetEnum = TextureTarget;
+         virtual ~ITextureObject() = default;
+ 
++        // Only a recording token crosses the host/renderer boundary. Uploading
++        // threads never dereference a backend or submit Vulkan commands.
++        static Uint64 NewRecordingToken() {
++            return s_nextRecording.fetch_add(1, std::memory_order_relaxed);
++        }
++        static Bool HasHostWriteAfterUse(Uint64 token) {
++            return s_dirtyRecording.load(std::memory_order_acquire) == token;
++        }
++        void StampRecordingUse(Uint64 token) const {
++            const auto& owner = GetViewStorageOwner();
++            (owner ? *owner : *this).m_recordedUse.store(token, std::memory_order_release);
++        }
++
++    protected:
++        void NoteRecordedContentWrite() {
++            const Uint64 token = m_recordedUse.load(std::memory_order_acquire);
++            Uint64 previous = s_dirtyRecording.load(std::memory_order_relaxed);
++            // A late write to a texture from a retired recording must never mask
++            // a newer hazard. The backend has one active command stream.
++            while (previous < token && !s_dirtyRecording.compare_exchange_weak(
++                    previous, token, std::memory_order_release, std::memory_order_relaxed)) {}
++        }
++
++    private:
++        inline static std::atomic<Uint64> s_nextRecording{1};
++        inline static std::atomic<Uint64> s_dirtyRecording{0};
++        mutable std::atomic<Uint64> m_recordedUse{0};
++
++    public:
++
+         virtual TextureStorageType GetStorageType() const = 0;
+ 
+         virtual TextureInternalFormat GetFormat() const = 0;
+@@ -183,6 +214,7 @@ namespace MobileGL::MG_State::GLState {
+         }
+ 
+     protected:
++        void NoteHostWrite();
+         static Uint64 AllocateLifetimeId();
+         // The ONLY way m_shapeVersion may move. Besides invalidating this object's own
+         // completeness memo it bumps the context-wide sampling-resolution generation, which is
+diff --git a/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject2DCube.cpp b/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject2DCube.cpp
+index 765477c..1ed48ec 100644
+--- a/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject2DCube.cpp
++++ b/Natives/external/MobileGL/MobileGL/MG_State/GLState/TextureState/TextureObject2DCube.cpp
+@@ -48,7 +48,7 @@ namespace MobileGL {
+ 
+             void TextureObject2DCube::MarkStorageDirty(TextureUploadTarget uploadTarget, Uint mipmapLevel, bool dirty) {
+                 if (dirty) {
+-                    ++m_contentVersion;
++                    NoteHostWrite();
+                 }
+                 m_textureStorage.MarkDirty(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, dirty);
+             }
+@@ -59,7 +59,7 @@ namespace MobileGL {
+ 
+             void TextureObject2DCube::MarkStorageDirtyRegion(TextureUploadTarget uploadTarget, Uint mipmapLevel,
+                                                              IntVec3 offset, IntVec3 size) {
+-                ++m_contentVersion;
++                NoteHostWrite();
+                 m_textureStorage.MarkDirtyRegion(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, offset,
+                                                  size);
+             }

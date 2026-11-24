@@ -911,7 +911,13 @@ else
 	else cp $(JIT_APP_SRC)/integration/Host/PrismaJITHelper.appexpt $(JIT_STAGING)/PrismaJITHelper.appexpt; fi
 endif
 
-payload: native dep_mg java jre assets dep_shader_shims dep_openal_shim dep_mithril_glshim dep_nggl4es dep_gl4eszl2 dep_virgl dep_angle_freeze dep_sdl3_guard jit_helper
+ifeq ($(PLATFORM),2)
+MOBILEGL_DEVICE_LIB := $(WORKINGDIR)/prisma-mobilegl/libMobileGL.dylib
+$(MOBILEGL_DEVICE_LIB): scripts/build_pinned_mobilegl.sh patches/mobilegl-ordered-texture-updates.patch Natives/resources/Frameworks/libMoltenVK.dylib
+	bash scripts/build_pinned_mobilegl.sh "$(@D)" "$(MAKE_COMMAND)" "$(JOBS)"
+endif
+
+payload: native dep_mg java jre assets dep_shader_shims dep_openal_shim dep_mithril_glshim dep_nggl4es dep_gl4eszl2 dep_virgl dep_angle_freeze dep_sdl3_guard jit_helper $(MOBILEGL_DEVICE_LIB)
 	echo '[Amethyst v$(VERSION)] payload - start'
 	$(call METHOD_DIRCHECK,$(WORKINGDIR)/AngelAuraAmethyst.app/libs)
 	$(call METHOD_DIRCHECK,$(WORKINGDIR)/AngelAuraAmethyst.app/libs_caciocavallo)
@@ -930,6 +936,9 @@ payload: native dep_mg java jre assets dep_shader_shims dep_openal_shim dep_mith
 	# ZL2 经典版 gl4es（libgl4eszl2.dylib，dep_gl4eszl2 目标）从源码构建，
 	# 构建期即带 Task208 三件套，无需任何 post-build 二进制补丁。
 	cp $(WORKINGDIR)/*.dylib $(WORKINGDIR)/AngelAuraAmethyst.app/Frameworks/ || exit 1
+ifeq ($(PLATFORM),2)
+	cp "$(MOBILEGL_DEVICE_LIB)" "$(WORKINGDIR)/AngelAuraAmethyst.app/Frameworks/libMobileGL.dylib"
+endif
 	# spirv-cross 软链接（防御性兜底）：若 MobileGlues 构建产出 libspirv-cross-c-shared.0.dylib，
 	# 创建 libspirv-cross.dylib 软链接，兼容按 macOS 默认名加载的 native 代码。
 	if [ -f "$(WORKINGDIR)/AngelAuraAmethyst.app/Frameworks/libspirv-cross-c-shared.0.dylib" ] && [ ! -f "$(WORKINGDIR)/AngelAuraAmethyst.app/Frameworks/libspirv-cross.dylib" ]; then \
