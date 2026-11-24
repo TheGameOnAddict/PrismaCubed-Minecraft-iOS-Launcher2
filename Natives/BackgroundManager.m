@@ -295,7 +295,18 @@ static UIColor *ame250_globalTextFillColor(void);
 
 #pragma mark - Global Background Application
 
+- (void)setGameSurfaceVisible:(BOOL)visible inWindow:(UIWindow *)window {
+    if (_gameSurfaceVisible == visible) return;
+    _gameSurfaceVisible = visible;
+    if (visible) {
+        [self removeGlobalBackground];
+    } else {
+        [self applyBackgroundToWindow:window];
+    }
+}
+
 - (void)applyBackgroundToWindow:(UIWindow *)window {
+    if (self.gameSurfaceVisible) return;
     if (!window) {
         [self removeGlobalBackground];
         return;
@@ -355,6 +366,7 @@ static UIColor *ame250_globalTextFillColor(void);
 }
 
 - (void)applyBackgroundToSplitViewController:(UISplitViewController *)splitVC {
+    if (self.gameSurfaceVisible) return;
     if (!splitVC || !splitVC.view) {
         [self removeGlobalBackground];
         return;
@@ -703,6 +715,7 @@ static UIColor *ame250_globalTextFillColor(void);
 // 递归覆盖 childViewControllers（nav/split/tab 子栈均注册为 child）、
 // presentedViewController；nav 栏/工具栏效果单独补刷。幂等，可安全重复调用。
 - (void)refreshTransparencyForWindowUI {
+    if (self.gameSurfaceVisible) return;
     UIViewController *root = nil;
     if (self.currentSplitVC && self.currentSplitVC.view.window) {
         root = self.currentSplitVC;
@@ -714,6 +727,7 @@ static UIColor *ame250_globalTextFillColor(void);
         return;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.gameSurfaceVisible) return;
         [self ame_applyTransparencyRecursive:root];
         NSLog(@"[BackgroundManager] Task152: transparency refreshed for live VC tree");
     });

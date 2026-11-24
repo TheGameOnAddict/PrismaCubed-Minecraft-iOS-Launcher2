@@ -142,6 +142,9 @@ static const void *kIconLoaderImageViewKey = &kIconLoaderImageViewKey;
                                                      name:UIApplicationDidReceiveMemoryWarningNotification
                                                    object:nil];
 
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(gameRuntimeStarted:)
+                                                 name:@"CubicGameRuntimeStarted" object:nil];
+
         // 监听应用进入后台：取消所有进行中的下载（避免后台下载被系统杀掉）
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleEnterBackground)
@@ -876,6 +879,10 @@ static const void *kIconLoaderImageViewKey = &kIconLoaderImageViewKey;
 }
 
 #pragma mark - 通知处理
+
+- (void)gameRuntimeStarted:(NSNotification *)notification {
+    [self clearMemoryCacheInternal];
+}
 
 - (void)handleMemoryWarning {
     [self clearMemoryCacheInternal];
