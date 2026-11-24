@@ -142,6 +142,7 @@ NSString *localize(NSString *key, NSString *comment) {
 
 // PLProfiles 最小桩：无 profile（版本卡显示"未选择实例"）
 @interface PLProfiles : NSObject
+@property(nonatomic, copy) NSString *previewSelectedName;
 + (PLProfiles *)current;
 + (BOOL)checkContentDirectoryForProfileName:(NSString *)profileName error:(NSError **)error;
 - (NSString *)selectedProfileName;
@@ -163,7 +164,7 @@ NSString *localize(NSString *key, NSString *comment) {
     return p;
 }
 
-- (NSString *)selectedProfileName { return [self profiles][@"The Gang"] ? @"The Gang" : nil; }
+- (NSString *)selectedProfileName { return self.previewSelectedName ?: ([self profiles][@"The Gang"] ? @"The Gang" : nil); }
 - (NSMutableDictionary *)profiles {
     static NSMutableDictionary *profiles;
     if (!profiles) {
@@ -188,10 +189,26 @@ NSString *localize(NSString *key, NSString *comment) {
 // 7.0-UI-9-e：版本页缺口方法补齐（viewWillAppear 先 updateCurrent 重拉
 // 注册表；选用链写 selectedProfileName——预览恒空表，写入落空即安全）
 + (void)updateCurrent {}
-- (void)setSelectedProfileName:(NSString *)name {}
+- (void)setSelectedProfileName:(NSString *)name { self.previewSelectedName = name; }
 
 // 7.0-UI-12：游戏下载页安装流建 profile（预览落空即安全，无写盘）
-- (void)saveProfile:(NSDictionary *)profile withName:(NSString *)name {}
+- (void)saveProfile:(NSDictionary *)profile withName:(NSString *)name {
+    self.profiles[name] = [profile mutableCopy];
+}
+
+- (BOOL)createProfile:(NSDictionary *)profile withName:(NSString *)name error:(NSError **)error {
+    if ([[NSUserDefaults.standardUserDefaults stringForKey:@"route"] isEqual:@"create-failure"]) {
+        if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteNoPermissionError
+                                            userInfo:@{NSLocalizedDescriptionKey:@"Fixture storage is read-only."}];
+        return NO;
+    }
+    if (self.profiles[name]) return NO;
+    [self saveProfile:profile withName:name];
+    [self setSelectedProfileName:name];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"SelectedProfileChanged" object:nil];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"ReloadProfileList" object:nil];
+    return YES;
+}
 
 @end
 
@@ -216,6 +233,11 @@ NSString *localize(NSString *key, NSString *comment) {
         _progress.totalUnitCount = 100;
     }
     return self;
+}
+
+- (void)prepareVersion:(NSString *)version forProfile:(NSString *)name {
+    [NSNotificationCenter.defaultCenter postNotificationName:@"CubicPreviewPrepareVersion" object:nil
+                                                  userInfo:@{@"version":version, @"name":name}];
 }
 
 - (void)downloadVersion:(NSDictionary *)version {
@@ -962,7 +984,8 @@ static void PreviewScreens(UIWindow *window) {
     }
     if ([route isEqual:@"menu"]) [shell cubicOpenAccountMenu];
     if ([route isEqual:@"accounts"]) [shell showPageAtIndex:3];
-    if ([route isEqual:@"create"]) [home cubicCreateProfile];
+    BOOL checkCreation = [route isEqual:@"create-submit"] || [route isEqual:@"create-failure"];
+    if ([route isEqual:@"create"] || checkCreation) [home cubicCreateProfile];
     if ([route isEqual:@"import"]) [home cubicImport];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         UIViewController *modal = shell.presentedViewController ?: nav.presentedViewController ?: home.presentedViewController;
@@ -1058,6 +1081,11 @@ static void PreviewScreens(UIWindow *window) {
                 [window layoutIfNeeded];
                 capture();
             });
+            return;
+        }
+        if (checkCreation) {
+            extern void CubicCheckProfileCreation(UIViewController *, UIViewController *, BOOL, dispatch_block_t);
+            CubicCheckProfileCreation(modal, home, [route isEqual:@"create-failure"], capture);
             return;
         }
         capture();
