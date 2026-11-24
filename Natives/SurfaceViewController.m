@@ -29,6 +29,7 @@
 #import "LanPortDetector.h"
 #import "CubicBootBackdrop.h"
 #import "CubicRuntimeInfo.h"
+#import "CubicDiagnostics.h"
 #import "AmeNativeMenu.h"   // Task247（T9）：伪玻璃档 ⚙ 按钮菜单走磨砂面板路由
 #import "LiquidGlassCompat.h"   // Task247（T9）：LGCIsPseudoGlassStyleActive 风格分档判定
 #import "AmeTheme.h"   // ★ 7.0-UI-3f：Fluent 设计令牌（仅启动器铬件色；游戏画布/HUD/控制按钮色一律不动）
@@ -3516,6 +3517,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.bootOptions = options;
         [self.performanceTest recordLaunchOptions:options];
+        [CubicDiagnostics updateLaunchDetails:@{@"launchOptions":options}];
         [self refreshBootOptions];
     });
 }

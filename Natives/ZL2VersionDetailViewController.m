@@ -1,4 +1,5 @@
 #import "PerformanceTest.h"
+#import "CubicDiagnostics.h"
 #import "CubicForm.h"
 #import "FolderBrowserViewController.h"
 #import "ZL2AssetSearchViewController.h"
@@ -309,6 +310,14 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
             NSString *root = [ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:owner.ameV13_profileName];
             [owner presentViewController:[FolderBrowserViewController wrappedControllerForPath:[root stringByAppendingPathComponent:@"logs"]] animated:YES completion:nil];
         }];
+    UIAction *diagnostics = [UIAction actionWithTitle:NSLocalizedString(@"Export Diagnostics ZIP", nil)
+        image:[UIImage systemImageNamed:@"square.and.arrow.up"] identifier:nil handler:^(__kindof UIAction *action) {
+            ZL2VersionDetailViewController *owner = weakSelf;
+            if (!owner) return;
+            NSString *key = owner.ameV13_profileName;
+            NSString *directory = [ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:key];
+            [CubicDiagnostics shareForProfile:key directory:directory crashReport:nil from:owner];
+        }];
     UIAction *ai = [UIAction actionWithTitle:NSLocalizedString(@"Prisma AI", nil)
         image:[UIImage systemImageNamed:@"sparkles"] identifier:nil handler:^(__kindof UIAction *action) {
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ZL2ShellNavigate" object:nil userInfo:@{@"index": @6}];
@@ -327,7 +336,7 @@ static UIImage *ZL2V13SystemImage(NSString *name, NSString *fallback) {
             gameDirectory:[ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:name]
             from:owner launch:^{ [owner cubicPlay]; }];
     }];
-    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, test, worlds, logs, overview, servers]];
+    doneButton.menu = [UIMenu menuWithTitle:@"" children:@[folder, options, test, worlds, logs, diagnostics, overview, servers]];
     UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
     [back setTitle:NSLocalizedString(@"‹ Profiles", nil) forState:UIControlStateNormal];
     back.tintColor = [ZL2Theme onPrimary];

@@ -3,6 +3,8 @@
 @interface PerformanceTest : NSObject
 + (void)showForProfile:(NSString *)name version:(NSString *)version gameDirectory:(NSString *)directory
                   from:(UIViewController *)controller launch:(void (^)(void))launch;
++ (NSDictionary *)sceneForDirectory:(NSString *)directory since:(NSDate *)date;
++ (nullable NSURL *)latestReportForProfile:(NSString *)profile;
 + (void)claimLaunchRequestForProfile:(NSString *)profile;
 + (instancetype)takeForGame:(NSString *)profile;
 @property(nonatomic, readonly) BOOL recording;

@@ -1080,6 +1080,13 @@ static void PreviewScreens(UIWindow *window) {
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.backgroundColor = [ZL2Theme surface];
 
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicDiagnostics"]) {
+        self.window.rootViewController = [UIViewController new];
+        [self.window makeKeyAndVisible];
+        extern void CubicRunDiagnosticsFixture(void);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ CubicRunDiagnosticsFixture(); });
+        return YES;
+    }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"-cubicScreens"]) {
         NSString *root = NSTemporaryDirectory();
         setenv("POJAV_HOME", root.fileSystemRepresentation, 1);

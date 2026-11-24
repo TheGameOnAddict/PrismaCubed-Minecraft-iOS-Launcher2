@@ -106,7 +106,7 @@ preview_mode() {
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
     ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
     ZL2M3Kit                       # 7.0-UI-12：MD3 功能组件库（搜索/chip/开关/对话框/弹层）
-    CubicBootBackdrop CubicRuntimeInfo GameMenuOverlayView PerformanceTest ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
+    CubicBootBackdrop CubicRuntimeInfo GameMenuOverlayView CubicDiagnostics CubicDiagnosticText Preview/CubicDiagnosticsFixture PerformanceTest ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
     ZL2GameDownloadViewController  # 7.0-UI-12：游戏 M3 下载页（旧 DownloadViewController 退场）
     ZL2GameAddonsViewController    # 7.0-UI-14：Addons 加载器选择屏（选版后加载器组合+安装分发）
     ZL2SearchIdViewController      # 7.0-UI-14：按项目 ID 直查页（下载左轨第 6 项）
@@ -244,6 +244,22 @@ PLIST
         cp "$docs/$png" "$OUT/"
       done
     done
+    if [[ "$MODE" == "performance" ]]; then
+      rm -f "$docs"/fixture-{matched,profile,stale}.zip "$docs/fixture-diagnostics.done"
+      xcrun simctl launch --console "$device" "$bundle" -cubicDiagnostics > "$OUT/diagnostics.log" 2>&1 &
+      pid=$!
+      for attempt in {1..60}; do
+        [[ -s "$docs/fixture-diagnostics.done" ]] && break
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      xcrun simctl terminate "$device" "$bundle" 2>/dev/null || true
+      wait "$pid" || true
+      if ! python3 "$ROOT/scripts/check_diagnostics_fixture.py" "$docs"; then
+        cat "$OUT/diagnostics.log"
+        FAIL=1
+      fi
+    fi
     if [[ "$MODE" == "screens" ]]; then python3 "$ROOT/scripts/native_preview_gallery.py" "$OUT" || FAIL=1; fi
     return
   fi

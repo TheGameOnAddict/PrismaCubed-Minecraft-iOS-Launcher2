@@ -6,12 +6,17 @@
 #import "BackgroundManager.h"
 #import "AmeTheme.h" // 7.0-UI-3e：Fluent 设计令牌层（崩溃视图颜色语义化迁移）
 #import "CrashAnalyzer.h"
+#import "CubicDiagnostics.h"
+#import "PLProfiles.h"
+#import "ZL2VersionDetailViewController.h"
 
 @interface PLCrashView ()
 // 数据
 @property (nonatomic, assign) int exitCode;
 @property (nonatomic, copy) NSString *customTitle;
 @property (nonatomic, copy) NSString *customReason;
+@property (nonatomic, copy) NSString *diagnosticsProfile;
+@property (nonatomic, copy) NSString *diagnosticsCrashReport;
 
 // 崩溃类型分析（参照 HMCL 的崩溃分析器，提供更精确的崩溃分类和建议）
 typedef NS_ENUM(NSInteger, CrashType) {
@@ -91,13 +96,15 @@ static NSString *const kGitHubIssuesURL = @"https://github.com/Gsjsjzhznsz/Prism
 /// NSFileManager 自包含实现，不动 main_hook/utils（归并行代理）。仅在 L2 呈现
 /// 成功路径调用；L2 未呈现（keyWindow 缺失/提前被杀）不调用，报告保持原文件名
 /// 在盘，下次启动由 SceneDelegate L3 补弹（Task273 旗标协议语义不变）。
-static void ame274_archiveCrashReportAfterL2Present(void) {
+static NSString *ame274_archiveCrashReportAfterL2Present(void) {
+    NSString *content = nil;
     @try {
         NSString *home = [NSProcessInfo processInfo].environment[@"POJAV_HOME"];
-        if (home.length == 0) return;
+        if (home.length == 0) return nil;
         NSFileManager *fm = [NSFileManager defaultManager];
         NSString *path = [home stringByAppendingPathComponent:@"ame273_crash_report.txt"];
-        if (![fm fileExistsAtPath:path]) return;
+        if (![fm fileExistsAtPath:path]) return nil;
+        content = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
         NSString *archive = [home stringByAppendingPathComponent:
             [NSString stringWithFormat:@"ame273_crash_report.seen-%.0f.txt",
              [NSDate date].timeIntervalSince1970]];
@@ -125,6 +132,7 @@ static void ame274_archiveCrashReportAfterL2Present(void) {
     } @catch (NSException *ame274_e) {
         NSLog(@"[PLCrashView] Task274: crash report archive exception: %@", ame274_e);
     }
+    return content;
 }
 
 #pragma mark - Public Methods
@@ -170,6 +178,7 @@ static void ame274_archiveCrashReportAfterL2Present(void) {
 
         PLCrashView *crashVC = [[PLCrashView alloc] init];
         crashVC.exitCode = exitCode;
+        if (SurfaceViewController.isRunning) crashVC.diagnosticsProfile = PLProfiles.current.selectedProfileName;
         crashVC.customTitle = customTitle;
         crashVC.customReason = customReason;
         crashVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
@@ -184,7 +193,7 @@ static void ame274_archiveCrashReportAfterL2Present(void) {
         ame273_crashViewDidPresent();
         // ★ Task274-g（G5）：呈现成功即消费报告文件（归档改名）——L2 已把崩溃
         //   原因展示给用户，报告留盘会让下次启动 L3 补弹同一崩溃。
-        ame274_archiveCrashReportAfterL2Present();
+        crashVC.diagnosticsCrashReport = ame274_archiveCrashReportAfterL2Present();
     });
 }
 
@@ -1254,7 +1263,7 @@ static void ame274_archiveCrashReportAfterL2Present(void) {
     [container addArrangedSubview:_exitButton];
 
     // 3. 分享日志按钮
-    _shareButton = [self createButtonWithTitle:localize(@"crash.share_log", @"分享日志")
+    _shareButton = [self createButtonWithTitle:NSLocalizedString(@"Export Diagnostics", nil)
                                           icon:@"square.and.arrow.up"
                                  backgroundColor:[AmeTheme fillStrong] // 7.0-UI-3e：次级按钮（原白 15% 强填充档）
                                      textColor:[AmeTheme textPrimary]
@@ -1580,35 +1589,13 @@ static NSString *ame274_readFileTail(NSString *path, NSUInteger maxBytes) {
 #pragma mark - Actions
 
 - (void)shareLog {
-    NSString *latestlogPath = [NSString stringWithFormat:@"file://%s/latestlog.txt", getenv("POJAV_HOME")];
-    NSMutableArray *items = [NSMutableArray arrayWithArray:@[@"latestlog.txt", [NSURL URLWithString:latestlogPath]]];
-
-    // Task 27：一并分享 fatal 证据文件（fatal_trace.txt / 最新 hs_err），
-    // 让“无报告死亡”场景的现场数据随一次分享全部带出
-    NSString *home = @(getenv("POJAV_HOME") ?: "");
-    if (home.length > 0) {
-        NSString *tracePath = [home stringByAppendingPathComponent:@"fatal_trace.txt"];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:tracePath]) {
-            [items addObject:[NSURL fileURLWithPath:tracePath]];
-        }
-        NSError *dirErr = nil;
-        NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:home error:&dirErr];
-        NSString *best = nil; NSDate *bestDate = nil;
-        for (NSString *f in files) {
-            if (![f hasPrefix:@"hs_err_pid"] || ![f hasSuffix:@".log"]) continue;
-            NSString *p = [home stringByAppendingPathComponent:f];
-            NSDate *d = [[NSFileManager defaultManager] attributesOfItemAtPath:p error:nil][NSFileModificationDate];
-            if (!bestDate || [d compare:bestDate] == NSOrderedDescending) { best = p; bestDate = d; }
-        }
-        if (best) [items addObject:[NSURL fileURLWithPath:best]];
+    NSString *profile = self.diagnosticsProfile;
+    NSString *directory = profile.length ? [ZL2VersionDetailViewController ameV13_resolvedGameDirForProfileName:profile] : nil;
+    NSString *report = self.diagnosticsCrashReport;
+    if (!report.length) {
+        report = [NSString stringWithFormat:@"exit_code: %d\n%@", self.exitCode, self.reasonLabel.text ?: @""];
     }
-
-    UIActivityViewController *activityVC = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
-
-    activityVC.popoverPresentationController.sourceView = self.view;
-    activityVC.popoverPresentationController.sourceRect = CGRectMake(self.view.bounds.size.width / 2, self.view.bounds.size.height / 2, 1, 1);
-
-    [self presentViewController:activityVC animated:YES completion:nil];
+    [CubicDiagnostics shareForProfile:profile directory:directory crashReport:report from:self];
 }
 
 - (void)showFullLog {

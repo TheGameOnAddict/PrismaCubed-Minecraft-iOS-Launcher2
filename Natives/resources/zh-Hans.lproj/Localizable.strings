@@ -3883,6 +3883,7 @@
 "prisma.project.noDescription" = "作者尚未添加项目介绍。";
 "prisma.project.noCounterpart" = "未在此来源找到此项目。";
 
+"Export Diagnostics ZIP" = "导出诊断 ZIP 文件";
 "Performance Test" = "性能测试";
 "Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report." = "启动并进入测试场景，然后打开游戏内齿轮菜单，点按“记录 60 秒”。返回此处可分享报告。";
 "Test Launch" = "测试启动";
@@ -3895,3 +3896,6 @@
 "The capture is running. Share after the 60 seconds finish." = "正在记录。请在 60 秒结束后分享。";
 
 "cubic.boot.options" = "Java %1$@   ·   内存 %2$@   ·   渲染器 %3$@";
+"Preparing diagnostics…" = "正在整理诊断文件…";
+"A copy is saved in Files under PrismaCubic → Diagnostics." = "副本将保存到「文件」中的 PrismaCubic → Diagnostics。";
+"Export failed" = "导出失败";

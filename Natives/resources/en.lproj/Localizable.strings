@@ -3884,6 +3884,7 @@
 "prisma.project.noDescription" = "The author hasn’t added a project description.";
 "prisma.project.noCounterpart" = "This project couldn’t be found on this source.";
 
+"Export Diagnostics ZIP" = "Export Diagnostics ZIP";
 "Performance Test" = "Performance Test";
 "Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report." = "Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report.";
 "Test Launch" = "Test Launch";
@@ -3896,3 +3897,6 @@
 "The capture is running. Share after the 60 seconds finish." = "The capture is running. Share after the 60 seconds finish.";
 
 "cubic.boot.options" = "Java %1$@   ·   RAM %2$@   ·   Renderer %3$@";
+"Preparing diagnostics…" = "Preparing diagnostics…";
+"A copy is saved in Files under PrismaCubic → Diagnostics." = "A copy is saved in Files under PrismaCubic → Diagnostics.";
+"Export failed" = "Export failed";

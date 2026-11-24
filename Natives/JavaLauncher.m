@@ -1,4 +1,5 @@
 #import "CubicRuntimeInfo.h"
+#import "CubicDiagnostics.h"
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -3126,6 +3127,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
         // ★ Task286：新实例首启性能播种（仅 options.txt 缺席时写均衡档，
         //   已有实例零触碰；置于 ame261 之前——其 sneak 修复读该文件，
         //   播种档无 sneak 行时其"默认态"判定与文件缺席同语义）。
+        [CubicDiagnostics markLaunchForProfile:PLProfiles.current.selectedProfileName directory:gameDir version:launchTarget[@"id"]];
         ame286_seedFirstLaunchPerformanceOptions(gameDir);
         ame261_repairSneakBindingForRightShiftLayout(gameDir);
 

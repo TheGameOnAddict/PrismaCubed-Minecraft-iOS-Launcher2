@@ -1,4 +1,5 @@
 #import "CubicRuntimeInfo.h"
+#import "CubicDiagnostics.h"
 #import "utils.h"
 
 @implementation CubicRuntimeInfo
@@ -39,10 +40,14 @@ static NSString *libraryName(void) {
             [observedSource hasPrefix:@"game"]) return;
         if ([source isEqualToString:@"gameInfo"] && [observedLibrary isEqualToString:library] &&
             [observedSource isEqualToString:@"game"]) return;
+        if ([observedName isEqual:name] && [observedLibrary isEqual:library] &&
+            [observedSource isEqual:source] && [observedDriver isEqual:driver]) return;
         observedName = [name copy];
         observedLibrary = library;
         observedSource = source;
         observedDriver = [driver substringToIndex:MIN(driver.length, 240)];
+        [CubicDiagnostics updateLaunchDetails:@{@"renderer":@{@"name":observedName,
+            @"library":observedLibrary, @"source":observedSource}}];
     }
 }
 

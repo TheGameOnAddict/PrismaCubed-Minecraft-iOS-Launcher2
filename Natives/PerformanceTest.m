@@ -1,9 +1,15 @@
 #import "PerformanceTest.h"
 #import "PerformanceFrames.h"
 #import "CubicRuntimeInfo.h"
+#import "CubicDiagnostics.h"
 #import "PLProfiles.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <sys/utsname.h>
+#import <sys/stat.h>
+#import <fcntl.h>
+#import <unistd.h>
+#import <dirent.h>
+#import <math.h>
 #if __has_include("config.h")
 #import "config.h"
 #endif
@@ -32,19 +38,27 @@ static void alert(UIViewController *vc, NSString *message) {
     [vc presentViewController:a animated:YES completion:nil];
 }
 
-static void shareReport(NSURL *url, UIViewController *controller) {
-    UIActivityViewController *share = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
-    share.popoverPresentationController.sourceView = controller.view;
-    share.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
-    [controller presentViewController:share animated:YES completion:nil];
+// Child names are fixed by the caller. Open each path component relative to its
+// directory descriptor so renamed files, links and special files cannot redirect
+// or block diagnostics during a mod update.
+static NSData *readFile(int parent, const char *name, NSUInteger limit, NSDate *since) {
+    if (parent < 0) return nil;
+    int fd = openat(parent, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) return nil;
+    struct stat info;
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) { close(fd); return nil; }
+    if (since) {
+        NSTimeInterval modified = info.st_mtimespec.tv_sec + info.st_mtimespec.tv_nsec / 1e9;
+        if (modified + 0.000001 < since.timeIntervalSince1970) { close(fd); return nil; }
+    }
+    NSFileHandle *fh = [[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES];
+    NSData *data = [fh readDataUpToLength:limit error:nil];
+    [fh closeAndReturnError:nil];
+    return data;
 }
 
-// Read only small, allowlisted configuration values. Never export the full config or log.
-static NSDictionary *settings(NSString *directory, NSString *file, NSString *separator, NSArray *keys) {
-    NSURL *url = [NSURL fileURLWithPath:[directory stringByAppendingPathComponent:file]];
-    NSFileHandle *fh = [NSFileHandle fileHandleForReadingFromURL:url error:nil];
-    NSData *data = [fh readDataUpToLength:131072 error:nil];
-    [fh closeAndReturnError:nil];
+static NSDictionary *settings(int parent, const char *name, NSString *separator, NSArray *keys) {
+    NSData *data = readFile(parent, name, 131072, nil);
     NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
     NSMutableDictionary *values = [NSMutableDictionary dictionary];
     [text enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
@@ -53,31 +67,65 @@ static NSDictionary *settings(NSString *directory, NSString *file, NSString *sep
         NSString *key = [line substringToIndex:split.location];
         if (![keys containsObject:key]) return;
         NSString *value = [line substringFromIndex:NSMaxRange(split)];
-        if (value.length < 160) values[key] = value.lastPathComponent ?: @"";
+        if ([key isEqualToString:@"shaderPack"]) {
+            NSString *leaf = value.lastPathComponent;
+            if (leaf.length && leaf.length < 160 &&
+                [leaf rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound)
+                values[key] = leaf;
+        } else if ([key isEqualToString:@"enableShaders"] || [key isEqualToString:@"enableVsync"]) {
+            if ([value isEqualToString:@"true"] || [value isEqualToString:@"false"]) values[key] = value;
+        } else if ([key isEqualToString:@"graphicsMode"] && [@[@"fast", @"fancy", @"fabulous"] containsObject:value]) {
+            values[key] = value;
+        } else if (value.length && value.length <= 16) {
+            NSScanner *scanner = [NSScanner scannerWithString:value];
+            scanner.charactersToBeSkipped = nil;
+            double number;
+            if ([scanner scanDouble:&number] && scanner.isAtEnd && isfinite(number)) values[key] = value;
+        }
     }];
     return values;
 }
 
-static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
-    NSMutableDictionary *context = [NSMutableDictionary dictionary];
-    context[@"options"] = settings(directory, @"options.txt", @":", @[@"renderDistance",@"simulationDistance",@"maxFps",@"enableVsync",@"graphicsMode",@"entityDistanceScaling",@"biomeBlendRadius",@"mipmapLevels"]);
-    for (NSString *file in @[@"oculus.properties", @"iris.properties"]) {
-        NSDictionary *shader = settings(directory, [@"config" stringByAppendingPathComponent:file], @"=", @[@"enableShaders",@"shaderPack"]);
-        if (shader.count) context[file] = shader;
+static NSArray *modNames(int root) {
+    int fd = openat(root, "mods", O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW);
+    if (fd < 0) return nil;
+    DIR *mods = fdopendir(fd);
+    if (!mods) { close(fd); return nil; }
+    NSMutableArray *names = [NSMutableArray array];
+    struct dirent *entry;
+    while ((entry = readdir(mods))) {
+        NSString *name = [NSString stringWithUTF8String:entry->d_name];
+        if (![name.pathExtension.lowercaseString isEqualToString:@"jar"]) continue;
+        struct stat info;
+        if (fstatat(fd, entry->d_name, &info, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(info.st_mode))
+            [names addObject:name];
     }
-    NSArray *files = [NSFileManager.defaultManager contentsOfDirectoryAtPath:[directory stringByAppendingPathComponent:@"mods"] error:nil];
-    if (files) context[@"enabledModFiles"] = [[files filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *name, NSDictionary *bindings) {
-        return [name.pathExtension.lowercaseString isEqual:@"jar"];
-    }]] sortedArrayUsingSelector:@selector(compare:)];
+    closedir(mods);
+    return [names sortedArrayUsingSelector:@selector(compare:)];
+}
 
-    NSString *path = [directory stringByAppendingPathComponent:@"logs/latest.log"];
-    NSDate *modified = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil].fileModificationDate;
-    if (modified && [modified compare:launchDate] != NSOrderedAscending) {
-        NSFileHandle *fh = [NSFileHandle fileHandleForReadingAtPath:path];
-        NSData *data = [fh readDataUpToLength:2*1024*1024 error:nil];
-        [fh closeAndReturnError:nil];
+static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
+    if (!directory.isAbsolutePath) return @{};
+    int root = open(directory.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (root < 0) return @{};
+    NSMutableDictionary *context = [NSMutableDictionary dictionary];
+    context[@"options"] = settings(root, "options.txt", @":", @[@"renderDistance",@"simulationDistance",@"maxFps",@"enableVsync",@"graphicsMode",@"entityDistanceScaling",@"biomeBlendRadius",@"mipmapLevels"]);
+    int config = openat(root, "config", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (config >= 0) {
+        for (NSString *file in @[@"oculus.properties", @"iris.properties"]) {
+            NSDictionary *shader = settings(config, file.UTF8String, @"=", @[@"enableShaders",@"shaderPack"]);
+            if (shader.count) context[file] = shader;
+        }
+        close(config);
+    }
+    context[@"enabledModFiles"] = modNames(root);
+    int logs = openat(root, "logs", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    NSData *data = readFile(logs, "latest.log", 2*1024*1024, launchDate);
+    if (logs >= 0) close(logs);
+    close(root);
+    if (data.length) {
         // A bounded prefix can end mid-character. Latin-1 preserves ASCII renderer markers.
-        NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSISOLatin1StringEncoding] : nil;
+        NSString *text = [[NSString alloc] initWithData:data encoding:NSISOLatin1StringEncoding];
         [text enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
             if ([line containsString:@"/INFO]: OpenGL Renderer:"] || [line containsString:@"/INFO]: GL info:"]) {
                 for (NSString *backend in @[@"Magma",@"zink",@"MobileGlues",@"ANGLE",@"llvmpipe",@"virgl"]) {
@@ -104,6 +152,10 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 
 @implementation PerformanceTest
 
++ (NSDictionary *)sceneForDirectory:(NSString *)directory since:(NSDate *)date {
+    return sceneContext(directory, date);
+}
+
 - (NSDictionary *)snapshot {
     NSMutableDictionary *copy = [self.report mutableCopy];
     copy[@"samples"] = [self.samples copy];
@@ -123,6 +175,30 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         NSData *data = [NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:&error];
         if (![data writeToURL:url options:NSDataWritingAtomic error:&error]) NSLog(@"[PerformanceTest] checkpoint failed (%ld)", (long)error.code);
     });
+}
+
+// Report names sort by creation timestamp. Skip links and directories in this
+// user-accessible folder when selecting the file to include in a diagnostic ZIP.
++ (NSURL *)latestReportForProfile:(NSString *)profile {
+    if (!profile.length) return nil;
+    NSURL *folder = profileFolder(profile);
+    NSURL *documents = [[folder URLByDeletingLastPathComponent] URLByDeletingLastPathComponent];
+    NSURL *expected = [[documents.URLByResolvingSymlinksInPath URLByAppendingPathComponent:@"Performance Tests"]
+        URLByAppendingPathComponent:folder.lastPathComponent];
+    if (![folder.URLByResolvingSymlinksInPath.path isEqualToString:expected.path]) return nil;
+
+    NSArray *keys = @[NSURLIsRegularFileKey, NSURLIsSymbolicLinkKey];
+    NSArray<NSURL *> *entries = [NSFileManager.defaultManager contentsOfDirectoryAtURL:folder
+        includingPropertiesForKeys:keys options:NSDirectoryEnumerationSkipsHiddenFiles error:nil];
+    NSURL *latest = nil;
+    for (NSURL *url in entries) {
+        if (![url.pathExtension isEqualToString:@"json"] || ![url.lastPathComponent hasPrefix:@"Prisma-"]) continue;
+        NSDictionary *properties = [url resourceValuesForKeys:keys error:nil];
+        if (![properties[NSURLIsRegularFileKey] boolValue] || [properties[NSURLIsSymbolicLinkKey] boolValue]) continue;
+        if (!latest || [url.lastPathComponent compare:latest.lastPathComponent] == NSOrderedDescending)
+            latest = url;
+    }
+    return latest;
 }
 
 + (void)showForProfile:(NSString *)name version:(NSString *)version gameDirectory:(NSString *)directory
@@ -156,12 +232,12 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         launch();
         requested = nil;
     }]];
-    NSURL *latest = [[[NSFileManager.defaultManager contentsOfDirectoryAtURL:folder includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles error:nil] filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSURL *url, NSDictionary *bindings) {
-        return [url.pathExtension isEqual:@"json"] && [url.lastPathComponent hasPrefix:@"Prisma-"];
-    }]] sortedArrayUsingComparator:^NSComparisonResult(NSURL *a, NSURL *b) { return [b.lastPathComponent compare:a.lastPathComponent]; }].firstObject;
-    if (latest) [sheet addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Share Latest Report",nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-        shareReport(latest, controller);
-    }]];
+    if ([self latestReportForProfile:name]) {
+        [sheet addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Share Latest Report",nil)
+            style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+                [CubicDiagnostics shareForProfile:name directory:directory crashReport:nil from:controller];
+            }]];
+    }
     [sheet addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel",nil) style:UIAlertActionStyleCancel handler:nil]];
     [controller presentViewController:sheet animated:YES completion:nil];
 }
@@ -271,7 +347,9 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     }
     // Wait for earlier checkpoints before the activity receives the URL.
     dispatch_async(reportQueue(), ^{
-        dispatch_async(dispatch_get_main_queue(), ^{ shareReport(self.url, controller); });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [CubicDiagnostics shareForProfile:self.profile directory:self.gameDirectory crashReport:nil from:controller];
+        });
     });
 }
 
