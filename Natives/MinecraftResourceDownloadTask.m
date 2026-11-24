@@ -87,6 +87,8 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
 @interface MinecraftResourceDownloadTask ()
 @property AFURLSessionManager* manager;
 @property (nonatomic, strong) DownloadTaskItem *currentDownloadTaskItem;
+@property (nonatomic, copy) NSString *profileInstallName;
+@property (nonatomic, copy) NSString *profileRuntimeRoot;
 @property (nonatomic, copy) NSString *currentVersionId;
 @property (nonatomic, assign) BOOL isObservingTaskProgress;
 @property (nonatomic, assign) NSTimeInterval progressLastTime;
@@ -413,6 +415,10 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
     self.textProgress.totalUnitCount = self.progress.totalUnitCount;
 }
 
+- (NSString *)downloadRoot {
+    return self.profileRuntimeRoot ?: @(getenv("POJAV_GAME_DIR") ?: "");
+}
+
 - (void)downloadVersionMetadata:(NSDictionary *)version success:(void (^)())success {
     // Download base json
     NSString *versionStr = version[@"id"];
@@ -422,7 +428,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
         versionStr = getPrefObject(@"internal.latest_version.snapshot");
     }
 
-    NSString *path = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.json", getenv("POJAV_GAME_DIR"), versionStr];
+    NSString *path = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.json", self.downloadRoot, versionStr];
     // Find it again to resolve latest-*
     // Task300：重命名实例时清单查找必须用原始 id——新目录名不在远端清单里，
     // 直接 findVersion 必失败 → 误入本地版本分支报"json 丢失"。ame300_origId
@@ -453,7 +459,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
             return;
         }
         if (self.metadata[@"inheritsFrom"]) {
-            NSString *parentJsonPath = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.json", getenv("POJAV_GAME_DIR"), self.metadata[@"inheritsFrom"]];
+            NSString *parentJsonPath = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.json", self.downloadRoot, self.metadata[@"inheritsFrom"]];
             NSMutableDictionary *inheritsFromDict = parseJSONFromFile(parentJsonPath);
             if (!inheritsFromDict || inheritsFromDict[@"NSErrorObject"]) {
                 // Task 70 修复：父版本 JSON 缺失或损坏（半截写入/解析失败）时，旧实现直接弹
@@ -496,8 +502,8 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
     // json+jar 到新名目录（json 内部 id 重写为新名，Task71 同语义），库/资产
     // 阶段按 SHA 自动跳过，零下载秒完成；原始 json 也不在才报清单错误。
     if (!version && ame300_renamed) {
-        NSString *ame303_srcJson = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.json",
-                                    getenv("POJAV_GAME_DIR"), ame300_lookupId];
+        NSString *ame303_srcJson = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.json",
+                                    self.downloadRoot, ame300_lookupId];
         NSMutableDictionary *ame303_json = parseJSONFromFile(ame303_srcJson);
         if (ame303_json && !ame303_json[@"NSErrorObject"]) {
             [NSFileManager.defaultManager createDirectoryAtPath:path.stringByDeletingLastPathComponent
@@ -508,10 +514,10 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
                                                                   options:NSJSONWritingPrettyPrinted
                                                                     error:&ame303_writeErr];
             BOOL ame303_ok = ame303_data && [ame303_data writeToFile:path options:NSDataWritingAtomic error:&ame303_writeErr];
-            NSString *ame303_srcJar = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.jar",
-                                       getenv("POJAV_GAME_DIR"), ame300_lookupId];
-            NSString *ame303_dstJar = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.jar",
-                                       getenv("POJAV_GAME_DIR"), versionStr];
+            NSString *ame303_srcJar = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.jar",
+                                       self.downloadRoot, ame300_lookupId];
+            NSString *ame303_dstJar = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.jar",
+                                       self.downloadRoot, versionStr];
             if ([NSFileManager.defaultManager fileExistsAtPath:ame303_srcJar]
                 && ![NSFileManager.defaultManager fileExistsAtPath:ame303_dstJar]) {
                 [NSFileManager.defaultManager copyItemAtPath:ame303_srcJar toPath:ame303_dstJar error:nil];
@@ -566,10 +572,10 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
             }
 
             // client.jar 迁移：versions/<internalId>/<internalId>.jar -> versions/<versionStr>/<versionStr>.jar
-            NSString *task71OldJar = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.jar",
-                                      getenv("POJAV_GAME_DIR"), task71InternalId];
-            NSString *task71NewJar = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.jar",
-                                      getenv("POJAV_GAME_DIR"), versionStr];
+            NSString *task71OldJar = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.jar",
+                                      self.downloadRoot, task71InternalId];
+            NSString *task71NewJar = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.jar",
+                                      self.downloadRoot, versionStr];
             NSFileManager *task71FM = [NSFileManager defaultManager];
             if ([task71FM fileExistsAtPath:task71OldJar] && ![task71FM fileExistsAtPath:task71NewJar]) {
                 NSError *task71MoveError = nil;
@@ -600,7 +606,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
                 version = (id)[[ZL2VersionIndex sharedIndex] remoteVersionEntryForIdSync:json[@"inheritsFrom"]];
             }
             if (version) {
-                path = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.json", getenv("POJAV_GAME_DIR"), json[@"inheritsFrom"]];
+                path = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.json", self.downloadRoot, json[@"inheritsFrom"]];
             } else {
                 // 阶段5修复（参照 FCL ModpackHelper.ensureCompleteVersion）：
                 // findVersion 失败通常因为 remoteVersionList 尚未加载（整合包导入在后台线程，
@@ -610,8 +616,8 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
                 // 原版再重试），而是主动走 ForgeDirectInstaller.ensureParentVersionExists 从
                 // Mojang/BMCLAPI 版本清单拉取（候选轮换 + 重试）——与用户“提前下载原版”等价，
                 // 但无需任何手动操作。只有清单也拉不到（网络完全不可用）才报错。
-                NSString *parentJsonPath = [NSString stringWithFormat:@"%1$s/versions/%2$@/%2$@.json",
-                                            getenv("POJAV_GAME_DIR"), json[@"inheritsFrom"]];
+                NSString *parentJsonPath = [NSString stringWithFormat:@"%1$@/versions/%2$@/%2$@.json",
+                                            self.downloadRoot, json[@"inheritsFrom"]];
                 if (![NSFileManager.defaultManager fileExistsAtPath:parentJsonPath]) {
                     NSError *fetchError = nil;
                     if ([ForgeDirectInstaller ensureParentVersionExists:json[@"inheritsFrom"] error:&fetchError]) {
@@ -655,7 +661,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
         return;
     }
     NSString *name = [NSString stringWithFormat:@"assets/indexes/%@.json", assetIndex[@"id"]];
-    NSString *path = [@(getenv("POJAV_GAME_DIR")) stringByAppendingPathComponent:name];
+    NSString *path = [self.downloadRoot stringByAppendingPathComponent:name];
     NSString *url = assetIndex[@"url"];
     NSString *sha = url.stringByDeletingLastPathComponent.lastPathComponent;
     NSUInteger size = [assetIndex[@"size"] unsignedLongLongValue];
@@ -682,7 +688,7 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
             artifact[@"sha1"] = library[@"checksums"][0];
         }
 
-        NSString *path = [NSString stringWithFormat:@"%s/libraries/%@", getenv("POJAV_GAME_DIR"), artifact[@"path"]];
+        NSString *path = [NSString stringWithFormat:@"%@/libraries/%@", self.downloadRoot, artifact[@"path"]];
         NSString *sha = artifact[@"sha1"];
         NSUInteger size = [artifact[@"size"] unsignedLongLongValue];
         NSString *url = artifact[@"url"];
@@ -715,9 +721,9 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
 
         NSString *path;
         if ([assets[@"map_to_resources"] boolValue]) {
-            path = [NSString stringWithFormat:@"%s/resources/%@", getenv("POJAV_GAME_DIR"), name];
+            path = [NSString stringWithFormat:@"%@/resources/%@", self.downloadRoot, name];
         } else {
-            path = [NSString stringWithFormat:@"%s/assets/objects/%@", getenv("POJAV_GAME_DIR"), pathname];
+            path = [NSString stringWithFormat:@"%@/assets/objects/%@", self.downloadRoot, pathname];
         }
 
         /* Special case for 1.19+
@@ -738,6 +744,39 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
         }
     }
     return tasks;
+}
+
+- (void)prepareVersion:(NSString *)versionId forProfile:(NSString *)name {
+    self.profileInstallName = name;
+    self.profileRuntimeRoot = [self.downloadRoot stringByResolvingSymlinksInPath];
+    NSString *runtime = [self.profileRuntimeRoot stringByAppendingPathComponent:versionId];
+    static NSMutableSet<NSString *> *activeRuntimes;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ activeRuntimes = [NSMutableSet set]; });
+    @synchronized (activeRuntimes) {
+        if ([activeRuntimes containsObject:runtime]) return;
+        [activeRuntimes addObject:runtime];
+    }
+    // DownloadTaskItem holds its worker weakly. Keep the worker alive after the creation sheet closes.
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    DownloadTaskManager *manager = DownloadTaskManager.sharedManager;
+    __block id observer = nil;
+    observer = [center addObserverForName:DownloadTaskManagerDidUpdateTaskNotification object:manager
+        queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        DownloadTaskItem *item = note.userInfo[DownloadTaskManagerTaskKey];
+        if (item != self.currentDownloadTaskItem) return;
+        if (item.state == DownloadTaskStateCompleted || item.state == DownloadTaskStateFailed ||
+            item.state == DownloadTaskStateCancelled || ![manager taskWithId:item.taskId]) {
+            @synchronized (activeRuntimes) { [activeRuntimes removeObject:runtime]; }
+            [center removeObserver:observer];
+            observer = nil;
+        }
+    }];
+    self.maxRetryCount = 3;
+    self.handleError = ^{}; // The task manager records the concrete failure and shows it in Downloads.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        [self ame300_downloadVersionChecked:@{@"id":versionId, @"ame300_launchcheck":@YES}];
+    });
 }
 
 - (void)downloadVersion:(NSDictionary *)version {
@@ -1215,21 +1254,22 @@ static void ame312_recordThroughput(NSInteger idx, double bytes, double elapsed)
 
 - (void)registerOrUpdateTaskItem {
     // 悬浮球已移除，始终注册到统一下载任务管理器，以便下载任务列表跟踪
-    NSString *displayName = self.currentVersionId ?: (self.metadata[@"id"] ?: @"Minecraft");
+    NSString *versionName = self.currentVersionId ?: self.metadata[@"id"] ?: @"Minecraft";
+    NSString *displayName = self.profileInstallName ?: versionName;
     // Task218：来源标签收敛到 PLMirrorCenter（显示层专用 token；路由一律走候选链）。
     NSString *downloadSource = [PLMirrorCenter legacySourceTokenForType:PLMirrorResourceTypeGameFile];
 
     if (!self.currentDownloadTaskItem) {
         self.currentDownloadTaskItem = [[DownloadTaskManager sharedManager]
             registerTaskWithResourceType:DownloadTaskResourceTypeMinecraft
-                            resourceName:displayName
+                            resourceName:versionName
                              displayName:displayName
                           downloadSource:downloadSource
                                  rawTask:self
                           supportsResume:NO
                                  iconURL:nil];
     } else {
-        self.currentDownloadTaskItem.resourceName = displayName;
+        self.currentDownloadTaskItem.resourceName = versionName;
         self.currentDownloadTaskItem.displayName = displayName;
         self.currentDownloadTaskItem.downloadSource = downloadSource;
         self.currentDownloadTaskItem.rawTask = self;

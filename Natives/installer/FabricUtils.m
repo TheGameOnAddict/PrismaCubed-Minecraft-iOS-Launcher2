@@ -208,6 +208,16 @@ static void ame336_fetchProfile(NSArray<NSURL *> *candidates, void (^completion)
                          loaderVersion:(NSString *)loaderVersion
                             installAPI:(BOOL)installAPI
                             completion:(void (^)(BOOL success, NSString *profileId, NSError *error))completion {
+    [self ame336_installFabricLikeVendor:vendor gameVersion:gameVersion loaderVersion:loaderVersion
+                              installAPI:installAPI registerProfile:YES completion:completion];
+}
+
++ (void)ame336_installFabricLikeVendor:(NSString *)vendor
+                           gameVersion:(NSString *)gameVersion
+                         loaderVersion:(NSString *)loaderVersion
+                            installAPI:(BOOL)installAPI
+                       registerProfile:(BOOL)registerProfile
+                            completion:(void (^)(BOOL success, NSString *profileId, NSError *error))completion {
     // completion 统一主线程回调（内部链路 NSURLSession 回调在私有串行队列）
     void (^safeCompletion)(BOOL, NSString *, NSError *) = ^(BOOL s, NSString *pid, NSError *e) {
         dispatch_async(dispatch_get_main_queue(), ^{ completion(s, pid, e); });
@@ -257,6 +267,7 @@ static void ame336_fetchProfile(NSArray<NSURL *> *candidates, void (^completion)
         //   回调必然晚于注册，时序安全）。
         dispatch_async(dispatch_get_main_queue(), ^{
             [localVersionList addObject:@{@"id": profileId, @"type": @"custom"}];
+            if (!registerProfile) return;
 
             // profile 注册（★ Task322 混居口径 gameDir=versions/<id>；旧表单
             // /game 分居层不再延续——Task322 已退役 game/ 层）

@@ -967,6 +967,14 @@ static UIImage *ZL2V13ThumbnailAtPath(NSString *path, CGFloat maxPixel) {
             }
             versionId = nil; // The shared installation also serves other profiles.
         } else {
+            NSError *error = nil;
+            if ([PLProfiles.current removePrivateGameDirectoryForProfileNamed:profileName error:&error]) {
+                if (error) {
+                    [self ameV13_showAlertMessage:error.localizedDescription];
+                    return;
+                }
+                versionId = nil; // Private profile data and the shared runtime have separate lifetimes.
+            }
             [PLProfiles.current.profiles removeObjectForKey:profileName];
             if ([PLProfiles.current.selectedProfileName isEqualToString:profileName]) {
                 PLProfiles.current.selectedProfileName = PLProfiles.current.profiles.allKeys.firstObject;

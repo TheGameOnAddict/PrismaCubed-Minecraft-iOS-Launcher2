@@ -441,7 +441,8 @@ static BOOL ame83_fsr_capable_renderer(NSString *renderer) {
 // FPS/内存监控相关（FPS 在 native pojavSwapBuffers 中计数，参照 FCL/ZL2）
 @property(nonatomic) NSTimer *statsTimer;                 // 低频定时器，1s 一次
 @property(nonatomic) CADisplayLink *statsDisplayLink;     // 渲染循环引用（用于 Gyro/Controller tick 和失效）
-@property(nonatomic, strong) id statsDisplayLinkTarget;   // CADisplayLink 的 target（强引用防释放）
+@property(nonatomic, weak) UIScreen *gameDisplayScreen;
+@property(nonatomic, strong) PLDisplayLinkTarget *statsDisplayLinkTarget;   // CADisplayLink 的 target（强引用防释放）
 
 @property(nonatomic) NSDictionary* metadata;
 @property(nonatomic) TrackedTextField *inputTextField;
@@ -1411,17 +1412,9 @@ static NSInteger ame283_lastLandscapeDev = 0;
           currentRenderer, envRenderer, graphicsApi, isVulkanRenderer, configuredVulkanExpected);
 
     PLDisplayLinkTarget *linkTarget = [[PLDisplayLinkTarget alloc] initWithVulkanMode:configuredVulkanExpected];
-    CADisplayLink *displayLink = [CADisplayLink displayLinkWithTarget:linkTarget
-                                                            selector:@selector(displayLinkTick:)];
-    if (@available(iOS 15.0, tvOS 15.0, *)) {
-        // max_framerate 选项已移除：始终采用 30-120Hz 自适应范围。
-        // 屏幕硬件决定实际帧率（60Hz 设备仍为 60，120Hz ProMotion 设备可达 120），
-        // 不再人为限制在 60FPS。配合 disable_game_vsync 完整解锁 VSync 后帧率可超过屏幕刷新率。
-        displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 120, 120);
-    }
-    [displayLink addToRunLoop:NSRunLoop.currentRunLoop forMode:NSRunLoopCommonModes];
-    self.statsDisplayLink = displayLink;
-    self.statsDisplayLinkTarget = linkTarget;  // 强引用防止释放
+    self.statsDisplayLinkTarget = linkTarget;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(gamePowerModeChanged:)
+        name:NSProcessInfoPowerStateDidChangeNotification object:nil];
 
     // 低频采样定时器：每 1 秒读取一次 native FPS 计数器和内存占用
     // 参照 FCL/ZL2 的 1Hz 采样策略（FCL_GameMenu.java Thread.sleep(1000)）
@@ -1712,8 +1705,72 @@ static NSInteger ame283_lastLandscapeDev = 0;
     }
 }
 
+// Use the screen hosting Minecraft. A link created before its window attaches
+// can stay on the initial UI cadence even after the renderer starts presenting.
+- (void)applyGameRefreshForPhase:(NSString *)phase {
+    UIScreen *screen = self.surfaceView.window.screen;
+    UIWindowScene *scene = self.viewIfLoaded.window.windowScene;
+    if (!screen || !scene || scene.activationState != UISceneActivationStateForegroundActive || !self.statsDisplayLinkTarget) return;
+    if (self.gameDisplayScreen != screen || !self.statsDisplayLink) {
+        [self.statsDisplayLink invalidate];
+        self.gameDisplayScreen = screen;
+        self.statsDisplayLink = [screen displayLinkWithTarget:self.statsDisplayLinkTarget selector:@selector(displayLinkTick:)];
+        [self.statsDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    }
+
+    NSInteger peak = screen.maximumFramesPerSecond;
+    BOOL unlocked = getPrefBool(@"video.disable_game_vsync");
+    BOOL lowPower = NSProcessInfo.processInfo.lowPowerModeEnabled;
+    BOOL requestPeak = unlocked && !lowPower && peak > 60;
+    NSInteger requestedHz = 0;
+    if (@available(iOS 15.0, tvOS 15.0, *)) {
+        CAFrameRateRange range = CAFrameRateRangeDefault;
+        if (!lowPower && peak > 0) {
+            requestedHz = peak;
+            NSInteger minimum = requestPeak ? peak : MIN(30, peak);
+            range = CAFrameRateRangeMake(minimum, peak, peak);
+        }
+        self.statsDisplayLink.preferredFrameRateRange = range;
+    } else {
+        requestedHz = requestPeak ? peak : 0;
+        self.statsDisplayLink.preferredFramesPerSecond = requestedHz;
+    }
+    self.statsDisplayLink.paused = NO;
+    // Core Animation can choose a lower cadence for thermal or system reasons.
+    // Sample after the commit. This is the display-link cadence, not game FPS.
+    __weak typeof(self) weakSelf = self;
+    __weak CADisplayLink *sampleLink = self.statsDisplayLink;
+    NSUInteger initialTick = self.statsDisplayLinkTarget.tickCount;
+    CFTimeInterval startTime = CACurrentMediaTime();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        SurfaceViewController *owner = weakSelf;
+        CADisplayLink *link = sampleLink;
+        if (!link || link != owner.statsDisplayLink || link.paused) return;
+        double interval = link.targetTimestamp - link.timestamp;
+        double elapsed = CACurrentMediaTime() - startTime;
+        NSUInteger ticks = owner.statsDisplayLinkTarget.tickCount - initialTick;
+        double scheduledHz = ticks && interval > 0 ? 1.0 / interval : 0;
+        double callbackHz = elapsed > 0 ? ticks / elapsed : 0;
+        NSLog(@"[FramePacing] phase=%@ panelMaxHz=%ld requestHz=%ld scheduledHz=%.1f callbackHz=%.1f unlock=%d lowPower=%d",
+              phase, (long)peak, (long)requestedHz, scheduledHz, callbackHz, unlocked, lowPower);
+        if (owner.performanceTest) {
+            [owner.performanceTest recordDisplayCadence:@{
+                @"panelMaxHz": @(peak), @"requestedHz": @(requestedHz), @"scheduledHz": @(scheduledHz),
+                @"callbackHz": @(callbackHz), @"unlockEnabled": @(unlocked), @"lowPower": @(lowPower)
+            } forPhase:phase];
+        }
+    });
+}
+
+- (void)gamePowerModeChanged:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self applyGameRefreshForPhase:@"power-change"];
+    });
+}
+
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    [self applyGameRefreshForPhase:@"game-visible"];
     [self setNeedsUpdateOfPrefersPointerLocked];
 
     // LAN 端口检测器已改为手动输入模式（LanPortDetector.h 说明），
@@ -1722,6 +1779,9 @@ static NSInteger ame283_lastLandscapeDev = 0;
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    if (self.surfaceView.window && self.surfaceView.window.screen != self.gameDisplayScreen) {
+        [self applyGameRefreshForPhase:@"screen-attached"];
+    }
     // ★ Task261（用户："切小窗再重新放大回去，输入会错误"自适应恢复）：
     //   iPadOS 26 自由窗口缩放【不】走 viewWillTransitionToSize（旋转专属），
     //   信念链（screenScale/surface/windowWidth/drawableSize）在小窗期间与
@@ -3585,6 +3645,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 /// 首帧渲染通知回调：淡出并移除启动遮罩层
 - (void)onFirstFrameRendered {
     dispatch_async(dispatch_get_main_queue(), ^{
+        [self applyGameRefreshForPhase:@"first-game-frame"];
         if (self.launchOverlayDismissed) return;
         self.launchOverlayDismissed = YES;
         [NSNotificationCenter.defaultCenter removeObserver:self name:@"CubicGameRuntimeStarted" object:nil];
@@ -4199,6 +4260,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     if (self.surfaceView.superview == nil) return;   // 会话未启动
     // ★ Task250：回前台 = 门控解除（后续常规推送恢复；本次重申走强制通道）。
     g_ame250_appActive = YES;
+    [self applyGameRefreshForPhase:@"became-active"];
     // ★ Task267：小窗（scale-mode）态回前台——UIKit 后台往返可能重排过
     //   视图栈，重排一次（updateSavedResolution 的冻结守卫保证信念不被
     //   写坏；全屏态此路不通零变化）。
@@ -4297,6 +4359,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 }
 
 - (void)ame250_willResignActive {
+    self.statsDisplayLink.paused = YES;
     g_ame250_appActive = NO;
     NSLog(@"[SurfaceVC] Task250: app resigning active -- background window pushes gated");
 }

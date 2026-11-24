@@ -106,7 +106,7 @@ preview_mode() {
     ZL2AssetSearchViewController   # 7.0-UI-10：下载页资产搜索组件（.h+.m，与下载页同轮落地）
     ZL2ShellViewController ModpackImportViewController ZL2VersionPages ZL2VersionNBT ZL2VersionDetailViewController
     ZL2M3Kit                       # 7.0-UI-12：MD3 功能组件库（搜索/chip/开关/对话框/弹层）
-    CubicBootBackdrop CubicRuntimeInfo GameMenuOverlayView CubicDiagnostics CubicDiagnosticText Preview/CubicDiagnosticsFixture PerformanceTest ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
+    CubicBootBackdrop CubicRuntimeInfo GameMenuOverlayView CubicDiagnostics CubicDiagnosticText Preview/CubicDiagnosticsFixture Preview/CubicCreationFixture PerformanceTest ModVersionViewController ProjectPresentationView ModProjectCatalog MarkdownParser ModVersionTableViewCell ModVersion ModItem AssetDetailHeaderView
     ZL2GameDownloadViewController  # 7.0-UI-12：游戏 M3 下载页（旧 DownloadViewController 退场）
     ZL2GameAddonsViewController    # 7.0-UI-14：Addons 加载器选择屏（选版后加载器组合+安装分发）
     ZL2SearchIdViewController      # 7.0-UI-14：按项目 ID 直查页（下载左轨第 6 项）
@@ -217,10 +217,18 @@ PLIST
   xcrun simctl bootstatus "$device" -b >/dev/null 2>&1 || true
   xcrun simctl install "$device" "$app" || { echo "✗ 安装失败"; FAIL=1; return; }
 
-  if [[ "$MODE" == "screens" || "$MODE" == "projects" || "$MODE" == "performance" ]]; then
+  if [[ "$MODE" == "profiles" ]]; then
+    local registry_test="$OUT/test-profile-registry"
+    xcrun clang "${COMMON[@]}" -framework Foundation -framework UIKit "$ROOT/scripts/test_profile_registry.m" \
+      "$NATIVES/PLProfiles.m" -o "$registry_test" || { FAIL=1; return; }
+    xcrun simctl spawn "$device" "$registry_test" || { FAIL=1; return; }
+  fi
+
+  if [[ "$MODE" == "screens" || "$MODE" == "projects" || "$MODE" == "performance" || "$MODE" == "profiles" ]]; then
     local routes=(home browse profile mods menu accounts create import installing downloads download-log)
     if [[ "$MODE" == "projects" ]]; then routes=(quick-install curseforge modrinth installed-project); fi
     if [[ "$MODE" == "performance" ]]; then routes=(boot); fi
+    if [[ "$MODE" == "profiles" ]]; then routes=(create create-submit create-failure); fi
     local bundle="com.prisma-devs.ame-fluent-preview" docs route orientation pid png
     docs="$(xcrun simctl get_app_container "$device" "$bundle" data)/Documents"
     for orientation in portrait landscape; do
@@ -353,9 +361,9 @@ PLIST
 
 case "$MODE" in
   syntax)  syntax_mode ;;
-  preview|cubic|screens|projects|performance) preview_mode ;;
+  preview|cubic|screens|projects|performance|profiles) preview_mode ;;
   all)     syntax_mode; preview_mode ;;
-  *) echo "用法: $0 [syntax|preview|cubic|screens|projects|performance|all]"; exit 2 ;;
+  *) echo "用法: $0 [syntax|preview|cubic|screens|projects|performance|profiles|all]"; exit 2 ;;
 esac
 
 if [[ "$FAIL" -ne 0 ]]; then

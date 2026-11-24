@@ -75,6 +75,8 @@
 @property (nonatomic, strong) UISegmentedControl *loaderChoice;
 @property (nonatomic, strong) UIButton *buildChoice;
 @property (nonatomic, strong) UIButton *createAction;
+@property (nonatomic, strong) UILabel *formStatus;
+@property (nonatomic, weak) UIStackView *creationForm;
 @property (nonatomic, copy) NSString *formBuild;
 @property (nonatomic, strong) UIImageView *formCover;
 @property (nonatomic, copy) NSString *formIcon;
@@ -133,6 +135,7 @@
 
 - (void)cubicBuildCreation {
     UIStackView *form = CubicForm(self, @"Create Profile");
+    self.creationForm = form;
     UIImageView *cover = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"CubicProfileCover"]];
     self.formCover = cover;
     cover.userInteractionEnabled = YES;
@@ -154,6 +157,9 @@
     [cover.heightAnchor constraintEqualToConstant:72].active = YES;
     self.nameField = [UITextField new];
     self.nameField.placeholder = @"Name your profile";
+    self.nameField.accessibilityIdentifier = @"cubic.profile.name";
+    self.nameField.delegate = self;
+    self.nameField.returnKeyType = UIReturnKeyDone;
     self.nameField.borderStyle = UITextBorderStyleRoundedRect;
     UIStackView *name = [[UIStackView alloc] initWithArrangedSubviews:@[CubicLabel(@"Profile Name",14),self.nameField]];
     name.axis = UILayoutConstraintAxisVertical;
@@ -175,7 +181,12 @@
     self.buildChoice = CubicButton(@"Loader Version",NO);
     self.buildChoice.showsMenuAsPrimaryAction = YES;
     [form addArrangedSubview:self.buildChoice];
+    self.formStatus = CubicLabel(@"", 14);
+    self.formStatus.accessibilityIdentifier = @"cubic.profile.status";
+    self.formStatus.hidden = YES;
+    [form addArrangedSubview:self.formStatus];
     self.createAction = CubicButton(@"Create",YES);
+    self.createAction.accessibilityIdentifier = @"cubic.profile.create";
     [self.createAction addTarget:self action:@selector(cubicSubmit) forControlEvents:UIControlEventTouchUpInside];
     [self.nameField addTarget:self action:@selector(cubicValidate) forControlEvents:UIControlEventEditingChanged];
     UIButton *cancel = CubicButton(@"Cancel",NO);
@@ -237,17 +248,14 @@
     [picker dismissViewControllerAnimated:YES completion:nil];
 }
 
-- (void)cubicRegisterInstalledVersion:(NSString *)version profileName:(NSString *)name {
-    if (!self.profileCreationForm || !version.length || !name.length) return;
-    PLProfiles *registry = PLProfiles.current;
-    NSMutableDictionary *entry = [registry.profiles[version] mutableCopy];
-    if (!entry || (![name isEqual:version] && registry.profiles[name])) return;
-    entry[@"name"] = name;
-    entry[@"lastVersionId"] = version;
-    if (![name isEqual:version]) entry[@"gameDir"] = [@"versions" stringByAppendingPathComponent:name];
-    if (self.formIcon) entry[@"icon"] = self.formIcon;
-    [registry saveProfile:entry withName:name];
-    registry.selectedProfileName = name;
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    return YES;
+}
+
+- (void)cubicShowStatus:(NSString *)message {
+    self.formStatus.text = message;
+    self.formStatus.hidden = !message.length;
 }
 
 - (void)cubicRefreshBuilds {
@@ -281,30 +289,72 @@
 }
 
 - (void)cubicValidate {
+    if (self.ame336Installing) return;
     NSString *name = [self.nameField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    self.createAction.enabled = name.length && ![name hasPrefix:@"."] && ![name containsString:@"/"] &&
-        ![name containsString:@"\\"] && !PLProfiles.current.profiles[name] && self.gameVersion.length &&
-        (self.buildChoice.hidden || self.formBuild.length) && !self.activeTask && !self.ame336Installing;
+    NSString *problem = nil;
+    if ([name hasPrefix:@"."] || [name containsString:@"/"] || [name containsString:@"\\"] ||
+        [name rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) {
+        problem = localize(@"prisma.profile.invalid_name", nil);
+    } else if (name.length && PLProfiles.current.profiles[name]) {
+        problem = localize(@"profile.error.name_exists", nil);
+    }
+    [self cubicShowStatus:problem];
+    self.createAction.enabled = name.length && !problem && self.gameVersion.length &&
+        (self.buildChoice.hidden || self.formBuild.length);
     self.createAction.alpha = self.createAction.enabled ? 1 : 0.55;
 }
 
 - (void)cubicSubmit {
+    if (self.ame336Installing) return;
     [self cubicValidate];
     if (!self.createAction.enabled) return;
-    self.forgeCard = nil;
-    self.neoforgeCard = nil;
-    self.fabricCard = nil;
-    self.quiltCard = nil;
-    if (self.formBuild.length) {
-        NSString *family = [self.loaderChoice titleForSegmentAtIndex:self.loaderChoice.selectedSegmentIndex].lowercaseString;
-        ZL2AddonCard *card = [self ame_cardWithIdentifier:family title:family iconBundleName:nil fallbackSymbol:@"cube"];
-        card.selectedItem = self.formBuild;
-        if ([family isEqual:@"forge"]) self.forgeCard = card;
-        if ([family isEqual:@"neoforge"]) self.neoforgeCard = card;
-        if ([family isEqual:@"fabric"]) self.fabricCard = card;
-        if ([family isEqual:@"quilt"]) self.quiltCard = card;
+    [self.view endEditing:YES];
+
+    NSString *name = [self ame_effectiveVersionName];
+    NSString *game = self.gameVersion;
+    NSString *family = [self.loaderChoice titleForSegmentAtIndex:self.loaderChoice.selectedSegmentIndex];
+    NSString *build = self.formBuild;
+    NSString *icon = self.formIcon;
+    PLProfiles *registry = PLProfiles.current;
+    self.ame336Installing = YES;
+    self.creationForm.userInteractionEnabled = NO;
+    self.createAction.enabled = NO;
+    [self cubicShowStatus:localize(@"prisma.ui.installing", nil)];
+
+    // The installer owns this callback until completion, even if another screen covers the form.
+    void (^finish)(BOOL, NSString *, NSError *) = ^(BOOL installed, NSString *runtime, NSError *error) {
+        if (installed && runtime.length) {
+            NSMutableDictionary *profile = [@{@"name":name, @"lastVersionId":runtime,
+                @"type":@"custom", @"created":NSDate.date.description} mutableCopy];
+            if (icon) profile[@"icon"] = icon;
+            if ([family isEqual:@"Forge"] || [family isEqual:@"NeoForge"]) {
+                profile[@"javaVersion"] = [@([ForgeDirectInstaller inferJavaMajorVersionFromVersionId:runtime]) stringValue];
+            }
+            PLProfiles *current = PLProfiles.current;
+            if (current != registry && ![current.profilePath isEqual:registry.profilePath]) {
+                error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSUserCancelledError
+                    userInfo:@{NSLocalizedDescriptionKey:localize(@"prisma.profile.library_changed", nil)}];
+            } else if ([current createProfile:profile withName:name error:&error]) {
+                if ([family isEqual:@"Vanilla"]) {
+                    [[MinecraftResourceDownloadTask new] prepareVersion:runtime forProfile:name];
+                }
+                [self dismissViewControllerAnimated:YES completion:nil];
+                return;
+            }
+        }
+        self.ame336Installing = NO;
+        self.creationForm.userInteractionEnabled = YES;
+        [self cubicValidate];
+        [self cubicShowStatus:error.localizedDescription ?: localize(@"i18n_str_918", nil)];
+    };
+    if ([family isEqual:@"Vanilla"]) {
+        finish(YES, game, nil);
+    } else if ([family isEqual:@"Fabric"] || [family isEqual:@"Quilt"]) {
+        [FabricUtils ame336_installFabricLikeVendor:family gameVersion:game loaderVersion:build
+            installAPI:NO registerProfile:NO completion:finish];
+    } else {
+        [self ame337_installForgeLikeVendor:family gameVersion:game loaderVersion:build completion:finish];
     }
-    [self ame_installTapped];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -1183,7 +1233,6 @@
                 st.ame336Installing = NO;
                 [st ame_refreshInstallButton];
                 if (success) {
-                    [st cubicRegisterInstalledVersion:profileId profileName:versionId];
                     [[NSNotificationCenter defaultCenter]
                         postNotificationName:@"ReloadProfileList" object:nil];
                     // Task324：安装成功即时补齐隔离骨架（注册表已隔离 → 六目录可见可即用）
@@ -1249,7 +1298,6 @@
                 }
                 [[NSNotificationCenter defaultCenter]
                     postNotificationName:@"ReloadProfileList" object:nil];
-                [st cubicRegisterInstalledVersion:profileId profileName:versionId];
                 // Task324：forge/neoforge 安装成功即时补齐隔离骨架（全量扫描幂等）
                 [ModService ame324_ensureIsolationSkeletonsAll];
                 NSString *optiPayload = (st.optifineCard.selectedItem.length > 0
@@ -1488,7 +1536,10 @@
                 NSError *installError = nil;
                 BOOL installed = [ForgeDirectInstaller installForgeFromInstaller:am337Dest
                                                                        versionId:versionId
-                                                                          error:&installError];
+                                                                   customGameDir:nil
+                                                             skipRegisterVersion:self.profileCreationForm
+                                                                        progress:nil
+                                                                           error:&installError];
                 [[NSFileManager defaultManager] removeItemAtPath:am337Dest error:nil];
                 NSLog(@"[ZL2Addons] Task337 inline install %@: %@ (ver=%@)",
                       installed ? @"done" : @"failed", versionId,

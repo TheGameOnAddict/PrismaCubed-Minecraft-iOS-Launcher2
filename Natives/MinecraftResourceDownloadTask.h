@@ -45,6 +45,8 @@ extern NSString * const kMinecraftResourceDownloadBackgroundSessionIdentifier;
 - (void)cancel;
 
 - (void)downloadVersion:(NSDictionary *)version;
+/// Prepare the shared runtime for an already registered profile without creating a second profile.
+- (void)prepareVersion:(NSString *)versionId forProfile:(NSString *)name;
 - (void)downloadModpackFromAPI:(ModpackAPI *)api detail:(NSDictionary *)modDetail atIndex:(NSUInteger)selectedVersion;
 
 #pragma mark - Task303：跨安装链共用（原版/模组端重复实例检测）
