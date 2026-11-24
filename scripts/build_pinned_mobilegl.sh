@@ -35,7 +35,22 @@ mkdir -p "$source_dir/Natives/resources/Frameworks"
 ln -s "$repo/Natives/resources/Frameworks/libMoltenVK.dylib" "$source_dir/Natives/resources/Frameworks/libMoltenVK.dylib"
 # Upstream shipped its Debug configuration (release optimizations are enabled
 # there too). Release hides symbols and changes the driver's exported ABI.
-"$make_command" -C "$source_dir" dep_mobilegl_build PLATFORM=2 RELEASE=0 JOBS="$jobs" WORKINGDIR="$build/output"
+# Run the unmodified upstream driver target without the unrelated app's global
+# prerequisites (ldid, JDK 8, wget and the rest of the Minecraft build).
+python3 - "$source_dir/Makefile" "$build/driver.mk" <<'PYMAKE'
+from pathlib import Path
+import re, sys
+original = Path(sys.argv[1]).read_text()
+body = re.search(r"(?ms)^dep_mobilegl_build:\n(.*?)(?=^[A-Za-z_][A-Za-z0-9_]*:)", original)
+if not body:
+    raise RuntimeError("Pinned renderer recipe missing")
+Path(sys.argv[2]).write_text("SHELL := /bin/bash\n" + body.group())
+PYMAKE
+"$make_command" -f "$build/driver.mk" -C "$source_dir" dep_mobilegl_build JOBS="$jobs" \
+    WORKINGDIR="$build/output" SOURCEDIR="$source_dir" CMAKE_BUILD_TYPE=Debug \
+    MOBILEGL_SOURCE_DIR="$source_dir/Natives/external/MobileGL" \
+    MOLTENVK_LIBRARY="$source_dir/Natives/resources/Frameworks/libMoltenVK.dylib" \
+    SDKPATH="$(xcrun --sdk iphoneos --show-sdk-path)"
 
 driver="$build/output/libMobileGL.dylib"
 lipo -verify_arch arm64 "$driver"
