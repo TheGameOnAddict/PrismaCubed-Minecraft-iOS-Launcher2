@@ -37,6 +37,11 @@ jobs:
           fi
           export CMAKE_GENERATOR=Ninja
           bash scripts/build_pinned_mobilegl.sh "$RUNNER_TEMP/driver" /usr/bin/make "$(sysctl -n hw.logicalcpu)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Magma-verified-arm64
+          path: ${{ runner.temp }}/driver/libMobileGL.dylib
+          if-no-files-found: error
       - uses: actions/download-artifact@v4
         with:
           name: com.prisma-devs.prisma-ios.ipa

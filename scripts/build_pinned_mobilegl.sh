@@ -53,7 +53,7 @@ PYMAKE
     SDKPATH="$(xcrun --sdk iphoneos --show-sdk-path)"
 
 driver="$build/output/libMobileGL.dylib"
-lipo -verify_arch arm64 "$driver"
+lipo "$driver" -verify_arch arm64
 otool -L "$driver" > "$build/linkage.txt"
 grep -F '@rpath/libMoltenVK.dylib' "$build/linkage.txt" >/dev/null
 python3 - "$driver" <<'PY'
