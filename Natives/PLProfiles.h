@@ -19,6 +19,9 @@
 - (void)setSelectedProfileName:(NSString *)name;
 - (void)save;
 
+/// Prevent content tools from creating an empty replacement for a missing imported game directory.
++ (BOOL)checkContentDirectoryForProfileName:(NSString *)profileName error:(NSError **)error;
+
 // 新增：修复构建错误 - 添加缺失的方法声明
 - (void)saveProfile:(NSMutableDictionary<NSString *, NSString *> *)profile withName:(NSString *)name;
 

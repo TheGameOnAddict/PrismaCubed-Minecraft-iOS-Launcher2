@@ -50,6 +50,42 @@ void CubicRunDiagnosticsFixture(void) {
         NSURL *dest = [docs URLByAppendingPathComponent:[NSString stringWithFormat:@"fixture-%@.zip",name]];
         NSCAssert([files copyItemAtURL:zip toURL:dest error:&error], @"Could not retrieve fixture ZIP: %@",error);
     }
+    // An early Java exit can happen before Minecraft creates logs/latest.log.
+    // The launcher restarts and the fatal trace accumulates other launches.
+    [files removeItemAtURL:[logs URLByAppendingPathComponent:@"latest.log"] error:nil];
+    NSString *run = NSUUID.UUID.UUIDString;
+    NSURL *sessions = [root URLByAppendingPathComponent:@"Diagnostics/.sessions"];
+    NSCAssert([files createDirectoryAtURL:sessions withIntermediateDirectories:YES attributes:nil error:nil], @"Could not create sessions directory");
+    NSDictionary *session = @{@"id":run, @"profile":@"example", @"pid":@12260,
+                              @"directory":@"instances/example", @"start":@([now timeIntervalSince1970]-15)};
+    NSData *json = [NSJSONSerialization dataWithJSONObject:session options:0 error:nil];
+    NSCAssert([json writeToURL:[sessions URLByAppendingPathComponent:@"session.json"] atomically:YES], @"Could not create session fixture");
+    NSDate *traceTime = [now dateByAddingTimeInterval:-1];
+    format.dateFormat = @"MMdd-HHmmss";
+    NSString *snapshot = [NSString stringWithFormat:@"latestlog.selfexit-%@.txt",[format stringFromDate:traceTime]];
+    format.dateFormat = @"yyyy-MM-dd HH:mm:ss.SSS";
+    NSString *(^header)(NSDate *) = ^(NSDate *time) {
+        return [NSString stringWithFormat:@"===== [Amethyst fatal trace] %@ =====",[format stringFromDate:time]];
+    };
+    NSString *traceHeader = header(traceTime);
+    NSString *trace = [NSString stringWithFormat:@"%@\nreason: exit(0) called\nprevious-run-canary\n%@\nreason: exit(1) called\nmatching-trace\n%@\nreason: exit(0) called\nfollowing-run-canary\n",
+                       header([now dateByAddingTimeInterval:-80]),traceHeader,header([now dateByAddingTimeInterval:0.8])];
+    NSString *headline = @"Caused by: joptsimple.ValueConversionException: Directory does not exist";
+    NSString *javaExit = [NSString stringWithFormat:@"=== ame273 crash report ===\ntime: %@\nexit_code: 1\ncategory: java_exception\nheadline: %@\ndetail_begin\n[Task261] selfexit snapshot saved: %@ (54886B) -- silent-exit log preserved against rotation\n%@\nreason: exit(1) called\ndetail_end\n",
+                          stamp,headline,snapshot,traceHeader];
+    writeFixture([NSString stringWithFormat:@"[PrismaDiagnostics] run=%@\nmatching-launcher-snapshot\n",run],[root URLByAppendingPathComponent:snapshot],traceTime);
+    writeFixture([NSString stringWithFormat:@"Restart after failure: %@\nwrong-restart-log\n",headline],[root URLByAppendingPathComponent:@"latestlog.txt"],now);
+    writeFixture(trace,[root URLByAppendingPathComponent:@"fatal_trace.txt"],now);
+    writeFixture(hotspot,[root URLByAppendingPathComponent:@"hs_err_pid12260.log"],now);
+    writeFixture(javaExit,[root URLByAppendingPathComponent:@"ame273_crash_report.last.txt"],now);
+    for (NSString *name in @[@"early", @"early-profile"]) {
+        NSError *error = nil;
+        NSURL *zip = [CubicDiagnostics archiveForProfile:@"example" directory:game.path crashReport:([name isEqual:@"early"] ? javaExit : nil)
+            documents:root performanceReport:metrics error:&error];
+        NSCAssert(zip, @"Could not create early exit ZIP: %@",error);
+        NSURL *dest = [docs URLByAppendingPathComponent:[NSString stringWithFormat:@"fixture-%@.zip",name]];
+        NSCAssert([files copyItemAtURL:zip toURL:dest error:&error], @"Could not retrieve early exit ZIP: %@",error);
+    }
     [files removeItemAtURL:root error:nil];
     writeFixture(@"ok", [docs URLByAppendingPathComponent:@"fixture-diagnostics.done"], now);
 }

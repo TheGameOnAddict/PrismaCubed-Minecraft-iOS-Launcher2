@@ -3900,3 +3900,5 @@
 "Preparing diagnostics…" = "Preparing diagnostics…";
 "A copy is saved in Files under PrismaCubic → Diagnostics." = "A copy is saved in Files under PrismaCubic → Diagnostics.";
 "Export failed" = "Export failed";
+
+"prisma.profile.content_missing" = "The imported game folder is missing or unavailable. Restore the folder or reimport the modpack to play.";

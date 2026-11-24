@@ -3846,3 +3846,5 @@
 "modpack.import.curseforge.code.expired" = "此 CurseForge 分享码无效或已过期。请向分享者索取新的分享码。";
 "modpack.import.curseforge.code.downloadFailed" = "无法下载 CurseForge 配置。请检查网络连接后重试。";
 "modpack.import.curseforge.code.invalidArchive" = "CurseForge 返回的文件不是有效的整合包。";
+
+"prisma.profile.content_missing" = "找不到或无法访问已导入的游戏文件夹。请恢复此文件夹或重新导入整合包后再启动。";

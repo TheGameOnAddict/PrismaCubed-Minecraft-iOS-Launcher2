@@ -245,7 +245,7 @@ PLIST
       done
     done
     if [[ "$MODE" == "performance" ]]; then
-      rm -f "$docs"/fixture-{matched,profile,stale}.zip "$docs/fixture-diagnostics.done"
+      rm -f "$docs"/fixture-{matched,profile,stale,early,early-profile}.zip "$docs/fixture-diagnostics.done"
       xcrun simctl launch --console "$device" "$bundle" -cubicDiagnostics > "$OUT/diagnostics.log" 2>&1 &
       pid=$!
       for attempt in {1..60}; do

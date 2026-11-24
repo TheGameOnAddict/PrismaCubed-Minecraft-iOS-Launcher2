@@ -121,6 +121,7 @@
 
 // 查找指定 profile 的 resourcepacks 目录（已存在时返回路径，否则返回 nil）
 - (nullable NSString *)existingResourcePacksFolderForProfile:(NSString *)profileName {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:NULL]) return nil;
     // ★ Task274-h S7：nil 入参跟随当前选中实例（ame267 语义），不再落恒 miss 的
     // @"default" 字面量（真实默认键 "(Default)"；对齐 Task270 M1 gameDirForProfile 口径）。
     if (!profileName.length) profileName = PLProfiles.current.selectedProfileName ?: @"(Default)";
@@ -180,6 +181,7 @@
 
 /// 获取当前 profile 的 resourcepacks 目录，不存在时自动创建
 - (nullable NSString *)ensureResourcePacksFolderForProfile:(NSString *)profileName error:(NSError **)error {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:error]) return nil;
     // ★ Task274-h S7：nil 入参跟随当前选中实例（同 existing 口径）。
     if (!profileName.length) profileName = PLProfiles.current.selectedProfileName ?: @"(Default)";
     NSString *profile = profileName;
@@ -367,14 +369,6 @@
                 expectedSHA1:(nullable NSString *)expectedSHA1
                     progress:(ResourcePackDownloadProgressHandler _Nullable)progress
                   completion:(ResourcePackDownloadCompletionHandler _Nullable)completion {
-    // ★ Task275 F7（Task269 末梢自愈平移）：目标实例不存在→回落当前选中实例
-    //   （ModService.m:734 同款，杜绝死名 resolve 兑底静默落共享根）。
-    if (profileName.length > 0 && !PLProfiles.current.profiles[profileName]) {
-        NSString *ame275_fallback = PLProfiles.current.selectedProfileName;
-        NSLog(@"[ResourcePackService] Task275: target profile \"%@\" gone -> fallback to selected \"%@\"",
-              profileName, ame275_fallback ?: @"(nil)");
-        profileName = ame275_fallback;
-    }
     // ★ Task270（ame219 隔离优先对齐 + P1-3 内联回退根修）：下载落点
     //   ensure-first——原 existing→"裸拼 prof[@"gameDir"]"内联回退不解析相对
     //   路径（CWD 被 ame97 chdir 永久切走后落嵌套孤儿树），且隔离实例首下载

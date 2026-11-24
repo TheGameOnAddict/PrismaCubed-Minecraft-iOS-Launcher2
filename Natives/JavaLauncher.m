@@ -2438,6 +2438,15 @@ static BOOL ame304_requestAndAwaitJITIfNeeded(NSString *tag) {
 int launchJVM(NSString *accountId, id launchTarget, int width, int height, int minVersion) {
     NSLog(@"[JavaLauncher] Beginning JVM launch");
 
+    NSError *contentError = nil;
+    if ([launchTarget isKindOfClass:NSDictionary.class] &&
+        ![PLProfiles checkContentDirectoryForProfileName:PLProfiles.current.selectedProfileName error:&contentError]) {
+        NSLog(@"[JavaLauncher] %@", contentError.localizedDescription);
+        UIKit_returnToSplitView();
+        showDialog(localize(@"Error", nil), contentError.localizedDescription);
+        return 1;
+    }
+
     // Task175：占位 mainClass 预检（用户实测"forge1.8.9 装整合包后启动 =
     // ClassNotFoundException: net.angelaura.installer.MissingLoader 裸崩"）。
     // ModpackImportService 在 loader 安装失败时写占位 JSON（mainClass 指向

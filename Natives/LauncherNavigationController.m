@@ -552,6 +552,12 @@ static void *ProgressObserverContext = &ProgressObserverContext;
         return;
     }
 
+    NSError *contentError = nil;
+    if (![PLProfiles checkContentDirectoryForProfileName:self.versionTextField.text error:&contentError]) {
+        showDialog(localize(@"Error", nil), contentError.localizedDescription);
+        return;
+    }
+
     [self setInteractionEnabled:NO forDownloading:YES];
 
     NSString *versionId = PLProfiles.current.profiles[self.versionTextField.text][@"lastVersionId"];

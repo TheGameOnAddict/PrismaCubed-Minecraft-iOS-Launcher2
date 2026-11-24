@@ -108,6 +108,11 @@ static NSString *_ame353_registryLastGoodPath = nil;
     return [self profile:self.current.selectedProfile resolveKey:key];
 }
 
+static NSString *importedInstancesDirectory(void) {
+    const char *home = getenv("POJAV_HOME");
+    return home && *home ? [@(home) stringByAppendingPathComponent:@"instances"] : nil;
+}
+
 - (id)initWithCurrentInstance {
     self = [super init];
     self.profilePath = [@(getenv("POJAV_GAME_DIR")) stringByAppendingPathComponent:@"launcher_profiles.json"];
@@ -130,6 +135,8 @@ static NSString *_ame353_registryLastGoodPath = nil;
                 self.profileDict = ame353_rescued;
                 NSLog(@"[Ame353] registry fallback: %@ unreadable -> last-known-good %@ (no write)",
                       self.profilePath, _ame353_registryLastGoodPath);
+                self.profilePath = _ame353_registryLastGoodPath;
+                ModpackTranslateProfileDirectories(self.profileDict, importedInstancesDirectory(), NO);
                 return self;
             }
         }
@@ -138,6 +145,7 @@ static NSString *_ame353_registryLastGoodPath = nil;
     } else {
         // 读成功才记锚（失守回读的“最后已知完好”语义）
         _ame353_registryLastGoodPath = [self.profilePath copy];
+        ModpackTranslateProfileDirectories(self.profileDict, importedInstancesDirectory(), NO);
     }
 
     return self;
@@ -222,6 +230,7 @@ static NSString *_ame353_registryLastGoodPath = nil;
     //   防并发变更打断枚举（枚举中字典被改 = 崩溃面）。
     @synchronized (self) {
         id sanitized = [self jsonSanitizedObject:self.profileDict];
+        ModpackTranslateProfileDirectories(sanitized, importedInstancesDirectory(), YES);
         if ([NSJSONSerialization isValidJSONObject:sanitized]) {
             saveJSONToFile(sanitized, self.profilePath);
         } else {
@@ -280,6 +289,25 @@ static NSString *_ame353_registryLastGoodPath = nil;
         changes(profiles);
         [self save];   // 同锁可重入（saveProfile 先例）
     }
+}
+
++ (BOOL)checkContentDirectoryForProfileName:(NSString *)profileName error:(NSError **)error {
+    PLProfiles *manager = self.current;
+    NSString *name = profileName.length ? profileName : manager.selectedProfileName;
+    NSDictionary *profile = name.length ? manager.profiles[name] : nil;
+    if (![profile isKindOfClass:NSDictionary.class]) {
+        if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadNoSuchFileError
+            userInfo:@{NSLocalizedDescriptionKey:localize(@"ame193.mp.61", nil)}];
+        return NO;
+    }
+    if (!ModpackProfileContentUnavailable(profile, importedInstancesDirectory())) return YES;
+    if (error) {
+        *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadNoSuchFileError userInfo:@{
+            NSLocalizedDescriptionKey:localize(@"prisma.profile.content_missing", nil),
+            NSFilePathErrorKey:profile[@"gameDir"] ?: @""
+        }];
+    }
+    return NO;
 }
 
 #pragma mark - ★ Task349 孤儿实例目录收编（zip 导入旧包实例列表可见性根修）
@@ -432,6 +460,8 @@ static NSString *_ame353_registryLastGoodPath = nil;
                     if (![ame349_p isKindOfClass:[NSDictionary class]]) continue;
                     NSMutableDictionary *ame349_copy = [ame349_p mutableCopy];
                     ame349_copy[@"name"] = ame349_k;
+                    NSString *content = ModpackProfileGameDir(ame349_copy, ame349_instancesDir, NO);
+                    if (content) ame349_copy[@"gameDir"] = content;
                     profiles[ame349_k] = ame349_copy;
                     ame349_count++;
                 }
@@ -465,17 +495,14 @@ static NSString *_ame353_registryLastGoodPath = nil;
     __block NSMutableArray<NSString *> *ame352_repairedNames = [NSMutableArray array];
     [ame349_mgr applyChanges:^(NSMutableDictionary<NSString *, id> *profiles) {
         // Remove only synthetic directory cards with no user configuration. Never remove instance files.
-        NSSet *scanFields = [NSSet setWithArray:@[@"name", @"gameDir", @"type", @"created", @"lastVersionId", @"lastPlayed"]];
         for (NSString *key in profiles.allKeys) {
             NSDictionary *pack = profiles[key];
             if (![pack isKindOfClass:NSDictionary.class] || ![pack[@"type"] isEqual:@"modpack"]) continue;
             NSString *folder = ModpackInstanceID(pack[@"gameDir"], ame349_instancesDir);
             if (!folder || [key isEqual:folder]) continue;
             NSDictionary *alias = profiles[folder];
-            if (![alias isKindOfClass:NSDictionary.class] || ![alias[@"name"] isEqual:folder] || ![alias[@"type"] isEqual:@"custom"] ||
-                ![alias[@"lastVersionId"] isEqual:pack[@"lastVersionId"]] ||
-                ![folder isEqual:ModpackInstanceID(alias[@"gameDir"], ame349_instancesDir)] ||
-                ![[NSSet setWithArray:alias.allKeys] isSubsetOfSet:scanFields]) continue;
+            if (!ModpackIsDirectoryCard(folder, alias, ame349_instancesDir) ||
+                ![alias[@"lastVersionId"] isEqual:pack[@"lastVersionId"]]) continue;
             [profiles removeObjectForKey:folder];
             if ([ame349_mgr.selectedProfileName isEqual:folder]) ame349_mgr.profileDict[@"selectedProfile"] = (id)key;
         }

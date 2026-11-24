@@ -143,12 +143,18 @@ NSString *localize(NSString *key, NSString *comment) {
 // PLProfiles 最小桩：无 profile（版本卡显示"未选择实例"）
 @interface PLProfiles : NSObject
 + (PLProfiles *)current;
++ (BOOL)checkContentDirectoryForProfileName:(NSString *)profileName error:(NSError **)error;
 - (NSString *)selectedProfileName;
 - (NSMutableDictionary *)profiles;
 - (void)save;
 @end
 
 @implementation PLProfiles
+
++ (BOOL)checkContentDirectoryForProfileName:(NSString *)profileName error:(NSError **)error {
+    // Preview profiles are fixtures in the simulator's temporary directory.
+    return YES;
+}
 
 + (PLProfiles *)current {
     static PLProfiles *p = nil;

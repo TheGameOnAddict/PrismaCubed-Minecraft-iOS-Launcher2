@@ -20,6 +20,45 @@ int main(void) {
         assert(!ModpackInstanceID([content stringByAppendingPathComponent:@"mods"], instances));
         assert(!ModpackInstanceID([live stringByAppendingString:@"-backup-12345"], instances));
 
+        NSString *oldBase = @"/private/var/mobile/Containers/Data/Application/2B43FB61-E3B9-4EC8-AEBF-A03D4E324F62/Documents/instances";
+        NSString *old = [oldBase stringByAppendingPathComponent:folder];
+        NSString *oldNested = [old stringByAppendingPathComponent:@"versions/1.20.1-forge-47.4.28-pack"];
+        NSString *portable = [@"instances" stringByAppendingPathComponent:folder];
+        NSString *customDir = [@"/other/Documents/instances" stringByAppendingPathComponent:folder];
+        NSDictionary *source = @{@"selectedProfile":@"THE GANG", @"profiles":@{
+            @"THE GANG":@{@"type":@"modpack", @"gameDir":old, @"lastVersionId":@"forge"},
+            @"Nested":@{@"type":@"modpack", @"gameDir":oldNested},
+            @"Outside":@{@"type":@"modpack", @"gameDir":customDir},
+            @"Custom":@{@"type":@"custom", @"gameDir":old}}};
+        NSMutableDictionary *(^roundTrip)(NSDictionary *) = ^NSMutableDictionary *(NSDictionary *registry) {
+            NSData *json = [NSJSONSerialization dataWithJSONObject:registry options:0 error:NULL];
+            return [NSJSONSerialization JSONObjectWithData:json options:NSJSONReadingMutableContainers error:NULL];
+        };
+        NSMutableDictionary *loaded = roundTrip(source);
+        ModpackTranslateProfileDirectories(loaded, instances, NO);
+        assert([loaded[@"profiles"][@"THE GANG"][@"gameDir"] isEqual:live]);
+        assert([loaded[@"profiles"][@"Nested"][@"gameDir"] isEqual:content]);
+        assert([loaded[@"profiles"][@"Outside"][@"gameDir"] isEqual:customDir]);
+        assert([loaded[@"profiles"][@"Custom"][@"gameDir"] isEqual:old]);
+        assert(!ModpackProfileContentUnavailable(loaded[@"profiles"][@"THE GANG"], instances));
+        NSMutableDictionary *disk = roundTrip(loaded);
+        ModpackTranslateProfileDirectories(disk, instances, YES);
+        assert([disk[@"profiles"][@"THE GANG"][@"gameDir"] isEqual:portable]);
+        assert([disk[@"profiles"][@"Nested"][@"gameDir"] hasPrefix:[portable stringByAppendingString:@"/versions/"]]);
+        assert([loaded[@"profiles"][@"THE GANG"][@"gameDir"] isEqual:live]);
+        NSString *newBase = [instances stringByAppendingPathComponent:@"newContainer"];
+        NSMutableDictionary *restored = roundTrip(disk);
+        ModpackTranslateProfileDirectories(restored, newBase, NO);
+        assert([restored[@"profiles"][@"THE GANG"][@"gameDir"] isEqual:[newBase stringByAppendingPathComponent:folder]]);
+        assert(ModpackProfileContentUnavailable(restored[@"profiles"][@"THE GANG"], newBase));
+        assert(![fm fileExistsAtPath:newBase]);
+        assert(!ModpackContentRelativePath([old stringByAppendingString:@"/versions/.."], instances));
+        assert(!ModpackContentRelativePath([old stringByAppendingString:@"-backup"], instances));
+        assert([ModpackContentRelativePath([old substringFromIndex:8], instances) isEqual:folder]);
+        assert([fm createDirectoryAtPath:newBase withIntermediateDirectories:YES attributes:nil error:NULL]);
+        assert([fm createSymbolicLinkAtPath:[newBase stringByAppendingPathComponent:folder] withDestinationPath:live error:NULL]);
+        assert(ModpackProfileContentUnavailable(restored[@"profiles"][@"THE GANG"], newBase));
+
         NSString *installer = [instances stringByAppendingPathComponent:@"default"];
         NSString *libraries = [installer stringByAppendingPathComponent:@"libraries"];
         NSString *stage = [instances stringByAppendingPathComponent:@".stage"];
@@ -44,6 +83,10 @@ int main(void) {
         }
         NSDictionary *card = @{@"name":folder, @"gameDir":live, @"type":@"custom"};
         assert(ModpackIsDirectoryCard(folder, card, instances));
+        NSString *oldFolder = [@"/var/mobile/Containers/Data/Application/A0123456-ABCD-1234-BEEF-0123456789AB/Documents/instances" stringByAppendingPathComponent:folder];
+        assert(ModpackIsDirectoryCard(folder, @{@"name":folder, @"gameDir":oldFolder, @"type":@"custom"}, instances));
+        assert(ModpackIsGeneratedFolder(@"mmc_45307D42-B213-4497-A9EF-F8B82CF40182"));
+        assert(!ModpackIsGeneratedFolder(@"my_45307D42-B213-4497-A9EF-F8B82CF40182"));
         assert(!ModpackIsDirectoryCard(@"THE GANG", card, instances));
         NSMutableDictionary *configured = card.mutableCopy;
         configured[@"gameDir"] = content;

@@ -126,6 +126,7 @@
 
 // 查找指定 profile 的 saves 目录（已存在时返回路径，否则返回 nil）
 - (nullable NSString *)existingWorldsFolderForProfile:(NSString *)profileName {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:NULL]) return nil;
     NSFileManager *fm = [NSFileManager defaultManager];
 
     @try {
@@ -158,6 +159,7 @@
 
 /// 获取当前 profile 的 saves 目录，不存在时自动创建
 - (nullable NSString *)ensureWorldsFolderForProfile:(NSString *)profileName error:(NSError **)error {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:error]) return nil;
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *savesPath = nil;
 
@@ -380,14 +382,6 @@
             toProfile:(NSString *)profileName
              progress:(WorldDownloadProgressHandler _Nullable)progress
            completion:(WorldDownloadCompletionHandler _Nullable)completion {
-    // ★ Task275 F7（Task269 末梢自愈平移）：目标实例不存在→回落当前选中实例
-    //   （ModService.m:734 同款，杜绝死名 resolve 兑底静默落共享根）。
-    if (profileName.length > 0 && !PLProfiles.current.profiles[profileName]) {
-        NSString *ame275_fallback = PLProfiles.current.selectedProfileName;
-        NSLog(@"[WorldService] Task275: target profile \"%@\" gone -> fallback to selected \"%@\"",
-              profileName, ame275_fallback ?: @"(nil)");
-        profileName = ame275_fallback;
-    }
     // 确保 saves 目录存在
     NSError *ensureError = nil;
     NSString *savesFolder = [self ensureWorldsFolderForProfile:profileName error:&ensureError];

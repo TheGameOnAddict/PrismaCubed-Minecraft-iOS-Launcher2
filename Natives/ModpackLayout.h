@@ -21,17 +21,83 @@ static inline NSString *ModpackInstanceID(NSString *gameDir, NSString *instances
 }
 
 static inline BOOL ModpackIsGeneratedFolder(NSString *folder) {
-    if (![folder hasPrefix:@"curseforge_"] && ![folder hasPrefix:@"modrinth_"]) return NO;
-    NSString *uuid = [folder substringFromIndex:NSMaxRange([folder rangeOfString:@"_"])];
-    return [[NSUUID alloc] initWithUUIDString:uuid] != nil;
+    NSRange separator = [folder rangeOfString:@"_"];
+    if (!folder.length || separator.location == NSNotFound) return NO;
+    NSString *kind = [folder substringToIndex:separator.location];
+    if (![@[@"curseforge", @"modrinth", @"mcbbs", @"mmc", @"plainzip"] containsObject:kind]) return NO;
+    return [[NSUUID alloc] initWithUUIDString:[folder substringFromIndex:NSMaxRange(separator)]] != nil;
+}
+
+// Return only the importer's own ID or ID/versions/version. Legacy records
+// may use either spelling of the iOS data container path.
+static inline NSString *ModpackContentRelativePath(NSString *gameDir, NSString *instances) {
+    if (![gameDir isKindOfClass:NSString.class] || !instances.isAbsolutePath) return nil;
+    NSString *relative = nil;
+    NSString *base = [instances stringByAppendingString:@"/"];
+    if ([gameDir hasPrefix:base]) {
+        relative = [gameDir substringFromIndex:base.length];
+    } else if ([gameDir hasPrefix:@"instances/"]) {
+        relative = [gameDir substringFromIndex:@"instances/".length];
+    } else {
+        NSString *path = [gameDir hasPrefix:@"/private/var/"] ? [gameDir substringFromIndex:8] : gameDir;
+        NSString *prefix = @"/var/mobile/Containers/Data/Application/";
+        if (![path hasPrefix:prefix]) return nil;
+        NSArray *parts = [[path substringFromIndex:prefix.length] componentsSeparatedByString:@"/"];
+        if (parts.count < 4 || ![[NSUUID alloc] initWithUUIDString:parts[0]] ||
+            ![parts[1] isEqual:@"Documents"] || ![parts[2] isEqual:@"instances"]) return nil;
+        relative = [[parts subarrayWithRange:NSMakeRange(3, parts.count-3)] componentsJoinedByString:@"/"];
+    }
+    NSArray *parts = [relative componentsSeparatedByString:@"/"];
+    if (parts.count != 1 && !(parts.count == 3 && [parts[1] isEqual:@"versions"] &&
+        [parts[2] length] && ![parts[2] hasPrefix:@"."])) return nil;
+    return ModpackIsGeneratedFolder(parts.firstObject) ? relative : nil;
+}
+
+static inline NSString *ModpackProfileGameDir(NSDictionary *profile, NSString *instances, BOOL portable) {
+    NSString *path = profile[@"gameDir"];
+    if (![profile[@"type"] isEqual:@"modpack"]) return path;
+    NSString *relative = ModpackContentRelativePath(path, instances);
+    if (!relative) return path;
+    return [(portable ? @"instances" : instances) stringByAppendingPathComponent:relative];
+}
+
+// Each managed component must be a real directory. Duplicate-card repair and
+// ordinary browsing must not create a missing root or follow it out of instances.
+static inline BOOL ModpackProfileContentUnavailable(NSDictionary *profile, NSString *instances) {
+    if (![profile[@"type"] isEqual:@"modpack"]) return NO;
+    NSString *relative = ModpackContentRelativePath(profile[@"gameDir"], instances);
+    if (!relative) return NO;
+    NSString *path = instances;
+    struct stat entry;
+    for (NSString *component in relative.pathComponents) {
+        path = [path stringByAppendingPathComponent:component];
+        if (lstat(path.fileSystemRepresentation, &entry) || !S_ISDIR(entry.st_mode)) return YES;
+    }
+    return NO;
+}
+
+// The registry in memory always has absolute paths. Serialize a separate copy
+// with Documents-relative paths so iOS can relocate the app container.
+static inline void ModpackTranslateProfileDirectories(NSDictionary *registry, NSString *instances, BOOL portable) {
+    NSMutableDictionary *profiles = registry[@"profiles"];
+    if (![profiles isKindOfClass:NSMutableDictionary.class]) return;
+    for (NSString *key in profiles.allKeys) {
+        NSDictionary *profile = profiles[key];
+        if (![profile isKindOfClass:NSDictionary.class]) continue;
+        NSString *dir = ModpackProfileGameDir(profile, instances, portable);
+        if (!dir || [dir isEqual:profile[@"gameDir"]]) continue;
+        NSMutableDictionary *updated = profile.mutableCopy;
+        updated[@"gameDir"] = dir;
+        profiles[key] = updated;
+    }
 }
 
 // Reconciliation in older builds created these bare custom records for import working directories.
 static inline BOOL ModpackIsDirectoryCard(NSString *key, NSDictionary *profile, NSString *instances) {
     if (!ModpackIsGeneratedFolder(key) || ![profile isKindOfClass:NSDictionary.class] || ![profile[@"type"] isEqual:@"custom"] || ![key isEqual:profile[@"name"]]) return NO;
     NSString *dir = profile[@"gameDir"];
-    if (![dir isKindOfClass:NSString.class] ||
-        ![ModpackInstanceID(dir, instances) isEqual:key]) return NO;
+    NSString *relative = ModpackContentRelativePath(dir, instances);
+    if (![relative.pathComponents.firstObject isEqual:key]) return NO;
     NSSet *fields = [NSSet setWithArray:@[@"name", @"gameDir", @"type", @"created", @"lastVersionId", @"lastPlayed"]];
     return [[NSSet setWithArray:profile.allKeys] isSubsetOfSet:fields];
 }

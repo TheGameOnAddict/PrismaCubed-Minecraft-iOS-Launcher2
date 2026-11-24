@@ -130,6 +130,7 @@
 }
 
 - (nullable NSString *)existingShadersFolderForProfile:(NSString *)profileName {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:NULL]) return nil;
     NSFileManager *fm = [NSFileManager defaultManager];
 
     // 优先用 profile gameDir（已解析为绝对路径；nil 跟随语义在 resolve 内）
@@ -157,6 +158,7 @@
 
 /// 获取当前 profile 的 shaderpacks 目录，不存在时自动创建
 - (nullable NSString *)ensureShadersFolderForProfile:(NSString *)profileName error:(NSError **)error {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:error]) return nil;
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *shadersPath = nil;
 
@@ -316,15 +318,6 @@
           expectedSHA1:(nullable NSString *)expectedSHA1
               progress:(nullable void (^)(NSProgress *downloadProgress))progress
             completion:(ShaderDownloadHandler)completion {
-    // ★ Task275 F7（Task269 末梢自愈平移）：目标实例不存在（ame269 迁移合并/
-    //   改名后残留的旧实例名引用）→ 回落当前选中实例，杜绝下载进死名后被
-    //   resolve 兑底静默落共享根（ModService.m:734 同款）。
-    if (profileName.length > 0 && !PLProfiles.current.profiles[profileName]) {
-        NSString *ame275_fallback = PLProfiles.current.selectedProfileName;
-        NSLog(@"[ShaderService] Task275: target profile \"%@\" gone -> fallback to selected \"%@\"",
-              profileName, ame275_fallback ?: @"(nil)");
-        profileName = ame275_fallback;
-    }
     // Ensure shaderpacks folder exists
     // ★ Task270（ame219 隔离优先对齐）：下载落点 ensure-first——profile 配置了
     //   gameDir（隔离/自定义）时只认隔离目录缺目录即建，绝不回退共享目录

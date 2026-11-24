@@ -1902,6 +1902,12 @@ static UIImage *ZL2HomeSizedImage(NSString *name, NSString *fallback, CGFloat po
         return;
     }
 
+    NSError *contentError = nil;
+    if (![PLProfiles checkContentDirectoryForProfileName:selectedProfile error:&contentError]) {
+        [self showAlert:contentError.localizedDescription];
+        return;
+    }
+
     NSString *versionId = PLProfiles.current.profiles[selectedProfile][@"lastVersionId"];
     // ★ Task352：空/缺失版本 = "未选择版本"（收编与 Task352 修复遍也未命中
     //   的如实态，引导语义：去版本/下载页选择或安装），不再弹误导性的

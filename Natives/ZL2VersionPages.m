@@ -1535,6 +1535,11 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (urls.count == 0) return;
+    NSError *directoryError = nil;
+    if (![PLProfiles checkContentDirectoryForProfileName:self.ameV13_profileName error:&directoryError]) {
+        [self ameV13_showAlertMessage:directoryError.localizedDescription];
+        return;
+    }
     NSString *modsDir = [self.ameV13_gameDir stringByAppendingPathComponent:@"mods"];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         [NSFileManager.defaultManager createDirectoryAtPath:modsDir withIntermediateDirectories:YES attributes:nil error:nil];
@@ -2254,6 +2259,11 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (urls.count == 0) return;
+    NSError *directoryError = nil;
+    if (![PLProfiles checkContentDirectoryForProfileName:self.ameV13_profileName error:&directoryError]) {
+        [self ameV13_showAlertMessage:directoryError.localizedDescription];
+        return;
+    }
     NSString *savesDir = [self.ameV13_gameDir stringByAppendingPathComponent:@"saves"];
     [NSFileManager.defaultManager createDirectoryAtPath:savesDir withIntermediateDirectories:YES attributes:nil error:nil];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -2576,6 +2586,11 @@ static NSString *ZL2V13ModSHA1ForFile(NSString *path) {
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     if (urls.count == 0) return;
+    NSError *directoryError = nil;
+    if (![PLProfiles checkContentDirectoryForProfileName:self.ameV13_profileName error:&directoryError]) {
+        [self ameV13_showAlertMessage:directoryError.localizedDescription];
+        return;
+    }
     NSString *dir = [self.ameV13_gameDir stringByAppendingPathComponent:[self ameV13_folderName]];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];

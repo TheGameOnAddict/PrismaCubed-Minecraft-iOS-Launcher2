@@ -1206,8 +1206,7 @@ static BOOL ame269_sMigrationRunning = NO;
 
     // 第 5 步: 持久化整合包元信息
     NSMutableDictionary *savedModpack = [modpackInfo mutableCopy];
-    savedModpack[@"gameDirAbsolute"] = gameDirAbsolute;
-    savedModpack[@"gameDirRelative"] = gameDirRelative;
+    savedModpack[@"gameDirRelative"] = [@"instances" stringByAppendingPathComponent:modpackId];
     savedModpack[@"profileName"] = profileName;
     savedModpack[@"versionId"] = versionId;
     savedModpack[@"importDate"] = [self iso8601StringFromDate:[NSDate date]];
@@ -3405,12 +3404,25 @@ if (hasRealFileName) {
 - (NSArray<NSDictionary *> *)getImportedModpacks {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSArray *modpacks = [defaults objectForKey:kImportedModpacksKey];
-    return modpacks ?: @[];
+    NSMutableArray *result = [NSMutableArray array];
+    for (NSDictionary *item in modpacks) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        NSString *path = item[@"gameDirAbsolute"] ?: item[@"gameDirRelative"];
+        NSString *relative = ModpackContentRelativePath(path, self.customGameDir);
+        if (relative && [relative.pathComponents.firstObject isEqual:item[@"id"]]) {
+            NSMutableDictionary *entry = item.mutableCopy;
+            entry[@"gameDirAbsolute"] = [self.customGameDir stringByAppendingPathComponent:relative];
+            [result addObject:entry];
+        } else {
+            [result addObject:item];
+        }
+    }
+    return result;
 }
 
 - (void)saveImportedModpack:(NSDictionary *)modpackInfo {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSMutableArray *modpacks = [[self getImportedModpacks] mutableCopy];
+    NSMutableArray *modpacks = [[defaults arrayForKey:kImportedModpacksKey] mutableCopy] ?: [NSMutableArray array];
     // Task269：同 id 已存在则原位替换（复用实例的重导入=刷新，不追加重复条目）
     NSString *ame269_id = modpackInfo[@"id"];
     BOOL ame269_replaced = NO;
@@ -3502,7 +3514,7 @@ if (hasRealFileName) {
     }
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSMutableArray *modpacks = [[self getImportedModpacks] mutableCopy];
+    NSMutableArray *modpacks = [[defaults arrayForKey:kImportedModpacksKey] mutableCopy] ?: [NSMutableArray array];
 
     NSUInteger index = [modpacks indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger idx, BOOL *stop) {
         return [obj[@"id"] isEqualToString:modpackInfo[@"id"]];

@@ -169,6 +169,7 @@
 
 // 查找指定 profile 的 datapacks 目录（已存在时返回路径，否则返回 nil）
 - (nullable NSString *)existingDataPacksFolderForProfile:(NSString *)profileName {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:NULL]) return nil;
     NSFileManager *fm = [NSFileManager defaultManager];
 
     @try {
@@ -199,6 +200,7 @@
 
 /// 获取当前 profile 的 datapacks 目录，不存在时自动创建
 - (nullable NSString *)ensureDataPacksFolderForProfile:(NSString *)profileName error:(NSError **)error {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:error]) return nil;
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *dataPacksPath = nil;
 

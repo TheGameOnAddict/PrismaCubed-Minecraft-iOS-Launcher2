@@ -736,16 +736,7 @@ static inline NSString *ame267_lockedDownloadTarget(NSString *ame267_target) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    // Task269 对账：锁定的目标实例若已被升级自动迁移合并删除（条目不在 profile 表）→
-    // 重新锁定当前选中实例，避免后续下载落在尸体实例引用上（ModService 末梢另有自愈兜底）。
-    if (self.targetProfileName.length > 0 && !PLProfiles.current.profiles[self.targetProfileName]) {
-        NSLog(@"[Download] Task269: latched target profile \"%@\" gone -> re-latch to selected \"%@\"",
-              self.targetProfileName, PLProfiles.current.selectedProfileName ?: @"(nil)");
-        self.targetProfileName = PLProfiles.current.selectedProfileName;
-    }
-    // ★ Task267：用户切实例后回到下载页——快照仍锁定旧实例，明示一次
-    //   （不阻断操作），防"以为装到新实例"。上一步 Task269 已消化迁移
-    //   合并的尸体重锁场景，此处只剩"切了实例但目标仍是旧实例"的提示。
+    // Keep the page bound to the profile it displays, including if that profile disappears.
     NSString *ame267_current = PLProfiles.current.selectedProfileName;
     if (self.targetProfileName.length > 0 && ame267_current.length > 0 &&
         ![ame267_current isEqualToString:self.targetProfileName] &&
@@ -4878,7 +4869,12 @@ static const NSTimeInterval kAme291MergeWindowSeconds = 7.0 * 24.0 * 3600.0;
             return;
         }
 
-        NSString *modsDir = [self currentInstanceModsPath];
+        NSError *directoryError = nil;
+        NSString *modsDir = [[ModService sharedService] ensureModsFolderForProfile:self.targetProfileName error:&directoryError];
+        if (!modsDir) {
+            dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(NO, directoryError); });
+            return;
+        }
         // 优先用 API 返回的 filename；否则用 type_patch 构造
         NSString *saveFilename = filename ?: [NSString stringWithFormat:@"OptiFine_%@_%@_%@.jar", gameVersion, optiFineType, optiFinePatch];
         NSString *savePath = [modsDir stringByAppendingPathComponent:saveFilename];
@@ -5273,7 +5269,12 @@ static const NSTimeInterval kAme291MergeWindowSeconds = 7.0 * 24.0 * 3600.0;
         return;
     }
     
-    NSString *modsDir = [self currentInstanceModsPath];
+    NSError *directoryError = nil;
+    NSString *modsDir = [[ModService sharedService] ensureModsFolderForProfile:self.targetProfileName error:&directoryError];
+    if (!modsDir) {
+        if (completion) completion(NO, directoryError);
+        return;
+    }
     NSString *savePath = [modsDir stringByAppendingPathComponent:filename];
     
     NSURL *url = [NSURL URLWithString:downloadURL];
@@ -6646,35 +6647,6 @@ static NSString *PLSha1FromPrimaryFile(NSDictionary *primaryFile) {
 
     if (error) *error = blockError;
     return result;
-}
-
-- (NSString *)currentInstanceModsPath {
-    // ★ Task226（反馈 #7 后半：安装模组端默认共享目录——与游戏运行目录
-    // 错位的镜像问题）：旧实现只读 profile gameDir 的字面值，缺失或 "."
-    // 时直接回落 POJAV_GAME_DIR 共享根；而 JavaLauncher 启动链带
-    // Task225 目录形状嗅探（versions/<vid>/game 有 mods/saves → 自动
-    // 隔离）。两端口径不同 → 游戏跑在隔离目录、模组装进共享目录，
-    // 用户表现为"装了模组游戏里没有"。修法：与 ModService 同源——
-    // 直接委托 ensureModsFolderForProfile（内部走带嗅探的统一解析器，
-    // 与 ModService 扫描/管理页徽标完全一致），失败再走旧回退。
-    NSString *instanceName = PLProfiles.current.selectedProfileName;
-    if (!instanceName) instanceName = @"default";
-    NSError *ame226_err = nil;
-    NSString *ame226_unified = [[ModService sharedService] ensureModsFolderForProfile:instanceName
-                                                                                error:&ame226_err];
-    if (ame226_unified.length > 0) {
-        return ame226_unified;
-    }
-    if (ame226_err) {
-        NSLog(@"[DownloadVC] Task226 unified mods-dir resolve failed (%@) -- falling back to legacy path", ame226_err.localizedDescription);
-    }
-
-    // 旧回退路径（保持最后一线可用性）
-    const char *env = getenv("POJAV_GAME_DIR");
-    NSString *gameDir = env ? [NSString stringWithUTF8String:env] : NSHomeDirectory();
-    NSString *modsDir = [gameDir stringByAppendingPathComponent:@"mods"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:modsDir withIntermediateDirectories:YES attributes:nil error:nil];
-    return modsDir;
 }
 
 - (void)handleBackgroundUIEffectChanged:(NSNotification *)notification {

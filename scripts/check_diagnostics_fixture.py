@@ -19,6 +19,18 @@ def verify(directory, scenario):
     assert manifest["profile"] == "example"
     assert set(manifest["included"]) == entries.keys() - {"manifest.json"}
     assert "hs_err_pid99999.log" not in entries and "level.dat" not in entries
+    if scenario.startswith("early"):
+        assert "game-latest.log" in manifest["unavailable"] and "game-latest.log" not in entries
+        assert "hs_err_pid12260.log" not in entries and "hs_err_pid12260.log" not in manifest["unavailable"]
+        assert b"matching-launcher-snapshot" in entries["launcher.log"] and b"wrong-restart-log" not in entries["launcher.log"]
+        assert b"category: java_exception" in entries["crash-report.txt"]
+        trace = entries["fatal-trace.txt"]
+        assert b"matching-trace" in trace and trace.count(b"Amethyst fatal trace") == 1
+        assert b"previous-run-canary" not in trace and b"following-run-canary" not in trace
+        if scenario == "early-profile":
+            assert manifest["crashMatch"] == "launcher snapshot run ID"
+        print(f"{scenario}: verified early exit diagnostics")
+        return
     assert b"zink" in entries["game-latest.log"] and b"private-test" not in entries["game-latest.log"]
     assert b"secret-test" not in entries["launcher.log"]
     profile = json.loads(entries["profile.json"])
@@ -43,5 +55,5 @@ def verify(directory, scenario):
 
 
 if __name__ == "__main__":
-    for scenario in ("matched", "profile", "stale"):
+    for scenario in ("matched", "profile", "stale", "early", "early-profile"):
         verify(Path(sys.argv[1]), scenario)

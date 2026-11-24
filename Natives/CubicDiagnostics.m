@@ -56,6 +56,17 @@ static NSDate *reportDate(NSString *content) {
     return [format dateFromString:stamp];
 }
 static BOOL nearDate(NSDate *a, NSDate *b) { return a && b && fabs([a timeIntervalSinceDate:b]) <= 120; }
+// PatchSVC records the exact basename after it copies latestlog.txt. Restrict
+// the name to the snapshot format before resolving it under Documents.
+static NSURL *exitSnapshot(NSString *crash, NSURL *docs, NSDate *when) {
+    NSString *name = match(crash, @"(?<=\\[Task261\\] selfexit snapshot saved: )latestlog\\.selfexit-[0-9]{4}-[0-9]{6}\\.txt(?= \\()");
+    if (!name) return nil;
+    NSURL *file = child(docs,name);
+    return regular(file) && nearDate(when,modified(file)) ? file : nil;
+}
+static NSString *snapshotRun(NSURL *snapshot) {
+    return match(logString(logBytes(snapshot,3*1024*1024,NO)), @"(?<=\\[PrismaDiagnostics\\] run=)[0-9A-Fa-f-]{36}\\b");
+}
 static NSDictionary *loadJSON(NSURL *file) {
     NSData *data = logBytes(file, 65536, YES);
     id obj = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
@@ -99,18 +110,41 @@ static NSURL *legacyCrashDirectory(NSURL *docs, NSDate *when) {
     }
     return matches.count == 1 ? [NSURL fileURLWithPath:matches.anyObject] : nil;
 }
-static NSString *fatalSection(NSString *text, NSDate *date) {
+static NSString *fatalSection(NSString *text, NSDate *date, NSString *crash) {
     if (!date || !text.length) return nil;
-    NSDateFormatter *formatter = [NSDateFormatter new];
-    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-    formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss";
-    NSMutableArray *result = [NSMutableArray array];
-    for (NSString *part in [text componentsSeparatedByString:@"===== [Amethyst fatal trace] "]) {
-        if (part.length < 19) continue;
-        NSDate *stamp = [formatter dateFromString:[part substringToIndex:19]];
-        if (nearDate(stamp,date)) [result addObject:[@"===== [Amethyst fatal trace] " stringByAppendingString:part]];
+    NSString *prefix = @"===== [Amethyst fatal trace] ";
+    NSString *stampPattern = @"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3} =====(?=\\r?\\n)";
+    NSDateFormatter *format = [NSDateFormatter new];
+    format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    format.dateFormat = @"yyyy-MM-dd HH:mm:ss.SSS";
+    NSString *identified = nil, *fallback = nil;
+    NSUInteger exactCount = 0, nearbyCount = 0;
+    NSArray *sections = [text componentsSeparatedByString:prefix];
+    for (NSUInteger i = 1; i < sections.count; i++) {
+        NSString *section = sections[i];
+        NSString *stamp = match(section, stampPattern);
+        if (!stamp) continue;
+        NSDate *traceDate = [format dateFromString:[stamp substringToIndex:23]];
+        if (!traceDate || !nearDate(traceDate,date)) continue;
+        NSString *header = [prefix stringByAppendingString:stamp];
+        if ([crash containsString:header]) {
+            identified = section;
+            exactCount++;
+        }
+        NSTimeInterval offset = [traceDate timeIntervalSinceDate:date];
+        if (offset >= -2 && offset < 1) {
+            fallback = section;
+            nearbyCount++;
+        }
     }
-    return result.count ? [result componentsJoinedByString:@"\n"] : nil;
+    NSString *selected = exactCount == 1 ? identified : nil;
+    if (!exactCount && ![crash containsString:prefix] && nearbyCount == 1) selected = fallback;
+    if (!selected) return nil;
+    // logBytes joins a bounded head and tail. If a section straddles that gap,
+    // its tail could belong to a different trace whose header was clipped.
+    NSRange gap = [selected rangeOfString:@"[... middle omitted for export ...]"];
+    if (gap.location != NSNotFound) selected = [selected substringToIndex:NSMaxRange(gap)];
+    return [prefix stringByAppendingString:selected];
 }
 
 static NSURL *activeSessionURL;
@@ -176,12 +210,14 @@ static dispatch_queue_t sessionWrites(void) {
         NSArray *sessions = newestMatching(root,[NSPredicate predicateWithFormat:@"SELF ENDSWITH %@",@".json"],128);
         NSDictionary *session = nil;
         NSString *explicitPID = match(crash,@"(?<=hs_err_pid)[0-9]+(?=\\.log)");
+        NSString *explicitRun = snapshotRun(exitSnapshot(crash,docs,when));
         for (NSURL *file in sessions) {
             NSDictionary *s = loadJSON(file);
             if (![s[@"id"] isKindOfClass:NSString.class] || ![s[@"pid"] isKindOfClass:NSNumber.class] ||
                 ![s[@"start"] isKindOfClass:NSNumber.class] || ![s[@"profile"] isKindOfClass:NSString.class]) continue;
+            if (explicitRun && ![s[@"id"] isEqual:explicitRun]) continue;
             if (profile.length && ![s[@"profile"] isEqual:profile]) continue;
-            if (!profile.length && !when) continue;
+            if (!profile.length && (!when || (!explicitRun.length && !explicitPID.length))) continue;
             if (explicitPID.length && ![[s[@"pid"] stringValue] isEqual:explicitPID]) continue;
             if (when && [s[@"start"] doubleValue] > when.timeIntervalSince1970+1) continue;
             session = s;
@@ -204,9 +240,11 @@ static dispatch_queue_t sessionWrites(void) {
                 if (pid && date.timeIntervalSince1970+1 < [session[@"start"] doubleValue]) continue;
                 if (pid && filePID && ![filePID isEqual:pid]) continue;
                 BOOL matchedPID = pid && [filePID isEqual:pid];
-                if (!matchedPID && !nearDate(gameDate,date)) continue;
+                NSString *run = session ? snapshotRun(exitSnapshot(candidate,docs,date)) : nil;
+                if (run && ![session[@"id"] isEqual:run]) continue;
+                if (!run && !matchedPID && !nearDate(gameDate,date)) continue;
                 crash = candidate; when = date;
-                association = matchedPID ? @"launch process ID" : @"game log and crash timestamps";
+                association = run ? @"launcher snapshot run ID" : (matchedPID ? @"launch process ID" : @"game log and crash timestamps");
                 break;
             }
         }
@@ -225,13 +263,14 @@ static dispatch_queue_t sessionWrites(void) {
         }
         add(@"crash-report.txt", CubicRedactedDiagnosticData([crash dataUsingEncoding:NSUTF8StringEncoding]));
         NSString *hs = match(crash,@"\\bhs_err_pid[0-9]+\\.log\\b");
-        if (!hs && pid) hs = [NSString stringWithFormat:@"hs_err_pid%@.log",pid];
+        BOOL nativeFailure = [match(crash,@"(?m)(?<=^category: )[^\\r\\n]+") isEqual:@"jvm_fatal"];
+        if (!hs && pid && (nativeFailure || !crash.length)) hs = [NSString stringWithFormat:@"hs_err_pid%@.log",pid];
         NSURL *jvm = hs ? child(docs,hs) : nil;
         BOOL jvmMatches = jvm && regular(jvm) && (when ? nearDate(when,modified(jvm)) :
             session && modified(jvm).timeIntervalSince1970 >= [session[@"start"] doubleValue]-1);
-        add(hs ?: @"JVM crash log",jvmMatches ? CubicRedactedHotSpotData(logBytes(jvm,1024*1024,YES)) : nil);
+        if (hs || nativeFailure) add(hs ?: @"JVM crash log",jvmMatches ? CubicRedactedHotSpotData(logBytes(jvm,1024*1024,YES)) : nil);
         if (!when && jvmMatches) when = modified(jvm);
-        NSString *trace = when ? fatalSection(logString(logBytes(child(docs,@"fatal_trace.txt"),262144,NO)),when) : nil;
+        NSString *trace = when ? fatalSection(logString(logBytes(child(docs,@"fatal_trace.txt"),262144,NO)),when,crash) : nil;
         add(@"fatal-trace.txt",CubicRedactedDiagnosticData([trace dataUsingEncoding:NSUTF8StringEncoding]));
 
         NSMutableArray *candidates = [NSMutableArray arrayWithArray:@[child(docs,@"latestlog.txt"),
@@ -239,13 +278,15 @@ static dispatch_queue_t sessionWrites(void) {
         [candidates addObjectsFromArray:newestMatching(docs,[NSPredicate predicateWithFormat:@"SELF LIKE %@",@"latestlog.selfexit-*.txt"],5)];
         NSString *headline = match(crash,@"(?m)(?<=^headline: ).{12,}");
         NSString *crashMarker = hs ?: headline;
-        NSData *launcher = nil;
+        NSData *launcher = logBytes(exitSnapshot(crash,docs,when),3*1024*1024,NO);
         for (NSURL *file in candidates) {
+            if (launcher.length) break;
             if (!regular(file)) continue;
             NSData *bytes = logBytes(file,3*1024*1024,NO);
             NSString *text = logString(bytes);
             if (!text.length) continue;
-            BOOL tagged = session && [text containsString:session[@"id"]];
+            NSString *runMarker = session ? [@"[PrismaDiagnostics] run=" stringByAppendingString:session[@"id"]] : nil;
+            BOOL tagged = runMarker && [text containsString:runMarker];
             BOOL matchedCrash = when && nearDate(when,modified(file)) && crashMarker.length && [text containsString:crashMarker];
             BOOL matchedProfile = !session && game && gameDate && nearDate(gameDate,modified(file)) &&
                 ([text containsString:game.path] || [text containsString:canonical(game)]);

@@ -3896,3 +3896,5 @@
 "Preparing diagnostics…" = "正在整理診斷檔案…";
 "A copy is saved in Files under PrismaCubic → Diagnostics." = "副本會儲存到「檔案」中的 PrismaCubic → Diagnostics。";
 "Export failed" = "匯出失敗";
+
+"prisma.profile.content_missing" = "找不到或無法存取已匯入的遊戲資料夾。請還原此資料夾或重新匯入模組包後再啟動。";

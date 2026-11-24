@@ -13,6 +13,7 @@
 //   仅该方法使用，rg 亲证）
 #import <UIKit/UIKit.h>
 #import "PLProfiles.h"
+#import "ModpackLayout.h"
 #import "ModpackImportService.h"  // Task275 F6: ame269_isImportBusy 让路守卫
 #import "UnzipKit.h"
 #import "DownloadTaskManager.h"
@@ -930,6 +931,7 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
     NSDictionary *ame325_profiles = PLProfiles.current.profiles;
     for (NSDictionary *ame325_prof in ame325_profiles.allValues) {
         if (![ame325_prof isKindOfClass:[NSDictionary class]]) continue;
+        if (ModpackProfileContentUnavailable(ame325_prof, ame325_instancesRoot)) continue;
         NSString *ame325_gd = ame325_prof[@"gameDir"];
         if (![ame325_gd isKindOfClass:[NSString class]] || ame325_gd.length == 0) continue;
         // 判据：绝对路径 + instances/ 子目录 + 目录真实存在（不凭空建实例目录）
@@ -997,6 +999,7 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
 }
 
 - (nullable NSString *)existingModsFolderForProfile:(NSString *)profileName {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:NULL]) return nil;
     // ★ Task274-h S7：nil 入参跟随当前选中实例（ame267 语义），不再落恒 miss 的
     // @"default" 字面量（真实默认键 "(Default)"；对齐 Task270 M1 服务层口径）。
     if (!profileName.length) profileName = PLProfiles.current.selectedProfileName ?: @"(Default)";
@@ -1080,6 +1083,7 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
 
 /// 获取当前 profile 的 mods 目录，不存在时自动创建
 - (nullable NSString *)ensureModsFolderForProfile:(NSString *)profileName error:(NSError **)error {
+    if (![PLProfiles checkContentDirectoryForProfileName:profileName error:error]) return nil;
     // ★ Task274-h S7：nil 入参跟随当前选中实例（ame267 语义），不再落恒 miss 的
     // @"default" 字面量（真实默认键 "(Default)"；对齐 Task270 M1 服务层口径）。
     if (!profileName.length) profileName = PLProfiles.current.selectedProfileName ?: @"(Default)";
@@ -1388,21 +1392,14 @@ static BOOL ame329_moveEntry(NSFileManager *fm, NSString *src, NSString *dstDir,
        expectedSHA1:(nullable NSString *)expectedSHA1
            progress:(nullable void (^)(NSProgress *downloadProgress))progress
          completion:(ModDownloadHandler)completion {
-    // Task269 末梢自愈：目标实例不存在（升级迁移合并后残留的旧实例名引用）→
-    // 回落当前选中实例，杜绝"下载进不存在的实例"再次制造错位。
-    if (profileName.length > 0 && !PLProfiles.current.profiles[profileName]) {
-        NSString *ame269_fallback = PLProfiles.current.selectedProfileName;
-        NSLog(@"[ModService] Task269: target profile \"%@\" gone -> fallback to selected \"%@\"",
-              profileName, ame269_fallback ?: @"(nil)");
-        profileName = ame269_fallback;
-    }
-    NSString *modsFolder = [self ame219_isolationFirstModsFolderForProfile:profileName];
+    NSError *directoryError = nil;
+    NSString *modsFolder = [self ensureModsFolderForProfile:profileName error:&directoryError];
     // ★ Task265：下载目标锚——今后任何"下载了但游戏/管理页看不到"直接看这行
     NSLog(@"[ModService] Task265 download dest: profile=%@ folder=%@ file=%@",
           profileName ?: @"(nil)", modsFolder, mod.fileName ?: @"(nil)");
     if (!modsFolder) {
         if (completion) {
-            NSError *error = [NSError errorWithDomain:@"ModServiceError" code:1 userInfo:@{NSLocalizedDescriptionKey:localize(@"i18n_str_453", nil)}];
+            NSError *error = directoryError ?: [NSError errorWithDomain:@"ModServiceError" code:1 userInfo:@{NSLocalizedDescriptionKey:localize(@"i18n_str_453", nil)}];
             dispatch_async(dispatch_get_main_queue(), ^{ completion(error); });
         }
         return;
