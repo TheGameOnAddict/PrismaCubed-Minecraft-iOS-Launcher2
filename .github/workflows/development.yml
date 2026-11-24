@@ -1,81 +1,41 @@
-name: Magma driver-only test IPA
-on:
-  workflow_dispatch:
+name: Publish verified Magma IPA
+on: workflow_dispatch
 
 permissions:
-  contents: read
   actions: read
+  contents: write
 
 jobs:
-  test-ipa:
-    runs-on: macos-15-intel
-    timeout-minutes: 90
+  publish:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          sparse-checkout: .github
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /scripts/test_ipa_entitlements.py
-      - name: Fetch pinned, verified iPhone renderer
-        uses: actions/download-artifact@v4
-        with:
-          name: Magma-verified-arm64
-          run-id: 45440757552
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/driver
       - uses: actions/download-artifact@v4
         with:
-          name: com.prisma-devs.prisma-ios.ipa
-          run-id: 45301627754
+          name: PrismaCubic-Magma-driver-test
+          run-id: 45444268762
           github-token: ${{ github.token }}
-          path: original
-      - name: Replace one driver and preserve sideload entitlements
-        shell: bash
+          path: package
+      - name: Verify the device-tested bytes and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: magma-entity-fix-2026-11-24
+          PACKAGE_SOURCE: a6e6f484f714aa69e4c0d90058eb155649fcf6b3
         run: |
           set -euo pipefail
-          ipa=(original/*.ipa)
-          test "${#ipa[@]}" = 1
-          mkdir "$RUNNER_TEMP/unpacked"
-          ditto -x -k "${ipa[0]}" "$RUNNER_TEMP/unpacked"
-          cd "$RUNNER_TEMP/unpacked"
-          apps=(Payload/*.app)
-          test "${#apps[@]}" = 1
-          app="${apps[0]}"
-          driver="$app/Frameworks/libMobileGL.dylib"
-          test -f "$driver"
-          python3 "$GITHUB_WORKSPACE/scripts/test_ipa_entitlements.py" "$app/AngelAuraAmethyst" "$RUNNER_TEMP/entitlements.plist"
-          plutil -lint "$RUNNER_TEMP/entitlements.plist"
-          cp "$RUNNER_TEMP/driver/libMobileGL.dylib" "$driver"
-          strip -x "$driver"
-          codesign --force --sign - --timestamp=none "$driver"
-          codesign --force --sign - --timestamp=none --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
-          codesign --verify --verbose "$driver"
-          codesign --verify --verbose "$app"
-          python3 "$GITHUB_WORKSPACE/scripts/test_ipa_entitlements.py" "$app/AngelAuraAmethyst" "$RUNNER_TEMP/signed-entitlements.plist"
-          python3 - <<'PY'
-          import os, pathlib, plistlib
-          root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          assert plistlib.loads((root/"entitlements.plist").read_bytes()) == plistlib.loads((root/"signed-entitlements.plist").read_bytes())
-          PY
-          mkdir "$GITHUB_WORKSPACE/result"
-          output="$GITHUB_WORKSPACE/result/PrismaCubic-Magma-driver-test.ipa"
-          zip -qry "$output" Payload
-          python3 - "$output" "$GITHUB_WORKSPACE/${ipa[0]}" <<'PY'
-          import hashlib, pathlib, sys, zipfile
-          with zipfile.ZipFile(sys.argv[1]) as new, zipfile.ZipFile(sys.argv[2]) as old:
-              driver = next(n for n in new.namelist() if n.endswith(".app/Frameworks/libMobileGL.dylib"))
-              data = new.read(driver)
-              assert b"Ordered texture upload deferred: an earlier draw is still pending" in data and b"GIT@874b9e8" in data
-              assert data != old.read(driver)
-              unchanged = lambda z: {i.filename:(i.CRC,i.file_size) for i in z.infolist()
-                  if not i.is_dir() and i.filename.startswith("Payload/") and "/_CodeSignature/" not in i.filename and
-                  i.filename not in (driver,driver.rsplit("/Frameworks/",1)[0]+"/AngelAuraAmethyst")}
-              assert unchanged(new) == unchanged(old), "Original game payload changed beyond driver and app signature"
-          print("Verified package SHA-256:", hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: PrismaCubic-Magma-driver-test
-          path: result/PrismaCubic-Magma-driver-test.ipa
-          if-no-files-found: error
+          mv package/PrismaCubic-Magma-driver-test.ipa PrismaCubic-Magma-Entity-Fix.ipa
+          echo '1a3ffc974b6e3ffbb24bfed85aa8bcc81167260e9f888e1f0ce987dc7fdfc3de  PrismaCubic-Magma-Entity-Fix.ipa' | sha256sum --check
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$PACKAGE_SOURCE" --title 'Magma entity rendering fix · iOS test build' --prerelease --latest=false --draft --notes-file .github/magma-release-notes.md
+          fi
+          existing=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-Magma-Entity-Fix.ipa") | .digest')
+          if [ -z "$existing" ]; then
+            gh release upload "$TAG" PrismaCubic-Magma-Entity-Fix.ipa
+          fi
+          digest=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-Magma-Entity-Fix.ipa") | .digest')
+          test "$digest" = 'sha256:1a3ffc974b6e3ffbb24bfed85aa8bcc81167260e9f888e1f0ce987dc7fdfc3de'
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
