@@ -23,6 +23,7 @@
 
     secondWindow.hidden = NO;
     [self updateSavedResolution];
+    [self applyGameRefreshForPhase:@"screen-changed"];
 }
 
 - (void)switchToInternalDisplay {
@@ -36,6 +37,7 @@
     [self.touchView addSubview:self.surfaceView]; 
     [self.touchView addSubview:self.mousePointerView];
     [self updateSavedResolution];
+    [self applyGameRefreshForPhase:@"screen-changed"];
 }
 
 @end

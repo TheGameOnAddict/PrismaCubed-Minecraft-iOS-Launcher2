@@ -26,6 +26,7 @@ CGPoint lastVirtualMousePoint;
 - (instancetype)initWithMetadata:(NSDictionary *)metadata;
 - (void)sendTouchPoint:(CGPoint)location withEvent:(int)event;
 - (void)updateSavedResolution;
+- (void)applyGameRefreshForPhase:(NSString *)phase;
 - (void)updateGrabState;
 // ★ Task328：会话内分辨率即时生效（Navigation 菜单跨文件调用点；实现见
 //   SurfaceViewController.m ame328_applyResolutionInSession:——自由窗走

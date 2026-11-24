@@ -260,6 +260,18 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     return test;
 }
 
+- (void)recordDisplayCadence:(NSDictionary *)sample forPhase:(NSString *)phase {
+    if (!self.recording && ![self.report[@"status"] isEqual:@"waiting_for_scene"]) return;
+    // The caller supplies fixed lifecycle phase names. Keep the latest sample of
+    // each, so repeated app switches never grow the report.
+    NSMutableDictionary *phases = [self.report[@"displayCadence"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSMutableDictionary *entry = [sample mutableCopy];
+    entry[@"secondsAfterLaunch"] = @(NSProcessInfo.processInfo.systemUptime - self.launchUptime);
+    phases[phase] = [entry copy];
+    self.report[@"displayCadence"] = [phases copy];
+    [self save];
+}
+
 - (void)recordLaunchOptions:(NSDictionary *)options {
     if (!options.count) return;
     self.report[@"launchOptions"] = [options copy];
