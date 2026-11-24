@@ -38,7 +38,7 @@ ln -s "$repo/Natives/resources/Frameworks/libMoltenVK.dylib" "$source_dir/Native
 "$make_command" -C "$source_dir" dep_mobilegl_build PLATFORM=2 RELEASE=0 JOBS="$jobs" WORKINGDIR="$build/output"
 
 driver="$build/output/libMobileGL.dylib"
-lipo -verify_arch arm64 "$driver"
+lipo "$driver" -verify_arch arm64
 otool -L "$driver" > "$build/linkage.txt"
 grep -F '@rpath/libMoltenVK.dylib' "$build/linkage.txt" >/dev/null
 python3 - "$driver" <<'PY'
