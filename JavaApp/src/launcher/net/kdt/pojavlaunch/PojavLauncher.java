@@ -54,6 +54,14 @@ public class PojavLauncher {
     }
 
     public static void launchMinecraft(String[] args) throws Throwable {
+        String captureMarker = System.getProperty("prismacubic.diagnostics.capture");
+        if (captureMarker != null && !captureMarker.isEmpty()) {
+            try {
+                CaptureSampler.start(captureMarker);
+            } catch (LinkageError | RuntimeException unavailable) {
+                System.err.println("[PrismaDiagnostics] Java work sampling unavailable");
+            }
+        }
         // Args for Spiral Knights
         System.setProperty("appdir", "./spiral");
         System.setProperty("resource_dir", "./spiral/rsrc");

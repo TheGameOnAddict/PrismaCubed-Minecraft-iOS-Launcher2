@@ -1,4 +1,5 @@
 #import "CubicRuntimeInfo.h"
+#include "PerformanceFrames.h"
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import "SurfaceViewController.h"
@@ -2238,6 +2239,7 @@ void gl_swap_buffers() {
     EGLBoolean swapResult = handle.eglSwapBuffers(g_EglDisplay, br_get_current()->gl.surface);
     uint64_t ame77_t_present1 = ame77_now_us();
     ame77_record_present((uint32_t)(ame77_t_present1 - ame77_t_present0), ame77_t_present1);
+    PerformanceRecordEGLPhases(ame77_t_present0 - ame77_t_entry, ame77_t_present1 - ame77_t_present0);
     if (!swapResult) {
         unsigned long fails = atomic_fetch_add(&g_eglSwapFail, 1) + 1;
         unsigned int eglErr = (unsigned int)(uintptr_t)handle.eglGetError();

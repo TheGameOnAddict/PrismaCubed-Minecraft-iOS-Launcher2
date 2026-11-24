@@ -8,6 +8,12 @@
 static atomic_bool enabled;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t start, previous;
+static uint64_t nextToken, previousToken;
+static _Thread_local struct {
+    uint64_t token, endNs, entryCpuNs;
+    uint64_t prePresentUs, presentUs;
+    bool hasEGL;
+} localSwap;
 static unsigned histogram[PerformanceSeconds * 1000 + 1];
 static PerformanceSummary stats;
 static const uint64_t second = 1000000000;
@@ -21,12 +27,24 @@ static uint64_t nowNs(void) {
 #define PERFORMANCE_CLOCK nowNs
 #endif
 
+#ifndef PERFORMANCE_THREAD_CLOCK
+static uint64_t threadCpuNs(void) {
+#ifdef CLOCK_THREAD_CPUTIME_ID
+    struct timespec t;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t) == 0)
+        return (uint64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+#endif
+    return 0;
+}
+#define PERFORMANCE_THREAD_CLOCK threadCpuNs
+#endif
+
 void PerformanceBegin(void) {
     pthread_mutex_lock(&lock);
     memset(&stats, 0, sizeof(stats));
     memset(histogram, 0, sizeof(histogram));
-    start = PERFORMANCE_CLOCK() + 3 * second;
-    previous = 0;
+    start = PERFORMANCE_CLOCK() + PerformanceLeadInSeconds * second;
+    previous = previousToken = 0;
     atomic_store(&enabled, true);
     pthread_mutex_unlock(&lock);
 }
@@ -40,12 +58,28 @@ static bool inWindow(uint64_t t) {
     return false;
 }
 
-void PerformanceFrame(enum PerformanceFrameSource source) {
-    if (!atomic_load_explicit(&enabled, memory_order_relaxed)) return;
+// Keep the largest intervals, including unpaired ones. An interval across
+// different render threads remains visible but has no swap-phase attribution.
+static void rankInterval(PerformanceSlowFrame frame) {
+    unsigned count = stats.slowFrameCount;
+    if (count == PerformanceSlowFrameLimit && frame.intervalMs <= stats.slowFrames[count - 1].intervalMs) return;
+    unsigned pos = count < PerformanceSlowFrameLimit ? count : count - 1;
+    while (pos && frame.intervalMs > stats.slowFrames[pos - 1].intervalMs) {
+        stats.slowFrames[pos] = stats.slowFrames[pos - 1];
+        --pos;
+    }
+    stats.slowFrames[pos] = frame;
+    if (count < PerformanceSlowFrameLimit) stats.slowFrameCount++;
+}
+
+uint64_t PerformanceFrame(enum PerformanceFrameSource source) {
+    if (!atomic_load_explicit(&enabled, memory_order_relaxed)) return 0;
+    uint64_t token = 0;
     pthread_mutex_lock(&lock);
     uint64_t t = PERFORMANCE_CLOCK();
     if (inWindow(t) && (!stats.source || stats.source == source)) {
         stats.source = source;
+        uint64_t cpuNs = source == PerformanceSwap ? PERFORMANCE_THREAD_CLOCK() : 0;
         unsigned bucket = (unsigned)((t - start) / second);
         stats.counts[bucket]++;
         if (previous) {
@@ -58,10 +92,55 @@ void PerformanceFrame(enum PerformanceFrameSource source) {
             stats.over100ms += delta > 100000000;
             double ms = delta / 1e6;
             if (ms > stats.longestMs) stats.longestMs = ms;
+            PerformanceSlowFrame frame = {.endSeconds = (t - start) / 1e9, .intervalMs = ms};
+            if (source == PerformanceSwap && previousToken && localSwap.token == previousToken &&
+                localSwap.endNs >= previous && localSwap.endNs <= t) {
+                frame.hasSwapPhases = true;
+                frame.swapMs = (localSwap.endNs - previous) / 1e6;
+                frame.outsideSwapMs = (t - localSwap.endNs) / 1e6;
+                stats.phaseIntervalCount++;
+                stats.swapTotalMs += frame.swapMs;
+                stats.outsideSwapTotalMs += frame.outsideSwapMs;
+                if (localSwap.hasEGL) {
+                    frame.hasEGLPhases = true;
+                    frame.prePresentMs = localSwap.prePresentUs / 1000.0;
+                    frame.eglPresentMs = localSwap.presentUs / 1000.0;
+                    stats.eglIntervalCount++;
+                    stats.prePresentTotalMs += frame.prePresentMs;
+                    stats.eglPresentTotalMs += frame.eglPresentMs;
+                }
+                if (localSwap.entryCpuNs && cpuNs >= localSwap.entryCpuNs) {
+                    frame.hasThreadCPU = true;
+                    frame.threadCpuMs = (cpuNs - localSwap.entryCpuNs) / 1e6;
+                }
+            }
+            rankInterval(frame);
         }
         previous = t;
+        if (source == PerformanceSwap) {
+            token = ++nextToken;
+            localSwap.token = token;
+            localSwap.endNs = 0;
+            localSwap.entryCpuNs = cpuNs;
+            localSwap.hasEGL = false;
+        }
+        previousToken = token;
     }
     pthread_mutex_unlock(&lock);
+    return token;
+}
+
+void PerformanceRecordEGLPhases(uint64_t prePresentUs, uint64_t presentUs) {
+    // This hook runs inside the GL bridge on the same thread as the outer swap.
+    if (!atomic_load_explicit(&enabled, memory_order_relaxed) || !localSwap.token || localSwap.endNs) return;
+    localSwap.hasEGL = true;
+    localSwap.prePresentUs = prePresentUs;
+    localSwap.presentUs = presentUs;
+}
+
+void PerformanceEndSwap(uint64_t token) {
+    if (token && localSwap.token == token && !localSwap.endNs)
+        localSwap.endNs = PERFORMANCE_CLOCK();
 }
 
 void PerformanceOSMPhases(double finishUs, double readbackUs) {

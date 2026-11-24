@@ -1,6 +1,7 @@
 #import "CubicDiagnostics.h"
 #import "CubicDiagnosticText.h"
 #import "PerformanceTest.h"
+#import "CubicHitchReport.h"
 #import <unistd.h>
 #import <stdlib.h>
 #import <sys/utsname.h>
@@ -360,6 +361,15 @@ static dispatch_queue_t sessionWrites(void) {
         if (![run isKindOfClass:NSDictionary.class] || (profile && ![run[@"profile"] isEqual:profile])) measurements = nil;
         // Test reports are structured, generated from an allowlist, and explicitly
         // identified as the latest test, which can precede the latest game launch.
+        if (measurements && [run[@"captureWindowStartEpochMs"] isKindOfClass:NSNumber.class]) {
+            NSDictionary *updated = [PerformanceTest reportWithHitchEvidence:run atURL:performance];
+            NSData *fresh = [NSJSONSerialization dataWithJSONObject:updated options:0 error:nil];
+            if (fresh) measurements = fresh;
+            if ([updated[@"hitchAnalysis"] isKindOfClass:NSDictionary.class]) {
+                NSString *summary = CubicHitchSummary(updated[@"hitchAnalysis"]);
+                if (summary.length) add(@"hitch-summary.txt", [summary dataUsingEncoding:NSUTF8StringEncoding]);
+            }
+        }
         add(@"performance.json", measurements);
         struct utsname hw; uname(&hw);
         NSMutableDictionary *manifest = [@{@"schema":@1, @"exportedUTC":[NSISO8601DateFormatter.new stringFromDate:NSDate.date],

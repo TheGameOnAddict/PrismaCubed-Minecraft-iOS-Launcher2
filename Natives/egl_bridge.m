@@ -822,7 +822,7 @@ void pojavSwapBuffers() {
     }
 
     // FPS 计数（参照 FCL/ZL2 在 native swap buffer 入口计数，反映真实渲染帧率）
-    PerformanceFrame(PerformanceSwap);
+    uint64_t captureToken = PerformanceFrame(PerformanceSwap);
     atomic_fetch_add(&_pojavFpsCounter, 1);
 
     // 阶段13：首帧渲染检测（参照 FCL 的 game_ready 回调）
@@ -839,6 +839,7 @@ void pojavSwapBuffers() {
 
     if (!br_swap_buffers) return;
     br_swap_buffers();
+    if (captureToken) PerformanceEndSwap(captureToken);
 }
 
 void pojavMakeCurrent(basic_render_window_t* window) {
