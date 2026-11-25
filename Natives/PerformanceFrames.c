@@ -6,6 +6,7 @@
 
 // Regular launches skip timing, histogram updates and locking.
 static atomic_bool enabled;
+static atomic_uint_fast64_t benchmarkStart;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t start, previous;
 static uint64_t nextToken, previousToken;
@@ -39,13 +40,53 @@ static uint64_t threadCpuNs(void) {
 #define PERFORMANCE_THREAD_CLOCK threadCpuNs
 #endif
 
-void PerformanceBegin(void) {
+static void beginCapture(bool benchmark) {
     pthread_mutex_lock(&lock);
     memset(&stats, 0, sizeof(stats));
     memset(histogram, 0, sizeof(histogram));
     start = PERFORMANCE_CLOCK() + PerformanceLeadInSeconds * second;
     previous = previousToken = 0;
+    stats.renderBenchmark = benchmark;
+    atomic_store(&benchmarkStart, benchmark ? start : 0);
     atomic_store(&enabled, true);
+    pthread_mutex_unlock(&lock);
+}
+
+void PerformanceBegin(void) {
+    beginCapture(false);
+}
+
+void PerformanceBeginRenderBenchmark(void) {
+    beginCapture(true);
+}
+
+uint64_t PerformanceBenchmarkWindow(void) {
+    uint64_t window = atomic_load_explicit(&benchmarkStart, memory_order_acquire);
+    if (!window) return 0;
+    uint64_t t = PERFORMANCE_CLOCK();
+    if (t < window) return 0;
+    if (t - window < PerformanceSeconds * second) return window;
+    atomic_compare_exchange_strong(&benchmarkStart, &window, 0);
+    return 0;
+}
+
+void PerformanceBenchmarkCompleted(uint64_t window, bool previewSwapped) {
+    if (!window) return;
+    pthread_mutex_lock(&lock);
+    if (window == PerformanceBenchmarkWindow()) {
+        stats.gpuCompletedFrames++;
+        if (previewSwapped) stats.previewSwaps++;
+    }
+    pthread_mutex_unlock(&lock);
+}
+
+void PerformanceBenchmarkUnavailable(uint64_t window) {
+    if (!window) return;
+    pthread_mutex_lock(&lock);
+    if (window == atomic_load(&benchmarkStart)) {
+        atomic_store(&benchmarkStart, 0);
+        stats.benchmarkUnavailable = true;
+    }
     pthread_mutex_unlock(&lock);
 }
 
@@ -175,7 +216,10 @@ PerformanceSummary PerformanceSnapshot(bool stop) {
     uint64_t t = PERFORMANCE_CLOCK();
     out.elapsed = t > start ? (t - start) / 1e9 : 0;
     if (out.elapsed > PerformanceSeconds) out.elapsed = PerformanceSeconds;
-    if (stop || out.elapsed >= PerformanceSeconds) atomic_store(&enabled, false);
+    if (stop || out.elapsed >= PerformanceSeconds) {
+        atomic_store(&benchmarkStart, 0);
+        atomic_store(&enabled, false);
+    }
     unsigned seen = 0, mid = (out.intervals + 1) / 2;
     unsigned high = (out.intervals * 95ULL + 99) / 100;
     unsigned tail = (out.intervals * 99ULL + 99) / 100;

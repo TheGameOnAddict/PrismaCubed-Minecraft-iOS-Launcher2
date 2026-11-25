@@ -6203,7 +6203,7 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
     if (fps > 0) [self.performanceTest firstFrameObserved];
     double memoryMB = [self currentPhysFootprintMB];
     if ([self.performanceTest tickWidth:windowWidth height:windowHeight memoryMiB:memoryMB]) {
-        [NMToast showMessage:NSLocalizedString(@"Performance report saved", nil)];
+        [NMToast showMessage:self.performanceTest.renderBenchmarkResult ?: NSLocalizedString(@"Performance report saved", nil)];
     }
 
     // 3. 更新 UI（GameMenuOverlayView 内部会 dispatch 到主线程）

@@ -3886,6 +3886,15 @@
 "Test Launch" = "測試啟動";
 "Share Latest Report" = "分享最新報告";
 "prisma.perf.record" = "記錄 60 秒";
+"prisma.perf.instructions" = "進入測試場景後打開遊戲內齒輪選單。選擇「記錄 60 秒」測試遊戲表現，或在 Magma 上選擇「測試算圖幀率」。返回此處即可分享報告。";
+"prisma.perf.benchmark" = "測試算圖幀率";
+"prisma.perf.stop_benchmark" = "停止算圖測試";
+"prisma.perf.benchmark_result" = "算圖測試結果";
+"prisma.perf.benchmark_start" = "開始測試";
+"prisma.perf.benchmark_description" = "此實驗性測試會在目前解析度下統計 GPU 在 60 秒內完成的幀數。測試期間螢幕預覽每秒最多更新 30 次。記錄將在 3 秒後開始，可從齒輪選單提前停止。";
+"prisma.perf.benchmark_rate" = "GPU 每秒完成 %.1f 幀 · 預覽每秒交換 %.1f 次 · 螢幕最高 %ld Hz";
+"prisma.perf.benchmark_unavailable" = "無法測量 GPU 完成的幀數。啟動器已恢復正常畫面輸出。";
+"prisma.perf.benchmark_interrupted" = "算圖測試已提前停止。報告中儲存了已記錄的幀數。";
 "prisma.perf.share" = "分享測試報告";
 "Performance report saved" = "效能報告已儲存";
 "Recording starts in 3 seconds" = "3 秒後開始記錄";

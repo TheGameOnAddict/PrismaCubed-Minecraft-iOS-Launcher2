@@ -5,6 +5,7 @@
 #import "CubicRuntimeInfo.h"
 #import "CubicDiagnostics.h"
 #import "PLProfiles.h"
+#import "utils.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <sys/utsname.h>
 #import <sys/stat.h>
@@ -164,6 +165,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 @property(nonatomic) NSMutableArray *samples;
 @property(nonatomic, strong) id<MTLDevice> metalDevice;
 @property(nonatomic) BOOL recording;
+@property(nonatomic) BOOL renderBenchmark;
 @property(nonatomic) NSInteger checkpoint;
 @property(nonatomic) NSDictionary *context;
 @end
@@ -185,6 +187,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 // Runs on the report writer or the ZIP worker. A checkpoint can precede the
 // Java sampler's final atomic write, so refresh the evidence again at export.
 + (NSDictionary *)reportWithHitchEvidence:(NSDictionary *)report atURL:(NSURL *)url {
+    if ([report[@"captureMode"] isEqual:@"magma-render-throughput"]) return report;
     NSNumber *epoch = report[@"captureWindowStartEpochMs"];
     NSDictionary *timing = report[@"frameTiming"];
     if (![epoch isKindOfClass:NSNumber.class] || ![timing isKindOfClass:NSDictionary.class]) return report;
@@ -264,7 +267,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
                   from:(UIViewController *)controller launch:(void (^)(void))launch {
     NSURL *folder = profileFolder(name);
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Performance Test",nil)
-        message:NSLocalizedString(@"Launch, enter your test scene, then open the in-game gear and tap Record 60 Seconds. Return here to share the report.",nil) preferredStyle:UIAlertControllerStyleAlert];
+        message:NSLocalizedString(@"prisma.perf.instructions",nil) preferredStyle:UIAlertControllerStyleAlert];
     [sheet addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Test Launch",nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         PerformanceTest *test = [self new];
         test.profile = name;
@@ -351,7 +354,14 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 }
 
 - (BOOL)beginCapture {
-    if (self.recording || self.report[@"frameTiming"]) return NO;
+    return [self beginCaptureWithBenchmark:NO];
+}
+
+- (BOOL)beginCaptureWithBenchmark:(BOOL)benchmark {
+    if (self.recording || self.report[@"frameTiming"] || (benchmark &&
+        (!pojavSupportsRenderBenchmark() || UIApplication.sharedApplication.applicationState != UIApplicationStateActive))) return NO;
+    self.renderBenchmark = benchmark;
+    self.report[@"captureMode"] = benchmark ? @"magma-render-throughput" : @"gameplay";
     self.report[@"status"] = @"recording_partial";
     self.report[@"captureRequestedUTC"] = [NSISO8601DateFormatter.new stringFromDate:NSDate.date];
     self.checkpoint = -1;
@@ -362,19 +372,58 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     });
     self.metalDevice = MTLCreateSystemDefaultDevice();
     long long epoch = llround(NSDate.date.timeIntervalSince1970 * 1000) + PerformanceLeadInSeconds * 1000;
-    PerformanceBegin();
+    if (benchmark) PerformanceBeginRenderBenchmark();
+    else PerformanceBegin();
     self.report[@"captureWindowStartEpochMs"] = @(epoch);
     NSURL *marker = PerformanceTest.activeCaptureMarkerURL;
-    if (marker) {
+    if (marker && !benchmark) {
         NSString *signal = [NSString stringWithFormat:@"%lld\n", epoch];
         [signal writeToURL:marker atomically:YES encoding:NSASCIIStringEncoding error:nil];
     }
     [self save];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
+    NSNotificationName inactive = benchmark ? UIApplicationWillResignActiveNotification : UIApplicationDidEnterBackgroundNotification;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background:) name:inactive object:nil];
     return YES;
 }
 
 - (void)background:(NSNotification *)note { [self interrupt]; }
+
+- (BOOL)showsRenderBenchmark {
+    return self.renderBenchmark || (!self.recording && !self.report[@"frameTiming"] && pojavSupportsRenderBenchmark());
+}
+
+- (NSString *)renderBenchmarkMenuTitle {
+    if (!self.renderBenchmark) return NSLocalizedString(@"prisma.perf.benchmark", nil);
+    return self.recording ? NSLocalizedString(@"prisma.perf.stop_benchmark", nil) : NSLocalizedString(@"prisma.perf.benchmark_result", nil);
+}
+
+- (NSString *)renderBenchmarkResult {
+    if (!self.renderBenchmark || self.recording) return nil;
+    NSDictionary *metrics = self.report[@"renderBenchmark"];
+    if ([metrics[@"status"] isEqual:@"completed"])
+        return [NSString stringWithFormat:NSLocalizedString(@"prisma.perf.benchmark_rate",nil),
+            [metrics[@"gpuCompletedFPS"] doubleValue], [metrics[@"previewSwapsPerSecond"] doubleValue], (long)[metrics[@"panelMaxHz"] integerValue]];
+    return [metrics[@"status"] isEqual:@"unavailable"] ? NSLocalizedString(@"prisma.perf.benchmark_unavailable",nil)
+        : NSLocalizedString(@"prisma.perf.benchmark_interrupted",nil);
+}
+
+- (void)showRenderBenchmarkFrom:(UIViewController *)controller {
+    if (self.renderBenchmark && self.recording) {
+        [self interrupt];
+        alert(controller, self.renderBenchmarkResult);
+    } else if (self.renderBenchmarkResult) {
+        alert(controller, self.renderBenchmarkResult);
+    } else if (self.showsRenderBenchmark) {
+        UIAlertController *prompt = [UIAlertController alertControllerWithTitle:self.renderBenchmarkMenuTitle
+            message:NSLocalizedString(@"prisma.perf.benchmark_description", nil) preferredStyle:UIAlertControllerStyleAlert];
+        [prompt addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:UIAlertActionStyleCancel handler:nil]];
+        [prompt addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"prisma.perf.benchmark_start", nil)
+            style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                if (![self beginCaptureWithBenchmark:YES]) alert(controller, NSLocalizedString(@"prisma.perf.benchmark_unavailable", nil));
+            }]];
+        [controller presentViewController:prompt animated:YES completion:nil];
+    }
+}
 
 - (BOOL)updateSummary:(PerformanceSummary)s stopped:(BOOL)stopped {
     NSMutableArray *counts = [NSMutableArray array];
@@ -388,7 +437,9 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     NSMutableDictionary *timing = [@{@"measuredSeconds":@(s.elapsed), @"framesPerBucket1s":counts,
         @"maxIntervalMsCeilPerBucket1s":bucketMaxima, @"frameEvents":@(frames), @"intervalCount":@(s.intervals), @"intervalsOver50ms":@(s.over50ms), @"intervalsOver100ms":@(s.over100ms),
         @"eventSource":s.source == PerformanceSwap ? @"GL swap entry" : s.source == PerformanceDrawable ? @"drawable acquisition" : @"none"} mutableCopy];
-    if (s.elapsed > 0) timing[@"averageFPS"] = @(frames/s.elapsed);
+    if (s.elapsed > 0 && !s.renderBenchmark) timing[@"averageFPS"] = @(frames/s.elapsed);
+    if (s.elapsed > 0 && s.renderBenchmark && s.source == PerformanceSwap)
+        timing[@"swapEntryRate"] = @(frames/s.elapsed);
     if (s.intervals) {
         timing[@"p50IntervalMsCeil"] = @(s.p50ms);
         timing[@"p95IntervalMsCeil"] = @(s.p95ms);
@@ -425,10 +476,23 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     if (s.queueSamples) timing[@"osmMainQueue"] = @{@"samples":@(s.queueSamples), @"meanWaitMs":@(s.queueMs/s.queueSamples)};
     self.report[@"frameTiming"] = timing;
     BOOL finished = s.elapsed >= PerformanceSeconds;
+    if (s.renderBenchmark) {
+        BOOL unavailable = s.benchmarkUnavailable || (finished && s.gpuCompletedFrames == 0);
+        NSString *status = unavailable ? @"unavailable" : finished ? @"completed" : stopped ? @"interrupted" : @"recording";
+        NSMutableDictionary *metrics = [@{@"status":status, @"measuredSeconds":@(s.elapsed),
+            @"gpuCompletedFrames":@(s.gpuCompletedFrames), @"previewSwaps":@(s.previewSwaps),
+            @"previewTargetHz":@30, @"panelMaxHz":@(UIScreen.mainScreen.maximumFramesPerSecond)} mutableCopy];
+        if ([status isEqual:@"completed"]) {
+            metrics[@"gpuCompletedFPS"] = @(s.gpuCompletedFrames / s.elapsed);
+            metrics[@"previewSwapsPerSecond"] = @(s.previewSwaps / s.elapsed);
+        }
+        self.report[@"renderBenchmark"] = metrics;
+        finished = finished || unavailable;
+    }
     if (finished || stopped) {
         self.recording = NO;
         self.metalDevice = nil;
-        self.report[@"status"] = finished ? @"completed" : @"interrupted";
+        self.report[@"status"] = s.renderBenchmark ? self.report[@"renderBenchmark"][@"status"] : finished ? @"completed" : @"interrupted";
         [NSNotificationCenter.defaultCenter removeObserver:self];
     }
     [self save];
@@ -445,6 +509,8 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         }
         return NO;
     }
+    if (self.renderBenchmark && !pojavSupportsRenderBenchmark())
+        PerformanceBenchmarkUnavailable(PerformanceBenchmarkWindow());
     PerformanceSummary s = PerformanceSnapshot(false);
     if (s.elapsed <= 0) return NO;
     NSArray *thermal = @[@"nominal",@"fair",@"serious",@"critical"];
@@ -459,7 +525,8 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     }
     [self.samples addObject:sample];
     NSInteger checkpoint = (NSInteger)s.elapsed / 5;
-    if (checkpoint == self.checkpoint && s.elapsed < PerformanceSeconds) return NO;
+    if (s.benchmarkUnavailable) s = PerformanceSnapshot(true);
+    if (!s.benchmarkUnavailable && checkpoint == self.checkpoint && s.elapsed < PerformanceSeconds) return NO;
     self.checkpoint = checkpoint;
     return [self updateSummary:s stopped:NO];
 }

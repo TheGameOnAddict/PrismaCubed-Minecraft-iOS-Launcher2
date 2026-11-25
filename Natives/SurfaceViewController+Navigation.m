@@ -215,7 +215,7 @@ static UIColor *ame244_snapshotTint(void) {
         @"game.menu.toggle_renderer",
     ];
 
-    if (self.performanceTest) self.menuArray = [self.menuArray arrayByAddingObjectsFromArray:@[@"prisma.perf.record", @"prisma.perf.share"]];
+    if (self.performanceTest) self.menuArray = [self.menuArray arrayByAddingObjectsFromArray:@[@"prisma.perf.record", @"prisma.perf.benchmark", @"prisma.perf.share"]];
 
     // ★ Task237（用户："现在游戏内菜单打开还是就液态玻璃的覆盖层，根本
     //   没有任何文字，要是不贴边，就只会给我全部屏幕覆盖层灰色"）：菜单
@@ -299,7 +299,7 @@ static UIColor *ame244_snapshotTint(void) {
         @"gearshape.fill",                        // 设置
         @"display",
     ];
-    if (self.performanceTest) ame237_gmIcons = [ame237_gmIcons arrayByAddingObjectsFromArray:@[@"stopwatch", @"square.and.arrow.up"]];
+    if (self.performanceTest) ame237_gmIcons = [ame237_gmIcons arrayByAddingObjectsFromArray:@[@"stopwatch", @"speedometer", @"square.and.arrow.up"]];
     NSMutableArray<Ame237MenuRow *> *ame237_rows = [NSMutableArray array];
     for (NSUInteger ame237_i = 0; ame237_i < self.menuArray.count; ame237_i++) {
         NSString *ame237_iconName = (ame237_i < ame237_gmIcons.count) ? ame237_gmIcons[ame237_i] : nil;
@@ -585,12 +585,17 @@ static UIColor *ame244_snapshotTint(void) {
     NSUInteger ame237_sepIdx = 0;
     for (NSUInteger ame237_i = 0; ame237_i < ame237_rows.count; ame237_i++) {
         Ame237MenuRow *ame237_row = ame237_rows[ame237_i];
+        if ([self.menuArray[ame237_i] isEqual:@"prisma.perf.benchmark"]) {
+            ame237_row.hidden = !self.performanceTest.showsRenderBenchmark;
+            ame237_row.rowLabel.text = self.performanceTest.renderBenchmarkMenuTitle;
+        }
         ame237_row.frame = CGRectMake(0.0, ame237_y, ame237_w, 48.0);
-        ame237_y += 48.0;
+        if (!ame237_row.hidden) ame237_y += 48.0;
         if (ame237_i + 1 < ame237_rows.count && ame237_sepIdx < ame237_seps.count) {
             UIView *ame237_sep = ame237_seps[ame237_sepIdx++];
+            ame237_sep.hidden = ame237_row.hidden;
             ame237_sep.frame = CGRectMake(22.0, ame237_y, ame237_w - 44.0, 0.5);
-            ame237_y += 0.5;
+            if (!ame237_sep.hidden) ame237_y += 0.5;
         }
     }
     ame237_scroll.contentSize = CGSizeMake(ame237_w, ame237_y);
@@ -1442,6 +1447,10 @@ static UIColor *ame244_snapshotTint(void) {
             }
             break;
         case 13:
+            [self dismissMenu];
+            [self.performanceTest showRenderBenchmarkFrom:self];
+            break;
+        case 14:
             [self dismissMenu];
             [self.performanceTest shareFrom:self];
             break;

@@ -162,6 +162,28 @@ static NSString *statusString(id value, NSArray *allowed) {
     return [allowed containsObject:value ?: @""] ? value : @"unavailable";
 }
 
+NSString *CubicRenderBenchmarkSummary(NSDictionary *benchmark) {
+    benchmark = dictionary(benchmark);
+    NSString *status = statusString(benchmark[@"status"], @[@"completed", @"interrupted", @"recording"]);
+    NSMutableString *result = [NSMutableString stringWithFormat:@"Magma render throughput\nStatus: %@\n", status];
+    NSNumber *panel = number(benchmark[@"panelMaxHz"], 1, 1000);
+    if (panel) [result appendFormat:@"Screen maximum: %@ Hz\n", panel];
+    if (![status isEqualToString:@"completed"]) return result;
+
+    NSNumber *frames = number(benchmark[@"gpuCompletedFrames"], 1, UINT32_MAX);
+    NSNumber *previews = number(benchmark[@"previewSwaps"], 0, frames.doubleValue);
+    NSNumber *elapsed = number(benchmark[@"measuredSeconds"], PerformanceSeconds, PerformanceSeconds);
+    if (!frames || !previews || !elapsed) {
+        [result appendString:@"Incomplete measurements.\n"];
+        return result;
+    }
+    [result appendFormat:@"GPU-completed game frames: %@ in %.0f seconds (%.1f FPS)\n",
+        frames, elapsed.doubleValue, frames.doubleValue / elapsed.doubleValue];
+    [result appendFormat:@"Preview swaps: %@ (%.1f per second)\n",
+        previews, previews.doubleValue / elapsed.doubleValue];
+    return result;
+}
+
 static NSArray<NSString *> *observedWork(id rawCounts, NSUInteger limit) {
     NSDictionary *counts = dictionary(rawCounts);
     NSMutableArray<NSString *> *labels = [NSMutableArray array];

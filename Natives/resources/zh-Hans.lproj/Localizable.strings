@@ -3889,6 +3889,15 @@
 "Test Launch" = "测试启动";
 "Share Latest Report" = "分享最新报告";
 "prisma.perf.record" = "记录 60 秒";
+"prisma.perf.instructions" = "进入测试场景后打开游戏内齿轮菜单。选择「记录 60 秒」测试游戏表现，或在 Magma 上选择「测试渲染帧率」。返回此处可分享报告。";
+"prisma.perf.benchmark" = "测试渲染帧率";
+"prisma.perf.stop_benchmark" = "停止渲染测试";
+"prisma.perf.benchmark_result" = "渲染测试结果";
+"prisma.perf.benchmark_start" = "开始测试";
+"prisma.perf.benchmark_description" = "此实验性测试会在当前分辨率下统计 GPU 在 60 秒内完成的帧数。测试期间屏幕预览每秒最多更新 30 次。记录将在 3 秒后开始，可从齿轮菜单提前停止。";
+"prisma.perf.benchmark_rate" = "GPU 每秒完成 %.1f 帧 · 预览每秒交换 %.1f 次 · 显示屏最高 %ld Hz";
+"prisma.perf.benchmark_unavailable" = "无法测量 GPU 完成的帧数。启动器已恢复正常画面输出。";
+"prisma.perf.benchmark_interrupted" = "渲染测试已提前停止。报告中保存了已记录的帧数。";
 "prisma.perf.share" = "分享测试报告";
 "Performance report saved" = "性能报告已保存";
 "Recording starts in 3 seconds" = "3 秒后开始记录";
