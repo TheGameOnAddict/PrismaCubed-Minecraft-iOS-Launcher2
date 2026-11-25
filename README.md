@@ -7,6 +7,8 @@
 
 Open **Settings → Renderer** to change **Cap at 120 FPS** or **Upscaling**, then launch your profile with **Play**. The cap starts on. Turn it off to let the patched Magma renderer run ahead of the display when the scene is light enough. In a 60-second A19 Pro test at 1912 × 880, the pack averaged 107.7 FPS with the cap off. Rendering rarely ran ahead of presentation. [Download the test IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-gameplay-settings-e5dd5d4/PrismaCubic-e5dd5d4.ipa) · [How to try upscaling](docs/performance-on-iphone.md#trying-upscaling)
 
+**Better MC [Forge] BMC4 test build.** Forge 47.4.20 rejected a mod requiring OpenGL 3.2 because its startup window reported Magma as OpenGL 0.0. This build fixes the version query. Launch your existing Better MC profile with Magma to test it on iPhone. [Download the Better MC test IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-bettermc-gl-f3bcab1/PrismaCubic-f3bcab1.ipa)
+
 ## Tested iPhone build
 
 **November 25 performance checkpoint.** This build includes PrismaCubic’s patched Magma renderer and the in-game performance capture. On an A19 Pro iPhone, a full-resolution Forge pack averaged **95.9 FPS** while moving with Radium and C2ME Forge enabled. The run still had two frame intervals over 100 ms. [Download the tested IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/perf-checkpoint-2026-11-25/PrismaCubic-f714bf5.ipa) · [Checkpoint notes](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/tag/perf-checkpoint-2026-11-25)
