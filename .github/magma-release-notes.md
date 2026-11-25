@@ -1,13 +1,11 @@
-Fixes a rendering bug where animated entities could flicker, stretch across the screen, or disappear. Magma now finishes submitting draws that use the current animation texture before uploading the next pose. The original driver failed the texture-ordering regression on two Vulkan implementations. The patched driver passed on both.
+This is the iPhone build used for the November 25 full-resolution performance captures. Download **PrismaCubic-f714bf5.ipa** below and open it in your normal sideloading app. Existing profiles can be used with this build.
 
-### iPhone test
+### What this build includes
 
-A player verified that Book of Dragons dragons, including the Skrill, and ordinary mobs rendered correctly on an A19 Pro iPhone using **MobileGlues (1.17+)** with Minecraft 1.20.1 and Forge 47.4.28. With shaders off, a 60-second capture recorded 99.6 FPS at the renderer, with three frame intervals over 50 ms. This is a baseline from one session. Shader-enabled play still needs a separate test.
+- PrismaCubic’s patched Magma renderer, available as **MobileGlues (1.17+)**. Magma now submits draws that reference an animation texture before uploading new data to the same texture. On iPhone this fixed flickering, stretching and disappearing Book of Dragons dragons and ordinary mobs. [Driver patch](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/blob/f714bf5c16a978736a7142a63576c61eac2c49b6/patches/mobilegl-ordered-texture-updates.patch)
+- Startup refresh-rate handling, reduced launcher image-cache use during play, and a profile-menu **Performance Test** with a shareable diagnostics ZIP.
+- In two 60-second travel captures at 2868 × 1320, with Diorama disabled, the run with Radium and C2ME Forge together averaged **95.9 FPS** versus **75.3 FPS** before adding them. The 99th-percentile frame interval improved from 48 to 34 ms, and intervals over 100 ms fell from 12 to 2. The routes differed. Individual mod contributions and performance on other devices remain unmeasured.
 
-### Install
+Test configuration: Minecraft 1.20.1, Forge 47.4.28, Java 21.0.8, 2048 MiB heap, shaders off, render distance 8, simulation distance 6. Optimization mods are installed separately into a compatible profile.
 
-Download **PrismaCubic-Magma-Entity-Fix.ipa** under **Assets** and open it in your usual sideloading app. You can update over the previous test build using the same signing setup and launch your existing profile.
-
-This is the exact IPA from the successful phone test. It pairs launcher commit `d23a51f` with the patched Magma driver. The launcher's diagnostics ZIP therefore still reports `d23a51f`. [Signed package workflow](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/actions/runs/45444268762) · [Renderer patch](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/blob/bc4ea4243401652feb956ecddd282749be581f1b/patches/mobilegl-ordered-texture-updates.patch)
-
-IPA SHA-256: `1a3ffc974b6e3ffbb24bfed85aa8bcc81167260e9f888e1f0ce987dc7fdfc3de`
+IPA SHA-256: `e206bdc8ca59cb0b897a3bf04a9d12f163cbe5a3807b26994e2eb743f0fc7f22`. [Launcher source](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/tree/f714bf5c16a978736a7142a63576c61eac2c49b6) · [Packaging workflow used for these bytes](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/actions/runs/45500370395)

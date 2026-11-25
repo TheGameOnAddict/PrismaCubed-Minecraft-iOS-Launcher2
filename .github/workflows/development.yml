@@ -1,4 +1,4 @@
-name: Publish verified Magma IPA
+name: Publish full-resolution performance checkpoint
 on: workflow_dispatch
 
 permissions:
@@ -15,27 +15,27 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: PrismaCubic-Magma-driver-test
-          run-id: 45444268762
+          name: PrismaCubic-f714bf5-iPhone
+          run-id: 45500370395
           github-token: ${{ github.token }}
           path: package
       - name: Verify the device-tested bytes and publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: magma-entity-fix-2026-11-24
-          PACKAGE_SOURCE: a6e6f484f714aa69e4c0d90058eb155649fcf6b3
+          TAG: perf-checkpoint-2026-11-25
+          PACKAGE_SOURCE: f714bf5c16a978736a7142a63576c61eac2c49b6
         run: |
           set -euo pipefail
-          mv package/PrismaCubic-Magma-driver-test.ipa PrismaCubic-Magma-Entity-Fix.ipa
-          echo '1a3ffc974b6e3ffbb24bfed85aa8bcc81167260e9f888e1f0ce987dc7fdfc3de  PrismaCubic-Magma-Entity-Fix.ipa' | sha256sum --check
+          mv package/PrismaCubic-f714bf5.ipa PrismaCubic-f714bf5.ipa
+          echo 'e206bdc8ca59cb0b897a3bf04a9d12f163cbe5a3807b26994e2eb743f0fc7f22  PrismaCubic-f714bf5.ipa' | sha256sum --check
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --target "$PACKAGE_SOURCE" --title 'Magma entity rendering fix · iOS test build' --prerelease --latest=false --draft --notes-file .github/magma-release-notes.md
+            gh release create "$TAG" --target "$PACKAGE_SOURCE" --title 'Full-resolution performance checkpoint · iPhone' --prerelease --latest=false --draft --notes-file .github/magma-release-notes.md
           fi
-          existing=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-Magma-Entity-Fix.ipa") | .digest')
+          existing=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-f714bf5.ipa") | .digest')
           if [ -z "$existing" ]; then
-            gh release upload "$TAG" PrismaCubic-Magma-Entity-Fix.ipa
+            gh release upload "$TAG" PrismaCubic-f714bf5.ipa
           fi
-          digest=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-Magma-Entity-Fix.ipa") | .digest')
-          test "$digest" = 'sha256:1a3ffc974b6e3ffbb24bfed85aa8bcc81167260e9f888e1f0ce987dc7fdfc3de'
+          digest=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-f714bf5.ipa") | .digest')
+          test "$digest" = 'sha256:e206bdc8ca59cb0b897a3bf04a9d12f163cbe5a3807b26994e2eb743f0fc7f22'
           gh release edit "$TAG" --draft=false --prerelease --latest=false
