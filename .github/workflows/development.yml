@@ -7,7 +7,7 @@ permissions:
   actions: read
 
 env:
-  APP_REVISION: 62a02c9c1e198395aab578469b736ba05b9f0418
+  APP_REVISION: ed583a183b7e7cebe8d663e3a4cae1a27a104fcd
 
 jobs:
   build:
@@ -27,32 +27,6 @@ jobs:
           ref: ${{ env.APP_REVISION }}
           path: source
           persist-credentials: false
-      - name: Set up Java 8 for the shared launcher classpath
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '8'
-      - name: Build the launcher jar shared by all game JREs
-        working-directory: source
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$JAVA_HOME/bin/javac" -version
-          python3 scripts/test_capture_sampler.py
-          make -C JavaApp -j2 BOOTJDK="$JAVA_HOME/bin" build/launcher.jar
-          python3 - <<'PYJ'
-          from pathlib import Path
-          import zipfile
-          with zipfile.ZipFile(Path("JavaApp/build/launcher.jar")) as z:
-              assert z.testzip() is None
-              sampler = "net/kdt/pojavlaunch/CaptureSampler.class"
-              entry = z.read("net/kdt/pojavlaunch/PojavLauncher.class")
-              assert b"net/kdt/pojavlaunch/CaptureSampler" in entry
-              assert b"prismacubic.diagnostics.capture" in entry
-              for k in (sampler, "net/kdt/pojavlaunch/PojavLauncher.class"):
-                  cls = z.read(k)
-                  assert cls[:4] == bytes.fromhex("CAFEBABE") and int.from_bytes(cls[6:8], "big") == 52
-          PYJ
       - name: Build production arm64 launcher target
         working-directory: source
         env:
@@ -62,6 +36,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$APP_REVISION"
+          cc -std=c11 -Wall -Wextra -Werror scripts/test_render_benchmark.c -o "$RUNNER_TEMP/test-render-benchmark"
+          "$RUNNER_TEMP/test-render-benchmark"
           python3 scripts/test_render_park.py
           cc -std=c11 -pthread scripts/test_performance_frames.c -o "$RUNNER_TEMP/test-performance-frames"
           "$RUNNER_TEMP/test-performance-frames"
@@ -78,7 +54,7 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CROSSCOMPILING=true -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
             -DCMAKE_OSX_SYSROOT="$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=feature/c2me-hitch-diagnostics \
+            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=feature/magma-render-throughput \
             -DCONFIG_COMMIT="${APP_REVISION:0:7}" -DCONFIG_RELEASE=0
           cmake --build Natives/build --config Debug --target AngelAuraAmethyst --parallel "$(sysctl -n hw.logicalcpu)"
           exe=Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
@@ -87,18 +63,18 @@ jobs:
           python3 - "$exe" <<'PY'
           from pathlib import Path
           import sys
-          assert b'62a02c9' in Path(sys.argv[1]).read_bytes()
+          assert b'ed583a1' in Path(sys.argv[1]).read_bytes()
           PY
       - name: Save native executable for packaging retries
         uses: actions/upload-artifact@v4
         with:
-          name: prisma-launcher-62a02c9
+          name: prisma-launcher-ed583a1
           path: source/Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
       - name: Download last complete app payload
         uses: actions/download-artifact@v4
         with:
-          name: PrismaCubic-f714bf5-iPhone
-          run-id: 45500370395
+          name: PrismaCubic-62a02c9-iPhone
+          run-id: 45674987685
           github-token: ${{ github.token }}
           path: baseline
       - name: Sign and verify launcher against phone-tested build
@@ -108,7 +84,7 @@ jobs:
           archive=(baseline/*.ipa)
           test "${#archive[@]}" = 1
           base="$GITHUB_WORKSPACE/${archive[0]}"
-          expected=e206bdc8ca59cb0b897a3bf04a9d12f163cbe5a3807b26994e2eb743f0fc7f22
+          expected=b9649720a21e58f9b962d593de645341b0a7fcf6ef382352644c792420570908
           test "$(shasum -a 256 "$base" | cut -d ' ' -f1)" = "$expected"
           mkdir -p "$RUNNER_TEMP/repacked" result
           ditto -x -k "$base" "$RUNNER_TEMP/repacked"
@@ -124,17 +100,21 @@ jobs:
           otool -L "$exe" | tail -n+2 | awk '{print $1}' | sort > "$RUNNER_TEMP/current.linkage"
           diff -u "$RUNNER_TEMP/baseline.linkage" "$RUNNER_TEMP/current.linkage"
           codesign --verify --verbose "$driver"
-          jar="$app/libs/launcher.jar"
-          cp "$GITHUB_WORKSPACE/source/JavaApp/build/launcher.jar" "$jar"
-          files=("$exe" "$jar" "$app/_CodeSignature")
+          files=("$exe" "$app/_CodeSignature")
+          cp "$GITHUB_WORKSPACE/source/Natives/resources/en.lproj/Localizable.strings" "$app/en.lproj/Localizable.strings"
+          files+=("$app/en.lproj/Localizable.strings")
+          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-Hans.lproj/Localizable.strings" "$app/zh-Hans.lproj/Localizable.strings"
+          files+=("$app/zh-Hans.lproj/Localizable.strings")
+          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-Hant.lproj/Localizable.strings" "$app/zh-Hant.lproj/Localizable.strings"
+          files+=("$app/zh-Hant.lproj/Localizable.strings")
           codesign --force --sign - --timestamp=none --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
           codesign --verify --verbose "$app"
           python3 "$helper" "$exe" "$RUNNER_TEMP/final.plist"
           cmp "$RUNNER_TEMP/entitlements.plist" "$RUNNER_TEMP/final.plist"
           dest="$GITHUB_WORKSPACE/result"
-          zip -qry "$dest/PrismaCubic-62a02c9.ipa" Payload
+          zip -qry "$dest/PrismaCubic-ed583a1.ipa" Payload
           zip -qry "$dest/signed-overlay.zip" "${files[@]}"
-          python3 - "$dest/PrismaCubic-62a02c9.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
+          python3 - "$dest/PrismaCubic-ed583a1.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
           from pathlib import Path
           import hashlib, io, os, sys, zipfile
           out, baseline, overlay = map(Path, sys.argv[1:])
@@ -147,26 +127,32 @@ jobs:
               driver = 'Payload/AngelAuraAmethyst.app/Frameworks/libMobileGL.dylib'
               assert a.read(driver) == b.read(driver)
               jar = 'Payload/AngelAuraAmethyst.app/libs/launcher.jar'
-              assert a.read(jar) == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/JavaApp/build/launcher.jar").read_bytes()
-              with zipfile.ZipFile(io.BytesIO(a.read(jar))) as new, zipfile.ZipFile(io.BytesIO(b.read(jar))) as old:
-                  members = lambda j: {i.filename for i in j.infolist() if not i.is_dir()}
-                  assert members(old).issubset(members(new))
-                  sampler = 'net/kdt/pojavlaunch/CaptureSampler.class'
-                  assert new.read(sampler) != old.read(sampler)
-                  assert int.from_bytes(new.read(sampler)[6:8], 'big') == 52
-                  assert b'net/kdt/pojavlaunch/CaptureSampler' in new.read('net/kdt/pojavlaunch/PojavLauncher.class')
+              assert a.read(jar) == b.read(jar)
+              assert a.read("Payload/AngelAuraAmethyst.app/zh-Hant.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-Hant.lproj/Localizable.strings").read_bytes()
+              assert a.read("Payload/AngelAuraAmethyst.app/zh-Hans.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-Hans.lproj/Localizable.strings").read_bytes()
+              assert a.read("Payload/AngelAuraAmethyst.app/en.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/en.lproj/Localizable.strings").read_bytes()
               assert b'Ordered texture upload deferred: an earlier draw is still pending' in a.read(driver)
-              assert b'62a02c9' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
+              assert b'ed583a1' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
+              exe = a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
+              for stamp in (b'prisma.perf.benchmark', b'prisma.perf.benchmark_description', b'glClientWaitSync'):
+                  assert stamp in exe, stamp
+              for locale in ('en', 'zh-Hans', 'zh-Hant'):
+                  localized = a.read(f'Payload/AngelAuraAmethyst.app/{locale}.lproj/Localizable.strings')
+                  for key in (b'prisma.perf.benchmark', b'prisma.perf.benchmark_description', b'prisma.perf.benchmark_rate'):
+                      assert key in localized
+              with zipfile.ZipFile(io.BytesIO(a.read(jar))) as launcher:
+                  sampler = launcher.read('net/kdt/pojavlaunch/CaptureSampler.class')
+                  assert b'c2me-storage' in sampler and b'graphics-buffer-upload' in sampler
           for path in (out,overlay):
               print(path.name,hashlib.sha256(path.read_bytes()).hexdigest())
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-62a02c9-iPhone
-          path: result/PrismaCubic-62a02c9.ipa
+          name: PrismaCubic-ed583a1-iPhone
+          path: result/PrismaCubic-ed583a1.ipa
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-62a02c9-signed-overlay
+          name: PrismaCubic-ed583a1-signed-overlay
           path: result/signed-overlay.zip
           if-no-files-found: error
