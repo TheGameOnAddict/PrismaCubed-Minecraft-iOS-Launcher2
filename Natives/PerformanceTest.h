@@ -20,6 +20,7 @@
 @property(nonatomic, readonly, nullable) NSString *renderBenchmarkResult;
 - (void)showRenderBenchmarkFrom:(UIViewController *)controller;
 - (void)shareFrom:(UIViewController *)controller;
-- (BOOL)tickWidth:(int)width height:(int)height memoryMiB:(double)memory;
+- (BOOL)tickWidth:(int)width height:(int)height memoryMiB:(double)memory
+        renderFPS:(NSInteger)renderFPS presentedPerSecond:(NSInteger)presented;
 - (void)interrupt;
 @end

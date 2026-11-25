@@ -1270,7 +1270,14 @@ static UIColor *ame244_snapshotTint(void) {
     [ame339_card addSubview:ame339_title];
 
     UILabel *ame339_sub = [[UILabel alloc] initWithFrame:CGRectMake(18.0, 40.0, ame339_cardW - 70.0, 18.0)];
-    ame339_sub.text = [NSString stringWithFormat:localize(@"game.menu.resolution.current", nil), (long)currentValue];
+    if (windowWidth > 0 && windowHeight > 0 && ame_surfaceWidth > 0 && ame_surfaceHeight > 0) {
+        ame339_sub.text = [NSString stringWithFormat:localize(@"game.menu.resolution.dimensions", nil),
+                           windowWidth, windowHeight, ame_surfaceWidth, ame_surfaceHeight];
+        ame339_sub.adjustsFontSizeToFitWidth = YES;
+        ame339_sub.minimumScaleFactor = 0.75;
+    } else {
+        ame339_sub.text = [NSString stringWithFormat:localize(@"game.menu.resolution.current", nil), (long)currentValue];
+    }
     ame339_sub.font = [UIFont systemFontOfSize:13.0];
     ame339_sub.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
     [ame339_card addSubview:ame339_sub];

@@ -103,76 +103,20 @@ public class PojavLauncher {
             System.out.println("[PojavLauncher] Task196 useVbo=true forced (vgpu session: "
                 + ame196Renderer + ", 1.8.x display-list crash workaround)");
         }
-        // 解锁帧率（关闭垂直同步 + 解除 maxFps 限制）：
-        // MC 默认 enableVsync=true，会把帧率锁在屏幕刷新率（60Hz 锁 60、120Hz ProMotion 锁 120）。
-        // 同时 MC 默认 maxFps=120，即使关闭 VSync 也会被 maxFps 限制。
-        //
-        // 当启动器偏好 video.disable_game_vsync 开启时（通过环境变量 POJAV_DISABLE_VSYNC=1 传入）：
-        // 1. 强制写 enableVsync=false → MC 不再调用 glfwSwapInterval(1) 请求垂直同步
-        // 2. 强制写 maxFps=260 → MC 1.16+ 的源码中 maxFps>=260 时视为"无限制"（unlimited）
-        //
-        // 关键修复（FPS 解锁无效问题）：
-        //   之前使用 maxFps=0，但 MC 的 maxFps 有效值范围是 10-260（默认 120）。
-        //   maxFps=0 不是"无限制"——MC 1.16+ 源码中 0 会被当作无效值而忽略，MC 继续使用
-        //   options.txt 中的旧值或默认值 120，导致帧率被锁在 120。
-        //   MC 1.16+ 源码中有一个特殊判断：if (maxFps >= 260) treat as unlimited。
-        //   因此正确的"无限制"设置是 maxFps=260（或更高）。
-        //
-        //   对于 MC 1.8-1.15 旧版本：maxFps 选项不存在或行为不同，此设置会被忽略，
-        //   帧率解锁完全依赖 native 层的 eglSwapInterval(0) 拦截。
-        //
-        // MC 26.2+ 兼容性（关键修复）：
-        //   MC 26.2 可能重命名了选项。同时写入多种可能的选项名以确保兼容：
-        //   - maxFps（MC 1.16-1.21）：帧率上限
-        //   - maxFramerate（MC 26.2+ 可能的新名称）：帧率上限
-        //   - enableVsync（所有版本）：垂直同步开关
-        //   - framerateLimit（MC 26.2+ 可能的替代名称）：帧率限制
-        //
-        // 这样做的效果：
-        // - Vulkan 渲染器（MoltenVK）：LWJGL 创建 swapchain 时使用 VK_PRESENT_MODE_IMMEDIATE_KHR，
-        //   MoltenVK 不等待 vblank 直接 present，帧率可超过屏幕刷新率（减少输入延迟）
-        // - GL 类渲染器（ANGLE Metal）：eglSwapInterval(0) 让渲染线程不阻塞，
-        //   但 Core Animation 仍按屏幕刷新率合成（实际帧率不超过屏幕刷新率，但渲染线程吞吐量提高）
-        //
-        // 用 set（而非 setDefault）覆盖：每次启动都强制关闭，确保生效；
-        // 用户若想恢复游戏内垂直同步和帧率限制，可在启动器设置关闭该开关。
-        if ("1".equals(System.getenv("POJAV_DISABLE_VSYNC"))) {
-            MCOptionUtils.set("enableVsync", "false");
-            // maxFps=260：MC 1.16+ 源码中 maxFps>=260 视为 unlimited
-            // （之前用 0 会被当作无效值忽略，导致帧率仍被 maxFps=120 限制）
-            MCOptionUtils.set("maxFps", "260");
-            // MC 26.2+ 兼容：可能重命名为 maxFramerate 或 framerateLimit
-            MCOptionUtils.set("maxFramerate", "260");
-            MCOptionUtils.set("framerateLimit", "260");
-            // MC 1.21.8+ 兼容：inactivityFpsLimit 选项（InactivityFpsLimit 枚举）
-            //
-            // 关键修复（帧率解锁无效根因之一）：
-            // MC 1.21.8+ 引入了"不活动帧率限制"功能（inactivityFpsLimit），
-            // 默认值为 "afk"：
-            //   - 无输入 1 分钟后帧率降至 30 FPS
-            //   - 无输入 10 分钟后帧率降至 10 FPS
-            //   - 窗口最小化时帧率降至 10 FPS
-            // 这导致用户在 iOS 上切后台/不操作时帧率被严重限制，
-            // 即使关闭了 VSync 和 maxFps 限制也无济于事。
-            //
-            // InactivityFpsLimit 枚举只有两个值：
-            //   - "afk"（默认）：AFK 模式，不操作时限帧
-            //   - "minimized"：仅最小化时限帧（10 FPS）
-            //
-            // 设置为 "minimized" 后，用户不操作时不会限帧，
-            // 仅在窗口最小化（iOS 上几乎不会发生）时限帧。
-            // 这样配合 VSync 关闭 + maxFps=260 可以真正实现帧率解锁。
-            //
-            // 旧版本 MC（1.21.7 及以下）不识别此选项，会被忽略，无副作用。
-            MCOptionUtils.set("inactivityFpsLimit", "minimized");
-            // 诊断日志：输出写入的帧率相关选项
-            System.out.println("[PojavLauncher] VSync disabled, maxFps/maxFramerate/framerateLimit set to 260");
-            System.out.println("[PojavLauncher]   enableVsync=" + MCOptionUtils.get("enableVsync"));
-            System.out.println("[PojavLauncher]   maxFps=" + MCOptionUtils.get("maxFps"));
-            System.out.println("[PojavLauncher]   maxFramerate=" + MCOptionUtils.get("maxFramerate"));
-            System.out.println("[PojavLauncher]   framerateLimit=" + MCOptionUtils.get("framerateLimit"));
-            System.out.println("[PojavLauncher]   inactivityFpsLimit=" + MCOptionUtils.get("inactivityFpsLimit"));
+        boolean disableVsync = "1".equals(System.getenv("POJAV_DISABLE_VSYNC"));
+        int gameFpsLimit = Integer.getInteger("max.fps", disableVsync ? 260 : 0);
+        if (gameFpsLimit >= 10 && gameFpsLimit <= 260) {
+            String limit = Integer.toString(gameFpsLimit);
+            MCOptionUtils.set("maxFps", limit);
+            MCOptionUtils.set("maxFramerate", limit);
+            MCOptionUtils.set("framerateLimit", limit);
         }
+        if (disableVsync) {
+            MCOptionUtils.set("enableVsync", "false");
+            MCOptionUtils.set("inactivityFpsLimit", "minimized");
+        }
+        System.out.println("[PojavLauncher] Game frame limit=" + MCOptionUtils.get("maxFps")
+                + ", VSync=" + MCOptionUtils.get("enableVsync"));
         // Default settings for performance
         MCOptionUtils.setDefault("mipmapLevels", "0");
         MCOptionUtils.setDefault("particles", "1");

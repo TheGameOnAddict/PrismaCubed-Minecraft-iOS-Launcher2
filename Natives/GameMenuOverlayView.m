@@ -54,6 +54,7 @@ static const CGFloat kDragThreshold = 10.0;
 @property (nonatomic, strong) UILabel *statsLabel;
 @property (nonatomic) BOOL rendererVisible;
 @property (nonatomic, copy) NSString *statsText;
+@property (nonatomic) BOOL showsPresentationRate;
 // 拖拽相关状态
 @property (nonatomic, assign) BOOL isDragging;
 @property (nonatomic, assign) CGPoint dragStartPoint;
@@ -729,7 +730,7 @@ static BOOL ame227_g_dockedLeft = NO;
 
     // Reserve the numeric portion so normal FPS fluctuations don't move the pill.
     CGFloat textWidth = [suffix sizeWithAttributes:@{NSFontAttributeName:self.statsLabel.font}].width;
-    CGFloat width = MIN(CGRectGetWidth(self.bounds), 144 + ceil(textWidth));
+    CGFloat width = MIN(CGRectGetWidth(self.bounds), (self.showsPresentationRate ? 274 : 144) + ceil(textWidth));
     if (width <= 0 || CGRectGetWidth(self.statsLabel.bounds) == width) return;
     CGRect oldFrame = self.statsLabel.frame;
     // Grow toward the interior, keeping the edge nearest the user’s drag position.
@@ -740,9 +741,15 @@ static BOOL ame227_g_dockedLeft = NO;
 }
 
 - (void)updateFPS:(NSInteger)fps memoryUsageMB:(double)memoryMB {
+    [self updateFPS:fps presentedPerSecond:-1 memoryUsageMB:memoryMB];
+}
+
+- (void)updateFPS:(NSInteger)fps presentedPerSecond:(NSInteger)presented memoryUsageMB:(double)memoryMB {
     if (fps < 0) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.statsText = [NSString stringWithFormat:@"FPS: %ld | MEM: %.0fMB", (long)fps, memoryMB];
+        self.showsPresentationRate = presented >= 0;
+        self.statsText = self.showsPresentationRate ? [NSString stringWithFormat:NSLocalizedString(@"game.stats.render_present", nil),
+            (long)fps, (long)presented, memoryMB] : [NSString stringWithFormat:@"FPS: %ld | MEM: %.0fMB", (long)fps, memoryMB];
         if (!self.statsLabel.hidden) [self refreshStatsText];
     });
 }

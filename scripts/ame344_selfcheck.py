@@ -133,7 +133,7 @@ check("C6 新屏实现落位", "@implementation ZL2AISettingsPage" in pages
 print("== C 线C 迁移键覆盖面（六落位面代表键） ==")
 MIGRATED_KEYS = [
     # 渲染器屏（video 渲染 + mobileglues 全族）
-    "video.fsr1_setting", "video.fsr_rcas_sharpness", "video.disable_game_vsync",
+    "video.fsr1_setting", "video.fsr_rcas_sharpness", "video.cap_at_120_fps",
     "video.performance_hud", "mobileglues.renderer_backend", "mobileglues.enable_no_error",
     "mobileglues.enable_ext_timer_query", "mobileglues.enable_ext_compute_shader",
     "mobileglues.enable_ext_direct_state_access", "mobileglues.max_glsl_cache_size",

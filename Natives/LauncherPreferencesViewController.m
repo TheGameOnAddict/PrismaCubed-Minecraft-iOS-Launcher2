@@ -1366,6 +1366,12 @@ if ([section isEqualToString:@"general"]) {
               @"type": self.typeSwitch,
               @"enableCondition": whenNotInGame
             },
+            @{@"key": @"cap_at_120_fps",
+              @"hasDetail": @YES,
+              @"icon": @"speedometer",
+              @"type": self.typeSwitch,
+              @"enableCondition": whenNotInGame
+            },
             @{@"key": @"performance_hud",
               @"hasDetail": @YES,
               @"icon": @"waveform.path.ecg",

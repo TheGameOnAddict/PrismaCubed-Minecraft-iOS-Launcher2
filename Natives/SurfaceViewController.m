@@ -442,6 +442,9 @@ static BOOL ame83_fsr_capable_renderer(NSString *renderer) {
 @property(nonatomic) NSTimer *statsTimer;                 // 低频定时器，1s 一次
 @property(nonatomic) CADisplayLink *statsDisplayLink;     // 渲染循环引用（用于 Gyro/Controller tick 和失效）
 @property(nonatomic, weak) UIScreen *gameDisplayScreen;
+@property(nonatomic) BOOL gameplayFPSCapEnabled;
+@property(nonatomic) CFTimeInterval lastFPSUpdate;
+@property(nonatomic) unsigned long lastSuccessfulSwaps;
 @property(nonatomic, strong) PLDisplayLinkTarget *statsDisplayLinkTarget;   // CADisplayLink 的 target（强引用防释放）
 
 @property(nonatomic) NSDictionary* metadata;
@@ -1301,6 +1304,8 @@ static NSInteger ame283_lastLandscapeDev = 0;
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    self.gameplayFPSCapEnabled = getPrefBool(@"video.cap_at_120_fps");
+    [self resetFrameRateSample];
     isControlModifiable = NO;
     // Task229: per-game-session auto-keyboard state.
     ame229_autoKbShownThisSession = NO;
@@ -1719,20 +1724,22 @@ static NSInteger ame283_lastLandscapeDev = 0;
     }
 
     NSInteger peak = screen.maximumFramesPerSecond;
-    BOOL unlocked = getPrefBool(@"video.disable_game_vsync");
+    BOOL unlocked = !self.gameplayFPSCapEnabled || getPrefBool(@"video.disable_game_vsync");
     BOOL lowPower = NSProcessInfo.processInfo.lowPowerModeEnabled;
-    BOOL requestPeak = unlocked && !lowPower && peak > 60;
+    pojavConfigureGameplayFramerate(self.gameplayFPSCapEnabled || lowPower, (unsigned)MAX(0, peak), true);
+    NSInteger desiredHz = self.gameplayFPSCapEnabled ? MIN(peak, 120) : peak;
+    BOOL requestPeak = unlocked && !lowPower && desiredHz > 60;
     NSInteger requestedHz = 0;
     if (@available(iOS 15.0, tvOS 15.0, *)) {
         CAFrameRateRange range = CAFrameRateRangeDefault;
         if (!lowPower && peak > 0) {
-            requestedHz = peak;
-            NSInteger minimum = requestPeak ? peak : MIN(30, peak);
-            range = CAFrameRateRangeMake(minimum, peak, peak);
+            requestedHz = desiredHz;
+            NSInteger minimum = requestPeak ? desiredHz : MIN(30, desiredHz);
+            range = CAFrameRateRangeMake(minimum, desiredHz, desiredHz);
         }
         self.statsDisplayLink.preferredFrameRateRange = range;
     } else {
-        requestedHz = requestPeak ? peak : 0;
+        requestedHz = requestPeak ? desiredHz : 0;
         self.statsDisplayLink.preferredFramesPerSecond = requestedHz;
     }
     self.statsDisplayLink.paused = NO;
@@ -1756,7 +1763,8 @@ static NSInteger ame283_lastLandscapeDev = 0;
         if (owner.performanceTest) {
             [owner.performanceTest recordDisplayCadence:@{
                 @"panelMaxHz": @(peak), @"requestedHz": @(requestedHz), @"scheduledHz": @(scheduledHz),
-                @"callbackHz": @(callbackHz), @"unlockEnabled": @(unlocked), @"lowPower": @(lowPower)
+                @"callbackHz": @(callbackHz), @"unlockEnabled": @(unlocked), @"lowPower": @(lowPower),
+                @"gameplayFPSCapEnabled": @(owner.gameplayFPSCapEnabled), @"magmaUncappedActive": @(pojavUncappedGameplayActive())
             } forPhase:phase];
         }
     });
@@ -2857,7 +2865,8 @@ static NSInteger ame283_lastLandscapeDev = 0;
             s_task78_logged = YES;
             NSLog(@"[SurfaceVC] Task83 FSR linkage: renderer=%@ preset=%ld scale=%.2f -- MC render window = surface/%.2f (renderer-side upscale: %@); resolution=%.0f%%",
                   ame78_renderer, (long)ame78_fsr_preset, (double)mgFsrScale, (double)mgFsrScale,
-                  [ame78_renderer hasPrefix:@"libOSMesa"] ? @"zink EASU (Task83)" : @"MobileGlues FSR1",
+                  [ame78_renderer isEqualToString:@ RENDERER_NAME_MOBILEGL] ? @"Magma Metal FSR1" :
+                      [ame78_renderer hasPrefix:@"libOSMesa"] ? @"zink EASU (Task83)" : @"MobileGlues FSR1",
                   (double)(resolutionScale * 100.0));
         }
     }
@@ -4260,6 +4269,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     if (self.surfaceView.superview == nil) return;   // 会话未启动
     // ★ Task250：回前台 = 门控解除（后续常规推送恢复；本次重申走强制通道）。
     g_ame250_appActive = YES;
+    [self resetFrameRateSample];
     [self applyGameRefreshForPhase:@"became-active"];
     // ★ Task267：小窗（scale-mode）态回前台——UIKit 后台往返可能重排过
     //   视图栈，重排一次（updateSavedResolution 的冻结守卫保证信念不被
@@ -4359,6 +4369,7 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 }
 
 - (void)ame250_willResignActive {
+    pojavConfigureGameplayFramerate(true, 0, false);
     self.statsDisplayLink.paused = YES;
     g_ame250_appActive = NO;
     NSLog(@"[SurfaceVC] Task250: app resigning active -- background window pushes gated");
@@ -6190,11 +6201,30 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
 
 #pragma mark - FPS/内存监控（参照 FCL egl_bridge.c 与 ZL2 MemoryUtils.kt）
 
+- (void)resetFrameRateSample {
+    self.lastFPSUpdate = CACurrentMediaTime();
+    ame_egl_swap_stats(&_lastSuccessfulSwaps, NULL);
+    pojavGetAndResetMagmaExtraFrames();
+    pojavGetAndResetFps();
+}
+
 - (void)updateGameStats {
-    // 1. 读取 native swap buffer 计数器并重置（参照 FCL CallbackBridge.getFps()）
-    // pojavGetAndResetFps() 返回自上次调用以来的渲染帧数
-    // 采样间隔 1 秒（statsTimer 已改为 1s），所以返回值即为 FPS
-    NSInteger fps = (NSInteger)pojavGetAndResetFps();
+    // Normalize by elapsed time when the UI timer arrives late.
+    CFTimeInterval now = CACurrentMediaTime();
+    double elapsed = now - self.lastFPSUpdate;
+    self.lastFPSUpdate = now;
+    unsigned entries = pojavGetAndResetFps();
+    unsigned long currentSwaps = 0;
+    ame_egl_swap_stats(&currentSwaps, NULL);
+    unsigned long presentedFrames = currentSwaps - self.lastSuccessfulSwaps;
+    self.lastSuccessfulSwaps = currentSwaps;
+    unsigned extra = pojavGetAndResetMagmaExtraFrames();
+    NSInteger fps = elapsed > 0 ? lround(entries / elapsed) : 0;
+    NSInteger presented = -1;
+    if (elapsed > 0 && pojavUncappedGameplayActive()) {
+        fps = lround((extra + presentedFrames) / elapsed);
+        presented = lround(presentedFrames / elapsed);
+    }
 
     // 2. 获取内存占用（phys_footprint）
     // 使用 task_vm_info 的 phys_footprint 字段，这是 iOS 上最准确的进程内存占用指标
@@ -6202,13 +6232,14 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
     // 参照 ZL2 MemoryUtils.kt 的系统级内存统计理念，在 iOS 上用 phys_footprint 等价
     if (fps > 0) [self.performanceTest firstFrameObserved];
     double memoryMB = [self currentPhysFootprintMB];
-    if ([self.performanceTest tickWidth:windowWidth height:windowHeight memoryMiB:memoryMB]) {
+    if ([self.performanceTest tickWidth:windowWidth height:windowHeight memoryMiB:memoryMB
+                              renderFPS:fps presentedPerSecond:presented]) {
         [NMToast showMessage:self.performanceTest.renderBenchmarkResult ?: NSLocalizedString(@"Performance report saved", nil)];
     }
 
     // 3. 更新 UI（GameMenuOverlayView 内部会 dispatch 到主线程）
     if ([self.gameMenuOverlay isKindOfClass:[GameMenuOverlayView class]]) {
-        [(GameMenuOverlayView *)self.gameMenuOverlay updateFPS:fps memoryUsageMB:memoryMB];
+        [(GameMenuOverlayView *)self.gameMenuOverlay updateFPS:fps presentedPerSecond:presented memoryUsageMB:memoryMB];
     }
 
     // 4. 黑屏取证心跳（Task 32）：每 5 秒一条 [RenderDiag] 日志。
@@ -6324,6 +6355,7 @@ BOOL Amethyst_EnforceSDL3Presentation(void) {
 
 - (void)dealloc {
     // ★ Task260（清单 2）：会话销毁 = 玻璃安全闸复位（0 = 无活跃会话）。
+    if (pojavWindow == _surfaceView) pojavConfigureGameplayFramerate(true, 0, false);
     LGCSetGameSessionMCMajor(0);
     // 停止 FPS/内存采样定时器与渲染循环
     [_performanceTest interrupt];

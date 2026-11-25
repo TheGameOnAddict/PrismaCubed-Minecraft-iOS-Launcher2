@@ -63,7 +63,7 @@ check("A4 心跳调用 + 格式串 pres/build",
 
 # build 记录点必须在 Task48 卫兵之前；present 计时必须夹住 eglSwapBuffers 本体
 m_swap = gb.index("void gl_swap_buffers()")
-swap_body = gb[m_swap:m_swap + 4000]
+swap_body = gb[m_swap:gb.index("void gl_swap_interval(", m_swap)]
 i_build = swap_body.find("ame77_record_build(")
 i_guard = swap_body.find("ame_task41_swap_forensics(")
 i_p0 = swap_body.find("ame77_t_present0 = ame77_now_us();")

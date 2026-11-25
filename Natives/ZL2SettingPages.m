@@ -294,12 +294,38 @@ static BOOL ame_pages_whenNotInGame(void) {
         subtitle:localize(@"cubic.settings.renderer.location", nil)];
     rendererRow.onTap = nil;
 
+    // FSR 档位（video.fsr1_setting，0-4 五档；Task78 补齐 Performance 档）
+    NSArray<NSString *> *fsrKeys = @[@"0", @"1", @"2", @"3", @"4"];
+    NSArray<NSString *> *fsrNames = @[
+        localize(@"preference.title.mg_fsr1_setting-0", nil),
+        localize(@"preference.title.mg_fsr1_setting-1", nil),
+        localize(@"preference.title.mg_fsr1_setting-2", nil),
+        localize(@"preference.title.mg_fsr1_setting-3", nil),
+        localize(@"preference.title.mg_fsr1_setting-4", nil),
+    ];
+    ZL2SettingRowList *fsrRow =
+        [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
+                                 options:fsrNames optionKeys:fsrKeys];
+    fsrRow.title = localize(@"preference.title.fsr1_setting", nil);
+    fsrRow.subtitle = localize(@"preference.detail.fsr1_setting", nil);
+    // Older builds wrote string keys. The factory default is numeric.
+    id ame361_fsrRaw = getPrefObject(@"mobileglues.fsr1_setting");
+    NSString *key = [ame361_fsrRaw isKindOfClass:[NSString class]]
+        ? ame361_fsrRaw
+        : ([ame361_fsrRaw isKindOfClass:[NSNumber class]] ? [(NSNumber *)ame361_fsrRaw stringValue] : nil);
+    NSUInteger selected = key ? [fsrKeys indexOfObject:key] : NSNotFound;
+    [fsrRow ame_reloadSelectedIndex:selected == NSNotFound ? 0 : (NSInteger)selected];
+    fsrRow.onSelect = ^(NSInteger index) {
+        if (index < 0 || (NSUInteger)index >= fsrKeys.count) return;
+        setPrefString(@"mobileglues.fsr1_setting", fsrKeys[index]);
+    };
+
     NSInteger resolution = (NSInteger)getPrefFloat(@"video.resolution");
     if (resolution <= 0) resolution = 100;
     ZL2SettingRowSlider *resolutionRow =
         [[ZL2SettingRowSlider alloc] initWithTitle:@"" subtitle:nil
                                    minimum:25 maximum:150 suffix:@"%"];
-    resolutionRow.title = localize(@"preference.profile.title.resolution_scale", nil);
+    resolutionRow.title = localize(@"prisma.upscaling.output_resolution", nil);
     resolutionRow.subtitle = localize(@"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance", nil);
     [resolutionRow ame_setValue:resolution];
     resolutionRow.onValueChanged = ^(NSInteger value) {
@@ -321,40 +347,11 @@ static BOOL ame_pages_whenNotInGame(void) {
     self.fullscreenRow = fullscreenRow;
 
     ZL2SettingCardGroup *group1 = [[ZL2SettingCardGroup alloc] init];
-    [group1 ame_addRows:@[rendererRow, resolutionRow, fullscreenRow]];
+    [group1 ame_addRows:@[fsrRow, rendererRow, resolutionRow, fullscreenRow]];
     [self ame_addGroup:group1];
 
     // ── ★ Task344 旧设置全量迁移：video 分区渲染增强四项 ──
     ZL2SettingCardGroup *videoGroup = [[ZL2SettingCardGroup alloc] init];
-    // FSR 档位（video.fsr1_setting，0-4 五档；Task78 补齐 Performance 档）
-    NSArray<NSString *> *fsrKeys = @[@"0", @"1", @"2", @"3", @"4"];
-    NSArray<NSString *> *fsrNames = @[
-        localize(@"prisma.ui.close", nil),
-        localize(@"preference.title.mg_fsr1_setting-1", nil),
-        localize(@"preference.title.mg_fsr1_setting-2", nil),
-        localize(@"preference.title.mg_fsr1_setting-3", nil),
-        localize(@"preference.title.mg_fsr1_setting-4", nil),
-    ];
-    ZL2SettingRowList *fsrRow =
-        [[ZL2SettingRowList alloc] initWithTitle:@"" subtitle:nil
-                                 options:fsrNames optionKeys:fsrKeys];
-    fsrRow.title = localize(@"preference.title.fsr1_setting", nil);
-    fsrRow.subtitle = localize(@"preference.detail.fsr1_setting", nil);
-    // ★ Ame361：存储键重映射 mobileglues.*（旧页 Task83 同款——消费方
-    //   JavaLauncher/MobileGlues 读 mobileglues.fsr1_setting；写错段
-    //   video.fsr1_setting 未注册被静默丢弃 = FSR 档位不生效根因）。
-    //   注册表默认为 NSNumber（@(0)），双态解析（旧页 ame130 同款）：
-    //   NSString 直用 / NSNumber stringValue / nil 回退出厂默认。
-    id ame361_fsrRaw = getPrefObject(@"mobileglues.fsr1_setting");
-    NSString *ame361_fsrVal = [ame361_fsrRaw isKindOfClass:[NSString class]]
-        ? ame361_fsrRaw
-        : ([ame361_fsrRaw isKindOfClass:[NSNumber class]] ? [(NSNumber *)ame361_fsrRaw stringValue] : nil);
-    [fsrRow ame_reloadSelectedIndex:(NSInteger)[fsrKeys indexOfObject:
-        ame361_fsrVal ?: @"0"]];
-    fsrRow.onSelect = ^(NSInteger index) {
-        if (index < 0 || (NSUInteger)index >= fsrKeys.count) return;
-        setPrefString(@"mobileglues.fsr1_setting", fsrKeys[index]);
-    };
     // RCAS 锐化（video.fsr_rcas_sharpness，-1/0.1..1 七档）
     NSArray<NSString *> *rcasKeys = @[@"-1", @"0.1", @"0.2", @"0.3", @"0.5", @"0.7", @"1"];
     NSMutableArray<NSString *> *rcasNames = [NSMutableArray array];
@@ -379,15 +376,10 @@ static BOOL ame_pages_whenNotInGame(void) {
         if (index < 0 || (NSUInteger)index >= rcasKeys.count) return;
         setPrefString(@"mobileglues.fsr_rcas_sharpness", rcasKeys[index]);
     };
-    // 垂直同步禁用
-    ZL2SettingRowSwitch *vsyncRow =
-        [[ZL2SettingRowSwitch alloc] initWithTitle:@"" subtitle:nil];
-    vsyncRow.title = localize(@"preference.title.disable_game_vsync", nil);
-    vsyncRow.subtitle = localize(@"preference.detail.disable_game_vsync", nil);
-    [vsyncRow ame_setOn:getPrefBool(@"video.disable_game_vsync")];
-    vsyncRow.onToggle = ^(BOOL on) {
-        setPrefBool(@"video.disable_game_vsync", on);
-    };
+    ZL2SettingRowSwitch *fpsCapRow = [[ZL2SettingRowSwitch alloc] initWithTitle:
+        localize(@"preference.title.cap_at_120_fps", nil) subtitle:localize(@"preference.detail.cap_at_120_fps", nil)];
+    [fpsCapRow ame_setOn:getPrefBool(@"video.cap_at_120_fps")];
+    fpsCapRow.onToggle = ^(BOOL on) { setPrefBool(@"video.cap_at_120_fps", on); };
     // 性能 HUD（仅 Metal developerHUD 可用设备展示）
     ZL2SettingRowSwitch *hudRow = nil;
     if ([CAMetalLayer instancesRespondToSelector:@selector(developerHUDProperties)]) {
@@ -398,9 +390,9 @@ static BOOL ame_pages_whenNotInGame(void) {
         hudRow.onToggle = ^(BOOL on) {
             setPrefBool(@"video.performance_hud", on);
         };
-        [videoGroup ame_addRows:@[fsrRow, rcasRow, vsyncRow, hudRow]];
+        [videoGroup ame_addRows:@[fpsCapRow, hudRow]];
     } else {
-        [videoGroup ame_addRows:@[fsrRow, rcasRow, vsyncRow]];
+        [videoGroup ame_addRow:fpsCapRow];
     }
     [self ame_addGroup:videoGroup];
 
@@ -529,7 +521,7 @@ static BOOL ame_pages_whenNotInGame(void) {
         if (index < 0 || (NSUInteger)index >= glvKeys.count) return;
         setPrefString(@"mobileglues.custom_gl_version", glvKeys[index]);
     };
-    [mgGroup ame_addRow:glvRow];
+    [mgGroup ame_addRows:@[glvRow, rcasRow]];
     [self ame_addGroup:mgGroup];
 
     // --- 组 4：更多设置（长尾兜底契约）---
