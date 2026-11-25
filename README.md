@@ -5,9 +5,9 @@
 
 ## Tested iPhone build
 
-**Magma entity rendering fix · November 24, 2026.** The patch fixes an animation texture update that could make entities flicker, stretch, or disappear. An iPhone tester confirmed that the Skrill and other Book of Dragons dragons, along with ordinary mobs, rendered correctly using **MobileGlues (1.17+)** on Minecraft 1.20.1 with Forge 47.4.28.
+**November 25 performance checkpoint.** This build includes PrismaCubic’s patched Magma renderer and the in-game performance capture. On an A19 Pro iPhone, a full-resolution Forge pack averaged **95.9 FPS** while moving with Radium and C2ME Forge enabled. The run still had two frame intervals over 100 ms. [Download the tested IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/perf-checkpoint-2026-11-25/PrismaCubic-f714bf5.ipa) · [Checkpoint notes](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/tag/perf-checkpoint-2026-11-25)
 
-Download the IPA and open it in your sideloading app. You can keep your existing profile. The prerelease notes include the device test and its shader-off performance baseline. [Download the tested IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/magma-entity-fix-2026-11-24/PrismaCubic-Magma-Entity-Fix.ipa) · [Read the prerelease notes](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/tag/magma-entity-fix-2026-11-24)
+**Choosing mods or a renderer?** Start with the exact Forge builds tested on iPhone. The guide includes frame timings, the Diorama comparison, and how PrismaCubic fixed Magma’s flickering and stretching mobs. [Tested optimization mods and renderer notes](docs/performance-on-iphone.md)
 
 ## Install a development build
 
