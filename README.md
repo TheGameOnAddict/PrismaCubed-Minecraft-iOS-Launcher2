@@ -3,6 +3,10 @@
 <p align="center">Play Minecraft: Java Edition on iPhone and iPad. Give each modpack its own profile, manage its mods, and choose its renderer.</p>
 <p align="center"><a href="https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/actions/workflows/development.yml?query=branch%3Afeature%2Fprismacubic-ui+is%3Asuccess">iOS test builds</a> · <a href="https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/tree/feature/prismacubic-ui">Development branch</a> · <a href="https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/blob/3db337429cf7b1448682cb7cc66df7543d9f6de4/README.md#original-chinese-readme">中文上游说明</a></p>
 
+## Try the new gameplay settings
+
+Open **Settings → Renderer** to change **Cap at 120 FPS** or **Upscaling**, then launch your profile with **Play**. The cap starts on. Turn it off to let the patched Magma renderer run ahead of the display when the scene is light enough. The first iPhone measurements for this build are pending. [Download the test IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-gameplay-settings-e5dd5d4/PrismaCubic-e5dd5d4.ipa) · [How to try upscaling](docs/performance-on-iphone.md#trying-upscaling)
+
 ## Tested iPhone build
 
 **November 25 performance checkpoint.** This build includes PrismaCubic’s patched Magma renderer and the in-game performance capture. On an A19 Pro iPhone, a full-resolution Forge pack averaged **95.9 FPS** while moving with Radium and C2ME Forge enabled. The run still had two frame intervals over 100 ms. [Download the tested IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/perf-checkpoint-2026-11-25/PrismaCubic-f714bf5.ipa) · [Checkpoint notes](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/tag/perf-checkpoint-2026-11-25)

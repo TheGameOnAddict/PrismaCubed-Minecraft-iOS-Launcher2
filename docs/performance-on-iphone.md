@@ -32,15 +32,17 @@ Minecraft mods can draw an entity, overwrite an animation texture, then draw the
 
 PrismaCubic tracks textures used by pending draws. When the game rewrites one, Magma submits the earlier work before the new upload can overtake it. Unrelated uploads can still be batched. A regression test checks the output of two consecutive draws that use different data in the same texture. On iPhone the tester confirmed clean rendering on the Skrill, other Book of Dragons dragons and ordinary mobs. [Driver patch](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/blob/f714bf5c16a978736a7142a63576c61eac2c49b6/patches/mobilegl-ordered-texture-updates.patch) · [Regression test](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/blob/f714bf5c16a978736a7142a63576c61eac2c49b6/patches/mobilegl-ordered-texture-updates-test.patch) · [Original device-tested release](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/tag/magma-entity-fix-2026-11-24)
 
-## Measuring render FPS above 120
+## Uncapping FPS during play
 
-The November 25 iPhone log showed that Magma could present only in FIFO mode, which paces visible frames to the display. The experimental build can measure how fast the GPU finishes real frames at your current resolution. It shows a preview up to 30 times a second during the measurement. [Download the experimental benchmark IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-magma-throughput-ed583a1/PrismaCubic-ed583a1.ipa)
+**Cap at 120 FPS** starts on. To try uncapped play on the patched Magma renderer, open **Settings → Renderer**, turn the switch off, then use **Play** on your profile. On the tested 1.20.1 profile the renderer picker entry is **MobileGlues (1.17+)**. [Download the gameplay settings test IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-gameplay-settings-e5dd5d4/PrismaCubic-e5dd5d4.ipa)
 
-1. Use the **MobileGlues (1.17+)** renderer with the launcher's VSync lock disabled. Open the profile’s **… → Performance Test → Test Launch**.
-2. Enter the world and open the in-game gear. Choose **Benchmark Render FPS → Start Benchmark**. The option appears when the launcher detects its supported Magma backend.
-3. After 60 seconds, the result shows GPU-completed frames per second, preview swaps per second, and the panel’s maximum Hz. Open **Render Benchmark Result** in the gear to read it again. The diagnostics ZIP includes a plain-text copy in `render-throughput.txt`.
+When the game has time to finish extra frames, the in-game HUD can show **Render** above 120 FPS. **Present** counts frames submitted to the screen each second. A 120 Hz panel can show up to 120 distinct frames per second. Heavy scenes may keep both rates below 120. Turning the cap back on takes effect at the next launch.
 
-A value above 120 means the game and GPU completed more than 120 frames per second in that scene. Each measured frame waits for GPU completion, which can reduce throughput compared with overlapping frames in ordinary play. Use **Record 60 Seconds** when you want to measure the frame pacing you actually see while playing.
+## Trying upscaling
+
+Leave **Output resolution** at **100%** and check that your profile uses that setting. Open **Settings → Renderer → Upscaling**, choose **Quality (67%)**, then press **Play**. During play, open the **gear → Resolution** to see the render and output dimensions.
+
+Quality draws each frame at about two-thirds of the output width and height. For example, on a 2868 × 1320 output, Minecraft draws 1912 × 880 and the upscaler enlarges it to fill the screen. That is about 56% fewer pixels to draw. This can help when drawing pixels limits FPS. Look at distant grass or fine edges to judge the change in sharpness. To compare with full resolution, select **Off (100%)** and relaunch in the same spot.
 
 ## Performance backlog
 
