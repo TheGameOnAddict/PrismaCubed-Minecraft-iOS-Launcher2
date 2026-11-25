@@ -47,6 +47,26 @@ int main(void) {
         assert(![a.description containsString:@"private-canary"]);
         assert(![summary containsString:@"private-canary"]);
 
+        NSDictionary *detailed = @{
+            @"captureStartEpochMs":@100000, @"status":@"completed", @"samples":@[
+                @{@"atMs":@100950, @"probeMs":@1, @"work":@[@"render/graphics-draw", @"c2me-worker/chunk-generation"]},
+                @{@"atMs":@100970, @"probeMs":@1, @"work":@[@"render/graphics-draw", @"c2me-storage/chunk-io"]},
+                @{@"atMs":@101300, @"probeMs":@1, @"work":@[@"render/graphics-buffer-upload"]},
+                @{@"atMs":@101350, @"probeMs":@1, @"work":@[@"render/graphics-texture-upload"]},
+                @{@"atMs":@101400, @"probeMs":@1, @"work":@[@"render/graphics-shader"]},
+                @{@"atMs":@101450, @"probeMs":@1, @"work":@[@"render/graphics-sync"]},
+                @{@"atMs":@101500, @"probeMs":@1, @"work":@[@"render/graphics-blit", @"c2me-storage/private-canary"]}
+            ]};
+        a = CubicHitchAnalysis(report, detailed, nil);
+        NSDictionary *duringFrame = a[@"intervals"][0][@"observedJavaWork"];
+        assert([duringFrame[@"render/graphics-draw"] isEqual:@2]);
+        assert([duringFrame[@"c2me-worker/chunk-generation"] isEqual:@1]);
+        assert([duringFrame[@"c2me-storage/chunk-io"] isEqual:@1]);
+        assert([a[@"windowRoundCountByJavaWork"] count] == 8);
+        summary = CubicHitchSummary(a);
+        assert([summary containsString:@"Java observations by number of rounds\n    render/graphics-draw (2)"]);
+        assert(![summary containsString:@"private-canary"]);
+
         NSMutableDictionary *other = [java mutableCopy];
         other[@"captureStartEpochMs"] = @99999;
         a = CubicHitchAnalysis(report, other, nil);
