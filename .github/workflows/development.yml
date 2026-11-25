@@ -7,7 +7,7 @@ permissions:
   actions: read
 
 env:
-  APP_REVISION: f714bf5c16a978736a7142a63576c61eac2c49b6
+  APP_REVISION: 62a02c9c1e198395aab578469b736ba05b9f0418
 
 jobs:
   build:
@@ -62,6 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$APP_REVISION"
+          python3 scripts/test_render_park.py
           cc -std=c11 -pthread scripts/test_performance_frames.c -o "$RUNNER_TEMP/test-performance-frames"
           "$RUNNER_TEMP/test-performance-frames"
           cc -std=c11 -Wall -Wextra -Werror scripts/test_hotspot_pauses.c -o "$RUNNER_TEMP/test-hotspot-pauses"
@@ -77,7 +78,7 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CROSSCOMPILING=true -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
             -DCMAKE_OSX_SYSROOT="$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=perf/single-capture-diagnostics \
+            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=feature/c2me-hitch-diagnostics \
             -DCONFIG_COMMIT="${APP_REVISION:0:7}" -DCONFIG_RELEASE=0
           cmake --build Natives/build --config Debug --target AngelAuraAmethyst --parallel "$(sysctl -n hw.logicalcpu)"
           exe=Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
@@ -86,18 +87,18 @@ jobs:
           python3 - "$exe" <<'PY'
           from pathlib import Path
           import sys
-          assert b'f714bf5' in Path(sys.argv[1]).read_bytes()
+          assert b'62a02c9' in Path(sys.argv[1]).read_bytes()
           PY
       - name: Save native executable for packaging retries
         uses: actions/upload-artifact@v4
         with:
-          name: prisma-launcher-f714bf5
+          name: prisma-launcher-62a02c9
           path: source/Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
       - name: Download last complete app payload
         uses: actions/download-artifact@v4
         with:
-          name: PrismaCubic-5ed699f-iPhone
-          run-id: 45482693773
+          name: PrismaCubic-f714bf5-iPhone
+          run-id: 45500370395
           github-token: ${{ github.token }}
           path: baseline
       - name: Sign and verify launcher against phone-tested build
@@ -107,6 +108,8 @@ jobs:
           archive=(baseline/*.ipa)
           test "${#archive[@]}" = 1
           base="$GITHUB_WORKSPACE/${archive[0]}"
+          expected=e206bdc8ca59cb0b897a3bf04a9d12f163cbe5a3807b26994e2eb743f0fc7f22
+          test "$(shasum -a 256 "$base" | cut -d ' ' -f1)" = "$expected"
           mkdir -p "$RUNNER_TEMP/repacked" result
           ditto -x -k "$base" "$RUNNER_TEMP/repacked"
           cd "$RUNNER_TEMP/repacked"
@@ -129,9 +132,9 @@ jobs:
           python3 "$helper" "$exe" "$RUNNER_TEMP/final.plist"
           cmp "$RUNNER_TEMP/entitlements.plist" "$RUNNER_TEMP/final.plist"
           dest="$GITHUB_WORKSPACE/result"
-          zip -qry "$dest/PrismaCubic-f714bf5.ipa" Payload
+          zip -qry "$dest/PrismaCubic-62a02c9.ipa" Payload
           zip -qry "$dest/signed-overlay.zip" "${files[@]}"
-          python3 - "$dest/PrismaCubic-f714bf5.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
+          python3 - "$dest/PrismaCubic-62a02c9.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
           from pathlib import Path
           import hashlib, io, os, sys, zipfile
           out, baseline, overlay = map(Path, sys.argv[1:])
@@ -148,20 +151,22 @@ jobs:
               with zipfile.ZipFile(io.BytesIO(a.read(jar))) as new, zipfile.ZipFile(io.BytesIO(b.read(jar))) as old:
                   members = lambda j: {i.filename for i in j.infolist() if not i.is_dir()}
                   assert members(old).issubset(members(new))
-                  assert 'net/kdt/pojavlaunch/CaptureSampler.class' in members(new) - members(old)
+                  sampler = 'net/kdt/pojavlaunch/CaptureSampler.class'
+                  assert new.read(sampler) != old.read(sampler)
+                  assert int.from_bytes(new.read(sampler)[6:8], 'big') == 52
                   assert b'net/kdt/pojavlaunch/CaptureSampler' in new.read('net/kdt/pojavlaunch/PojavLauncher.class')
               assert b'Ordered texture upload deferred: an earlier draw is still pending' in a.read(driver)
-              assert b'f714bf5' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
+              assert b'62a02c9' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
           for path in (out,overlay):
               print(path.name,hashlib.sha256(path.read_bytes()).hexdigest())
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-f714bf5-iPhone
-          path: result/PrismaCubic-f714bf5.ipa
+          name: PrismaCubic-62a02c9-iPhone
+          path: result/PrismaCubic-62a02c9.ipa
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-f714bf5-signed-overlay
+          name: PrismaCubic-62a02c9-signed-overlay
           path: result/signed-overlay.zip
           if-no-files-found: error
