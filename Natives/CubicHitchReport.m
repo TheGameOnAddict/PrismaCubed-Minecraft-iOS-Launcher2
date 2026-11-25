@@ -24,8 +24,9 @@ static NSSet *workLabels(void) {
         NSMutableSet *set = [NSMutableSet set];
         NSArray *categories = @[@"lighting", @"chunk-generation", @"chunk-meshing", @"chunk-loading",
             @"chunk-io", @"entity-rendering", @"entity-ticking", @"map-work", @"graphics-present",
-            @"graphics-driver", @"other", @"waiting"];
-        for (NSString *role in @[@"render", @"server", @"worker", @"map-worker"])
+            @"graphics-driver", @"graphics-draw", @"graphics-buffer-upload", @"graphics-texture-upload",
+            @"graphics-shader", @"graphics-sync", @"graphics-blit", @"other", @"waiting"];
+        for (NSString *role in @[@"render", @"server", @"worker", @"map-worker", @"c2me-worker", @"c2me-storage"])
             for (NSString *category in categories)
                 [set addObject:[NSString stringWithFormat:@"%@/%@", role, category]];
         labels = [set copy];
@@ -161,7 +162,7 @@ static NSString *statusString(id value, NSArray *allowed) {
     return [allowed containsObject:value ?: @""] ? value : @"unavailable";
 }
 
-static NSArray<NSString *> *observedWork(id rawCounts, NSUInteger limit, BOOL showCounts) {
+static NSArray<NSString *> *observedWork(id rawCounts, NSUInteger limit) {
     NSDictionary *counts = dictionary(rawCounts);
     NSMutableArray<NSString *> *labels = [NSMutableArray array];
     for (NSString *label in workLabels()) {
@@ -171,7 +172,6 @@ static NSArray<NSString *> *observedWork(id rawCounts, NSUInteger limit, BOOL sh
         NSComparisonResult result = [counts[b] compare:counts[a]];
         return result == NSOrderedSame ? [a compare:b] : result;
     }];
-    if (!showCounts) return labels;
     NSMutableArray *formatted = [NSMutableArray array];
     for (NSString *label in labels) [formatted addObject:[NSString stringWithFormat:@"%@ (%@)", label, counts[label]]];
     return formatted;
@@ -200,7 +200,7 @@ NSString *CubicHitchSummary(NSDictionary *analysis) {
     NSNumber *matched = number(analysis[@"intervalsWithJavaSamples"], 0, rows.count) ?: @0;
     [text appendFormat:@"Java sampling %@. %@ rounds in the capture window. %@ of these %lu intervals contained a complete sampling round.\n",
         javaStatus, rounds, matched, (unsigned long)rows.count];
-    NSArray *work = observedWork(analysis[@"windowRoundCountByJavaWork"], rounds.unsignedIntegerValue, YES);
+    NSArray *work = observedWork(analysis[@"windowRoundCountByJavaWork"], rounds.unsignedIntegerValue);
     if (work.count)
         [text appendFormat:@"Java observations across the full capture, counted once per label per round\n%@\n", [work componentsJoinedByString:@", "]];
     NSString *pauseStatus = statusString(analysis[@"jvmPauseLogStatus"], @[@"recorded", @"partial", @"truncated"]);
@@ -224,9 +224,9 @@ NSString *CubicHitchSummary(NSDictionary *analysis) {
         if (egl) [text appendFormat:@"   EGL swap %.1f ms", egl.doubleValue];
         if (cpu) [text appendFormat:@"   render-thread CPU %.1f ms", cpu.doubleValue];
         [text appendString:@"\n"];
-        NSArray *labels = observedWork(row[@"observedJavaWork"], 1200, NO);
+        NSArray *labels = observedWork(row[@"observedJavaWork"], 1200);
         if (labels.count) {
-            [text appendFormat:@"  Java sampled %@\n", [labels componentsJoinedByString:@", "]];
+            [text appendFormat:@"  Java observations by number of rounds\n    %@\n", [labels componentsJoinedByString:@", "]];
         } else if (!number(row[@"javaRoundsInside"], 1, 1200)) {
             [text appendString:@"  No complete Java sample in this interval.\n"];
         }

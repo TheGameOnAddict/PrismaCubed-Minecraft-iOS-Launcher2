@@ -28,7 +28,8 @@ final class CaptureSampler implements Runnable {
     private final Path marker;
     private final StringBuilder samples = new StringBuilder();
     private final List<Long> primary = new ArrayList<>(), workers = new ArrayList<>(), maps = new ArrayList<>();
-    private int workerCursor, mapCursor, rounds;
+    private final List<Long> c2meWorkers = new ArrayList<>(), c2meStorage = new ArrayList<>();
+    private int workerCursor, mapCursor, c2meWorkerCursor, storageCursor, rounds;
     private long startMs;
 
     private CaptureSampler(Path marker) {
@@ -116,6 +117,7 @@ final class CaptureSampler implements Runnable {
 
     private void refresh(ThreadMXBean bean) {
         primary.clear(); workers.clear(); maps.clear();
+        c2meWorkers.clear(); c2meStorage.clear();
         for (ThreadInfo info : bean.getThreadInfo(bean.getAllThreadIds(), 0)) {
             if (info == null) continue;
             String role = role(info.getThreadName());
@@ -123,19 +125,27 @@ final class CaptureSampler implements Runnable {
                 if (primary.size() < 3) primary.add(info.getThreadId());
             } else if ("map-worker".equals(role)) maps.add(info.getThreadId());
             else if ("worker".equals(role)) workers.add(info.getThreadId());
+            else if ("c2me-worker".equals(role)) c2meWorkers.add(info.getThreadId());
+            else if ("c2me-storage".equals(role)) c2meStorage.add(info.getThreadId());
         }
     }
 
     private long[] select() {
         List<Long> selected = new ArrayList<>(primary);
         mapCursor = rotate(selected, maps, mapCursor, MAX_MAP_THREADS);
-        workerCursor = rotate(selected, workers, workerCursor, MAX_WORKERS);
+        // Some C2ME builds start a storage thread per world/dimension. Keep one rotating
+        // storage slot so idle I/O threads cannot crowd out generation or vanilla workers.
+        int backgroundStart = selected.size();
+        storageCursor = rotate(selected, c2meStorage, storageCursor, 1);
+        c2meWorkerCursor = rotate(selected, c2meWorkers, c2meWorkerCursor, 2);
+        int remainingSlots = MAX_WORKERS - (selected.size() - backgroundStart);
+        workerCursor = rotate(selected, workers, workerCursor, remainingSlots);
         long[] ids = new long[selected.size()];
         for (int i = 0; i < ids.length; i++) ids[i] = selected.get(i);
         return ids;
     }
 
-    private static int rotate(List<Long> out, List<Long> candidates, int cursor, int limit) {
+    static int rotate(List<Long> out, List<Long> candidates, int cursor, int limit) {
         int size = candidates.size();
         if (size == 0) return 0;
         cursor %= size;
@@ -151,6 +161,8 @@ final class CaptureSampler implements Runnable {
         if (name.equals("render thread") || name.equals("client thread")) return "render";
         if (name.equals("server thread")) return "server";
         if (name.contains("journeymap") || name.contains("xaero") || name.contains("diorama")) return "map-worker";
+        if (name.startsWith("c2me worker #")) return "c2me-worker";
+        if (name.startsWith("c2me storage #")) return "c2me-storage";
         if (name.startsWith("worker-") || name.startsWith("forkjoinpool-") || name.startsWith("chunk")
                 || name.startsWith("io-worker") || name.contains("light engine") || name.startsWith("dh-")
                 || name.contains("embeddium") || name.contains("sodium")) return "worker";
@@ -165,24 +177,28 @@ final class CaptureSampler implements Runnable {
                 || "sleep".equals(top.getMethodName()) || "poll".equals(top.getMethodName())))
             return primary ? "waiting" : null;
 
-        boolean graphics = false;
+        String graphics = null;
         for (StackTraceElement frame : stack) {
             String c = frame.getClassName(), m = frame.getMethodName();
             if (c.startsWith("org.lwjgl.opengl.") || c.startsWith("org.lwjgl.vulkan.") || c.startsWith("org.lwjgl.glfw.")
                     || c.startsWith("com.mojang.blaze3d.platform.GlStateManager") || c.startsWith("com.mojang.blaze3d.systems.RenderSystem")) {
-                if (m.contains("SwapBuffers") || m.equals("flipFrame")) return "graphics-present";
-                graphics = true;
+                // flipFrame also polls input and drains queued render work.
+                if (m.equals("glfwSwapBuffers") || m.equals("nglfwSwapBuffers")) return "graphics-present";
+                if (graphics == null || "graphics-driver".equals(graphics)) graphics = graphicsWork(m);
             }
             if (c.startsWith("journeymap.") || c.startsWith("xaero.") || c.startsWith("dev.diorama.")) return "map-work";
-            if (c.startsWith("net.minecraft.world.level.lighting.") || c.startsWith("net.minecraft.world.chunk.light.")
+            if (c.startsWith("com.ishland.c2me.threading.lighting.") || c.startsWith("net.minecraft.world.level.lighting.") || c.startsWith("net.minecraft.world.chunk.light.")
                     || c.contains("ThreadedLevelLightEngine") || c.contains("ServerLightingProvider")
                     || c.contains(".starlight.common.light.") || id(c, "3568") || id(c, "3558") || id(c, "3560") || id(c, "3227")) return "lighting";
             if (c.contains("ChunkRenderDispatcher$RenderChunk$RebuildTask") || c.contains("ChunkBuilder$BuiltChunk$RebuildTask")
                     || c.contains(".render.chunk.compile.") || c.contains(".render.chunk.tasks.")
                     || id(c, "846$class_851$class_4578")) return "chunk-meshing";
-            if (c.startsWith("net.minecraft.world.level.levelgen.") || c.startsWith("net.minecraft.world.gen.")
+            if (c.startsWith("com.ishland.c2me.opts.worldgen.") || c.startsWith("com.ishland.c2me.threading.worldgen.")
+                    || c.startsWith("net.minecraft.world.level.levelgen.") || c.startsWith("net.minecraft.world.gen.")
                     || c.contains(".level.chunk.ChunkGenerator") || id(c, "3754") || id(c, "2794")) return "chunk-generation";
-            if (c.startsWith("net.minecraft.world.level.chunk.storage.") || c.startsWith("net.minecraft.world.storage.")
+            if (c.startsWith("com.ishland.c2me.rewrites.chunkio.") || c.startsWith("com.ishland.c2me.threading.chunkio.")
+                    || c.startsWith("com.ishland.c2me.rewrites.chunk_serializer.") || c.startsWith("com.ishland.c2me.opts.chunkio.")
+                    || c.startsWith("net.minecraft.world.level.chunk.storage.") || c.startsWith("net.minecraft.world.storage.")
                     || id(c, "2852") || id(c, "2861") || id(c, "4698")) return "chunk-io";
             if (c.startsWith("net.minecraft.server.level.ChunkMap") || c.startsWith("net.minecraft.server.level.ServerChunkCache")
                     || c.startsWith("net.minecraft.server.level.ChunkHolder") || id(c, "3898")) return "chunk-loading";
@@ -194,7 +210,43 @@ final class CaptureSampler implements Runnable {
                     || id(c, "1297") || id(c, "1309")) && (m.equals("tick") || m.equals("aiStep")
                     || m.equals("m_8119_") || m.equals("m_8107_") || m.equals("method_5773")))) return "entity-ticking";
         }
-        return graphics ? "graphics-driver" : "other";
+        return graphics != null ? graphics : "other";
+    }
+
+    // The nearest specific API call is the fallback when no game subsystem is visible.
+    // LWJGL uses gl*/ngl*, and Mojang wraps several calls with an _gl* prefix.
+    private static String graphicsWork(String method) {
+        if (method.equals("_drawElements") || method.equals("drawElements")) return "graphics-draw";
+        if (method.equals("_texImage2D") || method.equals("_texSubImage2D")) return "graphics-texture-upload";
+        if (method.equals("_glBlitFrameBuffer")) return "graphics-blit";
+
+        int offset;
+        if (method.startsWith("gl")) offset = 2;
+        else if (method.startsWith("ngl") || method.startsWith("_gl")) offset = 3;
+        else if (method.startsWith("vk")) offset = 2;
+        else if (method.startsWith("nvk")) offset = 3;
+        else return "graphics-driver";
+
+        if (method.startsWith("DrawArrays", offset) || method.startsWith("DrawElements", offset)
+                || method.startsWith("DrawRangeElements", offset) || method.startsWith("MultiDraw", offset)
+                || method.startsWith("CmdDraw", offset)) return "graphics-draw";
+        if (method.startsWith("BufferData", offset) || method.startsWith("BufferSubData", offset)
+                || method.startsWith("NamedBufferData", offset) || method.startsWith("NamedBufferSubData", offset)
+                || method.startsWith("CmdUpdateBuffer", offset)) return "graphics-buffer-upload";
+        if (method.startsWith("TexImage", offset) || method.startsWith("TexSubImage", offset)
+                || method.startsWith("TextureSubImage", offset) || method.startsWith("CompressedTexImage", offset)
+                || method.startsWith("CompressedTexSubImage", offset) || method.startsWith("CompressedTextureSubImage", offset))
+            return "graphics-texture-upload";
+        if (method.startsWith("CompileShader", offset) || method.startsWith("LinkProgram", offset)
+                || method.startsWith("ShaderSource", offset) || method.startsWith("CreateGraphicsPipelines", offset)
+                || method.startsWith("CreateComputePipelines", offset)) return "graphics-shader";
+        if (method.startsWith("ClientWaitSync", offset) || method.startsWith("WaitSync", offset)
+                || method.equals("glFinish") || method.equals("nglFinish") || method.equals("_glFinish")
+                || method.startsWith("WaitForFences", offset) || method.startsWith("QueueWaitIdle", offset)
+                || method.startsWith("DeviceWaitIdle", offset)) return "graphics-sync";
+        if (method.startsWith("BlitFramebuffer", offset) || method.startsWith("BlitNamedFramebuffer", offset)
+                || method.startsWith("CmdBlitImage", offset)) return "graphics-blit";
+        return "graphics-driver";
     }
 
     // Intermediary owners from 1.20.1 Yarn. Match inner classes while excluding numeric prefixes.

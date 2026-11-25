@@ -384,11 +384,12 @@ void ame185_dispatchToMainSelfHealing(dispatch_block_t block, NSString *label) {
 // Task223：后台 GPU 提交禁令的渲染线程驻车（机制与病历见 utils.h 注释）。
 // ============================================================================
 #include <pthread.h>
+#include <stdatomic.h>
 
 static pthread_mutex_t ame223_park_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t ame223_park_cond = PTHREAD_COND_INITIALIZER;
-static volatile BOOL ame223_parked = NO;
-static volatile BOOL ame223_park_logged = NO;
+static atomic_bool ame223_parked;
+static BOOL ame223_park_logged = NO;  // Protected by ame223_park_mutex.
 
 void ame223_bg_park_begin(void) {
     // 主线程（UIKit 生命周期回调）调用。置位即可——渲染线程在下一次
@@ -414,8 +415,9 @@ void ame223_bg_park_end(void) {
 }
 
 void ame223_bg_park_wait(const char *swapSite) {
-    // 交换边界（渲染线程）调用。无驻车时 = 一次原子读 + 立即返回（快路径
-    // 开销：一帧一次锁检查，fsr 心跳的 6ms 粒度下不可测）。
+    // The foreground path only reads the flag. Recheck under the mutex because
+    // the app may resume before this thread reaches the condition variable.
+    if (!atomic_load_explicit(&ame223_parked, memory_order_acquire)) return;
     pthread_mutex_lock(&ame223_park_mutex);
     if (ame223_parked) {
         if (!ame223_park_logged) {
