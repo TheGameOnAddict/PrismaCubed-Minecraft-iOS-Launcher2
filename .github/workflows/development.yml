@@ -7,7 +7,7 @@ permissions:
   actions: read
 
 env:
-  APP_REVISION: e5dd5d41d95d2c9df45d5240caade6ef0a5af83d
+  APP_REVISION: f3bcab1d1e11665c05b52cf9f3e73696e3a24319
 
 jobs:
   build:
@@ -32,27 +32,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '8'
-      - name: Build the launcher jar shared by all game JREs
+      - name: Build the iOS GLFW bridges
         working-directory: source
         shell: bash
         run: |
           set -euo pipefail
-          "$JAVA_HOME/bin/javac" -version
-          python3 scripts/test_capture_sampler.py
-          make -C JavaApp -j2 BOOTJDK="$JAVA_HOME/bin" build/launcher.jar
-          python3 - <<'PYJ'
-          from pathlib import Path
-          import zipfile
-          with zipfile.ZipFile(Path("JavaApp/build/launcher.jar")) as z:
-              assert z.testzip() is None
-              sampler = "net/kdt/pojavlaunch/CaptureSampler.class"
-              entry = z.read("net/kdt/pojavlaunch/PojavLauncher.class")
-              assert b"net/kdt/pojavlaunch/CaptureSampler" in entry
-              assert b"prismacubic.diagnostics.capture" in entry
-              for k in (sampler, "net/kdt/pojavlaunch/PojavLauncher.class"):
-                  cls = z.read(k)
-                  assert cls[:4] == bytes.fromhex("CAFEBABE") and int.from_bytes(cls[6:8], "big") == 52
-          PYJ
+          make -C JavaApp -j2 BOOTJDK="$JAVA_HOME/bin" build/lwjgl-333.jar build/lwjgl-341.jar
       - name: Build production arm64 launcher target
         working-directory: source
         env:
@@ -82,7 +67,7 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CROSSCOMPILING=true -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
             -DCMAKE_OSX_SYSROOT="$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=feature/gameplay-fps-and-upscaling \
+            -DCMAKE_C_FLAGS="-arch arm64" -DCONFIG_BRANCH=fix/forge-context-version \
             -DCONFIG_COMMIT="${APP_REVISION:0:7}" -DCONFIG_RELEASE=0
           cmake --build Natives/build --config Debug --target AngelAuraAmethyst --parallel "$(sysctl -n hw.logicalcpu)"
           exe=Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
@@ -91,18 +76,18 @@ jobs:
           python3 - "$exe" <<'PY'
           from pathlib import Path
           import sys
-          assert b'e5dd5d4' in Path(sys.argv[1]).read_bytes()
+          assert b'f3bcab1' in Path(sys.argv[1]).read_bytes()
           PY
       - name: Save native executable for packaging retries
         uses: actions/upload-artifact@v4
         with:
-          name: prisma-launcher-e5dd5d4
+          name: prisma-launcher-f3bcab1
           path: source/Natives/build/AngelAuraAmethyst.app/AngelAuraAmethyst
       - name: Download last complete app payload
         uses: actions/download-artifact@v4
         with:
-          name: PrismaCubic-ed583a1-iPhone
-          run-id: 45676977215
+          name: PrismaCubic-e5dd5d4-iPhone
+          run-id: 45681221563
           github-token: ${{ github.token }}
           path: baseline
       - name: Sign and verify launcher against phone-tested build
@@ -112,7 +97,7 @@ jobs:
           archive=(baseline/*.ipa)
           test "${#archive[@]}" = 1
           base="$GITHUB_WORKSPACE/${archive[0]}"
-          expected=326809c2f2d662952a74bad6e21faf69052fe7d9b9f7d89caa8d6235767b64e7
+          expected=8fa353046a0f0351f34b6823c15ed95e15cde3ffb58cf06000a7a9bd9900e93c
           test "$(shasum -a 256 "$base" | cut -d ' ' -f1)" = "$expected"
           mkdir -p "$RUNNER_TEMP/repacked" result
           ditto -x -k "$base" "$RUNNER_TEMP/repacked"
@@ -129,50 +114,19 @@ jobs:
           diff -u "$RUNNER_TEMP/baseline.linkage" "$RUNNER_TEMP/current.linkage"
           codesign --verify --verbose "$driver"
           files=("$exe" "$app/_CodeSignature")
-          cp "$GITHUB_WORKSPACE/source/JavaApp/build/launcher.jar" "$app/libs/launcher.jar"
-          files+=("$app/libs/launcher.jar")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/de.lproj/Localizable.strings" "$app/de.lproj/Localizable.strings"
-          files+=("$app/de.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/en.lproj/Localizable.strings" "$app/en.lproj/Localizable.strings"
-          files+=("$app/en.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/en.lproj/help-faq.json" "$app/en.lproj/help-faq.json"
-          files+=("$app/en.lproj/help-faq.json")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/es.lproj/Localizable.strings" "$app/es.lproj/Localizable.strings"
-          files+=("$app/es.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/fr.lproj/Localizable.strings" "$app/fr.lproj/Localizable.strings"
-          files+=("$app/fr.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/help-faq.json" "$app/help-faq.json"
-          files+=("$app/help-faq.json")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/it.lproj/Localizable.strings" "$app/it.lproj/Localizable.strings"
-          files+=("$app/it.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/ja.lproj/Localizable.strings" "$app/ja.lproj/Localizable.strings"
-          files+=("$app/ja.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/km.lproj/Localizable.strings" "$app/km.lproj/Localizable.strings"
-          files+=("$app/km.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/ko.lproj/Localizable.strings" "$app/ko.lproj/Localizable.strings"
-          files+=("$app/ko.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/pt-BR.lproj/Localizable.strings" "$app/pt-BR.lproj/Localizable.strings"
-          files+=("$app/pt-BR.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/ru.lproj/Localizable.strings" "$app/ru.lproj/Localizable.strings"
-          files+=("$app/ru.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-CN.lproj/Localizable.strings" "$app/zh-CN.lproj/Localizable.strings"
-          files+=("$app/zh-CN.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-CN.lproj/help-faq.json" "$app/zh-CN.lproj/help-faq.json"
-          files+=("$app/zh-CN.lproj/help-faq.json")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-Hans.lproj/Localizable.strings" "$app/zh-Hans.lproj/Localizable.strings"
-          files+=("$app/zh-Hans.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-Hant.lproj/Localizable.strings" "$app/zh-Hant.lproj/Localizable.strings"
-          files+=("$app/zh-Hant.lproj/Localizable.strings")
-          cp "$GITHUB_WORKSPACE/source/Natives/resources/zh-Hant.lproj/help-faq.json" "$app/zh-Hant.lproj/help-faq.json"
-          files+=("$app/zh-Hant.lproj/help-faq.json")
+          for version in 333 341; do
+            jarPath="$app/libs/lwjgl-$version/lwjgl.jar"
+            cp "$GITHUB_WORKSPACE/source/JavaApp/build/lwjgl-$version.jar" "$jarPath"
+            files+=("$jarPath")
+          done
           codesign --force --sign - --timestamp=none --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
           codesign --verify --verbose "$app"
           python3 "$helper" "$exe" "$RUNNER_TEMP/final.plist"
           cmp "$RUNNER_TEMP/entitlements.plist" "$RUNNER_TEMP/final.plist"
           dest="$GITHUB_WORKSPACE/result"
-          zip -qry "$dest/PrismaCubic-e5dd5d4.ipa" Payload
+          zip -qry "$dest/PrismaCubic-f3bcab1.ipa" Payload
           zip -qry "$dest/signed-overlay.zip" "${files[@]}"
-          python3 - "$dest/PrismaCubic-e5dd5d4.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
+          python3 - "$dest/PrismaCubic-f3bcab1.ipa" "$base" "$dest/signed-overlay.zip" <<'PY'
           from pathlib import Path
           import hashlib, io, os, sys, zipfile
           out, baseline, overlay = map(Path, sys.argv[1:])
@@ -184,54 +138,67 @@ jobs:
                   if not name.endswith('/'): assert a.read(name) == o.read(name)
               driver = 'Payload/AngelAuraAmethyst.app/Frameworks/libMobileGL.dylib'
               assert a.read(driver) == b.read(driver)
-              jar = 'Payload/AngelAuraAmethyst.app/libs/launcher.jar'
-              assert a.read(jar) == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/JavaApp/build/launcher.jar").read_bytes()
-              with zipfile.ZipFile(io.BytesIO(a.read(jar))) as new, zipfile.ZipFile(io.BytesIO(b.read(jar))) as old:
-                  classes = lambda z: {i.filename for i in z.infolist() if i.filename.endswith(".class")}
-                  assert classes(old).issubset(classes(new))
-                  name = "net/kdt/pojavlaunch/PojavLauncher.class"
-                  assert new.read(name) != old.read(name)
-                  assert b"[PojavLauncher] Game frame limit=" in new.read(name)
-                  assert int.from_bytes(new.read(name)[6:8], "big") == 52
-              assert a.read("Payload/AngelAuraAmethyst.app/de.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/de.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/en.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/en.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/en.lproj/help-faq.json") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/en.lproj/help-faq.json").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/es.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/es.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/fr.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/fr.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/help-faq.json") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/help-faq.json").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/it.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/it.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/ja.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/ja.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/km.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/km.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/ko.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/ko.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/pt-BR.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/pt-BR.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/ru.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/ru.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/zh-CN.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-CN.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/zh-CN.lproj/help-faq.json") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-CN.lproj/help-faq.json").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/zh-Hans.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-Hans.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/zh-Hant.lproj/Localizable.strings") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-Hant.lproj/Localizable.strings").read_bytes()
-              assert a.read("Payload/AngelAuraAmethyst.app/zh-Hant.lproj/help-faq.json") == (Path(os.environ["GITHUB_WORKSPACE"]) / "source/Natives/resources/zh-Hant.lproj/help-faq.json").read_bytes()
+              for version in ('333','341'):
+                  jar = f'Payload/AngelAuraAmethyst.app/libs/lwjgl-{version}/lwjgl.jar'
+                  assert a.read(jar) == (Path(os.environ['GITHUB_WORKSPACE']) / f'source/JavaApp/build/lwjgl-{version}.jar').read_bytes()
+                  with zipfile.ZipFile(io.BytesIO(a.read(jar))) as current, zipfile.ZipFile(io.BytesIO(b.read(jar))) as old:
+                      assert current.testzip() is None
+                      classes = lambda z: {i.filename for i in z.infolist() if i.filename.endswith('.class')}
+                      assert classes(old).issubset(classes(current)), (version, sorted(classes(old)-classes(current)))
+                      name = 'org/lwjgl/glfw/GLFW.class'
+                      cls = current.read(name)
+                      assert cls != old.read(name) and b'nglfwGetCreatedContextVersion' in cls
+                      assert int.from_bytes(cls[6:8], 'big') == 52
               assert b'Ordered texture upload deferred: an earlier draw is still pending' in a.read(driver)
-              assert b'e5dd5d4' in a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
-              exe = a.read('Payload/AngelAuraAmethyst.app/AngelAuraAmethyst')
-              for stamp in (b'prisma.perf.benchmark', b'prisma.perf.benchmark_description', b'glClientWaitSync', b'preference.title.cap_at_120_fps', b'prisma.upscaling.output_resolution', b'game.stats.render_present'):
-                  assert stamp in exe, stamp
-              for locale in ('en', 'zh-Hans', 'zh-Hant'):
-                  localized = a.read(f'Payload/AngelAuraAmethyst.app/{locale}.lproj/Localizable.strings')
-                  for key in (b'prisma.perf.benchmark', b'prisma.perf.benchmark_description', b'prisma.perf.benchmark_rate'):
-                      assert key in localized
-              with zipfile.ZipFile(io.BytesIO(a.read(jar))) as launcher:
-                  sampler = launcher.read('net/kdt/pojavlaunch/CaptureSampler.class')
-                  assert b'c2me-storage' in sampler and b'graphics-buffer-upload' in sampler
           for path in (out,overlay):
               print(path.name,hashlib.sha256(path.read_bytes()).hexdigest())
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismaCubic-e5dd5d4-iPhone
-          path: result/PrismaCubic-e5dd5d4.ipa
+          name: PrismaCubic-f3bcab1-iPhone
+          path: result/PrismaCubic-f3bcab1.ipa
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - name: Save release checksum
+        id: checksum
+        run: |
+          digest=$(shasum -a256 result/PrismaCubic-f3bcab1.ipa | cut -d ' ' -f1)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+    outputs:
+      checksum: ${{ steps.checksum.outputs.digest }}
+  publish:
+    needs: build
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: PrismaCubic-e5dd5d4-signed-overlay
-          path: result/signed-overlay.zip
-          if-no-files-found: error
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: PrismaCubic-f3bcab1-iPhone
+          path: package
+      - name: Publish verified separate test IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DIGEST: ${{ needs.build.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          ipa=PrismaCubic-f3bcab1.ipa
+          tag=test-bettermc-gl-f3bcab1
+          echo "$DIGEST  package/$ipa" | sha256sum -c -
+          echo >> .github/bettermc-release.md
+          echo "IPA SHA-256 \`$DIGEST\`" >> .github/bettermc-release.md
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$APP_REVISION" --title 'Better MC Forge launch · iPhone test' --prerelease --latest=false --draft --notes-file .github/bettermc-release.md
+          fi
+          asset_filter=".assets[] | select(.name==\"$ipa\") | .digest"
+          existing=$(gh release view "$tag" --json assets --jq "$asset_filter")
+          if [ -z "$existing" ]; then
+            gh release upload "$tag" "package/$ipa"
+          fi
+          test "$(gh release view "$tag" --json assets --jq "$asset_filter")" = "sha256:$DIGEST"
+          gh release edit "$tag" --draft=false --prerelease --latest=false
