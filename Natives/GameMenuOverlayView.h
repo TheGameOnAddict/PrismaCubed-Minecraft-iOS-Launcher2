@@ -32,6 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 更新 FPS 和内存显示（由游戏循环驱动，调用频率建议 500ms~1s）
 /// 必须在主线程调用
 - (void)updateFPS:(NSInteger)fps memoryUsageMB:(double)memoryMB;
+- (void)updateFPS:(NSInteger)fps presentedPerSecond:(NSInteger)presented memoryUsageMB:(double)memoryMB;
 
 /// 从偏好加载持久化的位置
 - (void)restorePositions;

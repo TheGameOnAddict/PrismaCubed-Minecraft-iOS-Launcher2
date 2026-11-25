@@ -279,8 +279,8 @@
 "preference.title.resolution" = "分辨率缩放 (%)";
 "preference.detail.resolution" = "降低分辨率会影响游戏内 UI 大小，也可能会提升FPS。默认分辨率为屏幕的分辨率，此功能可能不适用于新版 Minecraft。";
 
-"preference.title.disable_game_vsync" = "解锁帧率（关闭垂直同步）";
-"preference.detail.disable_game_vsync" = "Minecraft 默认开启垂直同步，会把帧率锁在屏幕刷新率（60Hz 锁 60、120Hz 锁 120）。开启后启动器会强制关闭垂直同步，让游戏帧率可超过屏幕刷新率。如需省电降温或偏好垂直同步可关闭。";
+"preference.title.disable_game_vsync" = "关闭 Minecraft 垂直同步";
+"preference.detail.disable_game_vsync" = "启用帧率限制时控制 Minecraft 的垂直同步。不限帧率模式会自动关闭垂直同步。";
 
 "preference.title.performance_hud" = "显示性能 HUD";
 "preference.detail.performance_hud" = "当可用时显示性能监控覆盖层。该功能仅支持 iOS 16 及以上系统和 Angle 渲染器。";
@@ -327,13 +327,14 @@
 "preference.title.mg_custom_gl_version-4.4" = "OpenGL 4.4";
 "preference.title.mg_custom_gl_version-4.5" = "OpenGL 4.5";
 "preference.title.mg_custom_gl_version-4.6" = "OpenGL 4.6";
-"preference.title.fsr1_setting" = "FSR 1.0 超分辨率";
-"preference.detail.fsr1_setting" = "AMD FidelityFX Super Resolution 1.0 超分辨率。选择档位即自动降低渲染分辨率（超高品质 77%／高品质 67%／均衡 59%／性能优先 50%），再由渲染器放大回全分辨率表面。仅对 MobileGlues（内置 FSR1）与 Zink（EASU 升采样）渲染器生效；mg 系列（Vulkan／ES／OpenGL 4.0 后端）、MoltenVK、gl4es 均不支持启动器侧 FSR——这些渲染器需要画质／帧率权衡时，请改用视频设置中的「分辨率」缩放。";
-"preference.title.mg_fsr1_setting-0" = "关闭";
-"preference.title.mg_fsr1_setting-1" = "超高品质";
-"preference.title.mg_fsr1_setting-2" = "高品质";
-"preference.title.mg_fsr1_setting-3" = "均衡";
-"preference.title.mg_fsr1_setting-4" = "性能优先";
+"game.menu.resolution.dimensions" = "渲染 %d×%d → 输出 %d×%d";
+"preference.title.fsr1_setting" = "超分辨率";
+"preference.detail.fsr1_setting" = "Minecraft 按所选百分比绘制输出画面的宽和高，再将画面放大。选择「高品质」并重启游戏即可测试。";
+"preference.title.mg_fsr1_setting-0" = "关闭 (100%)";
+"preference.title.mg_fsr1_setting-1" = "超高品质 (77%)";
+"preference.title.mg_fsr1_setting-2" = "高品质 (67%)";
+"preference.title.mg_fsr1_setting-3" = "均衡 (59%)";
+"preference.title.mg_fsr1_setting-4" = "性能优先 (50%)";
 "preference.title.fsr_rcas_sharpness" = "FSR 锐化强度";
 "preference.detail.fsr_rcas_sharpness" = "FSR 放大后追加的 RCAS 锐化强度（mpv 口径）。默认 0.2，越大越锐；关闭 = 仅放大不锐化。下次启动游戏时生效。";
 "preference.title.mg_fsr_rcas-0" = "关闭（仅放大）";
@@ -3770,7 +3771,8 @@
 "prisma.ui.rename.world" = "重命名存档";
 "prisma.ui.renderer.global.default" = "渲染器（全局默认）";
 "prisma.ui.renderer.override" = "渲染器覆写";
-"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance" = "渲染分辨率百分比（各实例可单独覆盖）";
+"prisma.upscaling.output_resolution" = "输出分辨率";
+"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance" = "100% 使用屏幕原生分辨率。配置可单独覆盖此设置。";
 "prisma.ui.research.shows.players.love.making.choices.so.we.let.you.vote.on.eve" = "研究表明：玩家最喜欢作出选择，所以我们让你为一切投票！";
 "prisma.ui.reset.the.current.control.layout.to.the.factory.default.this.takes.e" = "将当前控制布局重置为出厂布局 custom.json，下次进入游戏生效。";
 "prisma.ui.restore.all.custom.preferences.to.their.defaults" = "所有自定义首选项恢复出厂";
@@ -3889,7 +3891,7 @@
 "Test Launch" = "测试启动";
 "Share Latest Report" = "分享最新报告";
 "prisma.perf.record" = "记录 60 秒";
-"prisma.perf.instructions" = "进入测试场景后打开游戏内齿轮菜单。选择「记录 60 秒」测试游戏表现，或在 Magma 上选择「测试渲染帧率」。返回此处可分享报告。";
+"prisma.perf.instructions" = "进入测试场景后打开游戏内齿轮菜单。「记录 60 秒」记录游戏表现。关闭帧率限制后，受支持的 Magma 会话还可以测试渲染帧率。返回此处可分享报告。";
 "prisma.perf.benchmark" = "测试渲染帧率";
 "prisma.perf.stop_benchmark" = "停止渲染测试";
 "prisma.perf.benchmark_result" = "渲染测试结果";
@@ -3898,6 +3900,9 @@
 "prisma.perf.benchmark_rate" = "GPU 每秒完成 %.1f 帧 · 预览每秒交换 %.1f 次 · 显示屏最高 %ld Hz";
 "prisma.perf.benchmark_unavailable" = "无法测量 GPU 完成的帧数。启动器已恢复正常画面输出。";
 "prisma.perf.benchmark_interrupted" = "渲染测试已提前停止。报告中保存了已记录的帧数。";
+"preference.title.cap_at_120_fps" = "限制为 120 FPS";
+"preference.detail.cap_at_120_fps" = "将游戏帧率限制为 120 FPS 和屏幕最高刷新率中的较低值。关闭后，支持 Magma 的设备可不限制渲染帧率。下次启动生效。";
+"game.stats.render_present" = "渲染 %ld FPS | 输出 %ld/s | 内存 %.0fMB";
 "prisma.perf.share" = "分享测试报告";
 "Performance report saved" = "性能报告已保存";
 "Recording starts in 3 seconds" = "3 秒后开始记录";

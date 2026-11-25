@@ -5,6 +5,7 @@
 #import "CubicRuntimeInfo.h"
 #import "CubicDiagnostics.h"
 #import "PLProfiles.h"
+#import "LauncherPreferences.h"
 #import "utils.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <sys/utsname.h>
@@ -323,6 +324,7 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
         test.report[@"status"] = @"waiting_for_scene";
         test.report[@"profileName"] = PLProfiles.current.selectedProfile[@"name"] ?: profile;
         test.report[@"configuredRenderer"] = [PLProfiles resolveKeyForCurrentProfile:@"renderer"] ?: @"auto";
+        test.report[@"gameplayFPSCapEnabled"] = @(getPrefBool(@"video.cap_at_120_fps"));
         test.report[@"gameSurfaceAfterSeconds"] = @(NSProcessInfo.processInfo.systemUptime - test.launchUptime);
         [test save];
     }
@@ -359,7 +361,8 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 
 - (BOOL)beginCaptureWithBenchmark:(BOOL)benchmark {
     if (self.recording || self.report[@"frameTiming"] || (benchmark &&
-        (!pojavSupportsRenderBenchmark() || UIApplication.sharedApplication.applicationState != UIApplicationStateActive))) return NO;
+        ([self.report[@"gameplayFPSCapEnabled"] boolValue] || !pojavSupportsRenderBenchmark() ||
+         UIApplication.sharedApplication.applicationState != UIApplicationStateActive))) return NO;
     self.renderBenchmark = benchmark;
     self.report[@"captureMode"] = benchmark ? @"magma-render-throughput" : @"gameplay";
     self.report[@"status"] = @"recording_partial";
@@ -389,7 +392,8 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
 - (void)background:(NSNotification *)note { [self interrupt]; }
 
 - (BOOL)showsRenderBenchmark {
-    return self.renderBenchmark || (!self.recording && !self.report[@"frameTiming"] && pojavSupportsRenderBenchmark());
+    return self.renderBenchmark || (!self.recording && !self.report[@"frameTiming"] &&
+        ![self.report[@"gameplayFPSCapEnabled"] boolValue] && pojavSupportsRenderBenchmark());
 }
 
 - (NSString *)renderBenchmarkMenuTitle {
@@ -499,7 +503,8 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     return finished;
 }
 
-- (BOOL)tickWidth:(int)width height:(int)height memoryMiB:(double)memory {
+- (BOOL)tickWidth:(int)width height:(int)height memoryMiB:(double)memory
+        renderFPS:(NSInteger)renderFPS presentedPerSecond:(NSInteger)presented {
     if (!self.recording) {
         // A test can crash while loading or exploring, before Record is tapped.
         // Persist the first confirmed renderer and any later fallback in that window.
@@ -518,6 +523,10 @@ static NSDictionary *sceneContext(NSString *directory, NSDate *launchDate) {
     NSMutableDictionary *sample = [@{@"elapsedSeconds":@(s.elapsed), @"width":@(width), @"height":@(height),
         @"footprintMiB":@(memory), @"thermal":state < thermal.count ? thermal[state] : @"unknown",
         @"lowPower":@(NSProcessInfo.processInfo.lowPowerModeEnabled)} mutableCopy];
+    if (presented >= 0 && !s.renderBenchmark) {
+        sample[@"magmaRenderFPS"] = @(renderFPS);
+        sample[@"magmaPresentSwapsPerSecond"] = @(presented);
+    }
     // Metal allocations can overlap the process footprint on unified-memory devices.
     if (self.metalDevice) sample[@"metalAllocatedMiB"] = @(self.metalDevice.currentAllocatedSize / 1048576.0);
     if (@available(iOS 13.0, *)) {

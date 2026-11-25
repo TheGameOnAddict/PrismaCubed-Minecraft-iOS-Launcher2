@@ -437,6 +437,9 @@ void ame_egl_swap_phase_stats(unsigned int *presentAvgMs, unsigned int *presentM
 // 单一事实源。Vulkan 路径恒为假（MoltenVK 自管 drawableSize，行为不变）。
 bool ame_gl_surface_owns_layer();
 bool pojavSupportsRenderBenchmark(void);
+void pojavConfigureGameplayFramerate(bool capEnabled, unsigned panelMaxHz, bool active);
+bool pojavUncappedGameplayActive(void);
+unsigned int pojavGetAndResetMagmaExtraFrames(void);
 // Task 53：EGL surface 与 MC viewport 几何失配（转置锁死且重对齐未治愈）
 // 期间为真（gl_bridge.m 实现，交换路径逐帧刷新）。updateSavedResolution
 // 据此停写 drawableSize——失配期由 Task52 guard 以 surface 尺寸独占写权

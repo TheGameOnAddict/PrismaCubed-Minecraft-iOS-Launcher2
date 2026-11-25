@@ -89,19 +89,7 @@ void init_loadDefaultEnv() {
         // 有助于确认 Vulkan 模式下 present mode 是否为 IMMEDIATE
         setenv("MVK_CONFIG_PERFORMANCE_TRACKING", "1", 1);
         setenv("MVK_CONFIG_LOG_LEVEL", "2", 1); // 仍然抑制 info 级别，但 performance log 会输出
-        // 尝试强制 present mode 为 IMMEDIATE（不等 vsync）。
-        //
-        // 核实结论（升级到 MoltenVK 1.4.2 时对比二进制确认）：
-        // MVK_CONFIG_SWAPCHAIN_PRESENT_MODE 这个配置项在 MoltenVK 里并不存在——
-        // 1.2.9 与 1.4.2 的 MVK_CONFIG_* 列表中都没有它（只有
-        // MVK_CONFIG_SWAPCHAIN_MAG_FILTER_USE_NEAREST 等少数几项）。
-        // 因此下面这行 setenv 当前不会生效，保留它只为前向兼容，不要依赖它。
-        //
-        // Vulkan 模式的帧率解锁实际由另两层完成（见下方"三层机制"注释）：
-        //   1. Java 层：enableVsync=false + maxFps=260
-        //   2. EGL 层：eglSwapInterval(0) → zink 据此选 IMMEDIATE present mode
-        setenv("MVK_CONFIG_SWAPCHAIN_PRESENT_MODE", "0", 1);
-        NSLog(@"[JavaLauncher] MoltenVK performance tracking + IMMEDIATE present mode requested for VSync diagnosis");
+
     } else {
         setenv("MVK_CONFIG_LOG_LEVEL", "2", 1);
     }
@@ -109,64 +97,11 @@ void init_loadDefaultEnv() {
     // Runs JVM in a separate thread
     setenv("HACK_IGNORE_START_ON_FIRST_THREAD", "1", 1);
 
-    // 解锁帧率（关闭垂直同步）：读取启动器偏好，通过环境变量传递给 Java 层和 native 桥接层。
-    //
-    // 帧率解锁的三层机制（各层独立生效，互为兜底）：
-    //
-    // 1. Java 层（PojavLauncher.java）读取 POJAV_DISABLE_VSYNC=1 后：
-    //    a) 强制写 enableVsync=false → MC 不再调用 glfwSwapInterval(1)
-    //    b) 强制写 maxFps=260 → MC 1.16+ 源码中 maxFps>=260 视为"无限制"
-    //       （之前用 maxFps=0 会被 MC 当作无效值忽略，导致帧率仍被 maxFps=120 限制）
-    //
-    // 2. native 桥接层（egl_bridge.m pojavSwapInterval）读取 POJAV_DISABLE_VSYNC=1 后：
-    //    拦截 MC 的 glfwSwapInterval(1) 请求，强制改为 interval=0
-    //    （会记录每次拦截，帮助诊断 mod 运行时重新启用 VSync 的情况）
-    //
-    // 3. EGL 初始化层（gl_bridge.m gl_make_current）读取 POJAV_DISABLE_VSYNC=1 后：
-    //    在 eglMakeCurrent 成功后立即调用 eglSwapInterval(0)。
-    //    这是 zink 渲染器帧率解锁的关键——Mesa 21.0 的 zink 在延迟创建 Vulkan swapchain
-    //    时根据当前 eglSwapInterval 选择 present mode：
-    //      interval=0 → VK_PRESENT_MODE_IMMEDIATE_KHR（不等 vsync，帧率可超 60）
-    //      interval=1 → VK_PRESENT_MODE_FIFO_KHR（等 vsync，锁在屏幕刷新率）
-    //    如果等 MC 调用 glfwSwapInterval 时才设置，swapchain 可能已用 FIFO 创建，
-    //    Mesa 21.0 的 zink 不会动态重建 swapchain，导致帧率锁死在屏幕刷新率。
-    //
-    // 关于 MoltenVK 配置与 Vulkan 帧率解锁研究：
-    //   实际运行的 MoltenVK 版本为 1.4.3（Task309 恢复：用户实测 1.4.3 正常，
-    //   WINDOW_IN_USE 双崩元凶实为帧率解锁钩子已整体回退退役；
-    //   历史链 1.2.9 → 1.4.2 → 1.4.3（Task246 起，Task309 驳回 308 误伤回退））。
-    //   设备是否支持 IMMEDIATE present mode 由 MVKPhysicalDeviceMetalFeatures.presentModeImmediate
-    //   自动检测（大多数 iOS 设备支持）。
-    //
-    //   注意：MVK_CONFIG_SWAPCHAIN_PRESENT_MODE 并非 MoltenVK 的真实配置项，
-    //   1.2.9 / 1.4.2 中均未实现，设置它不会改变 present mode。
-    //
-    //   Vulkan 模式帧率解锁的多层机制：
-    //   1. MC 选项层：enableVsync=false + maxFps=260（MC 1.16+ 视 260 为 unlimited）
-    //   2. EGL 层：eglSwapInterval(0) —— zink（GL→Vulkan）据此在创建 swapchain
-    //      时选择 IMMEDIATE present mode，这是实际生效的那层
-    //   3. MC 26.2 兼容：同时写入 maxFps/maxFramerate/framerateLimit 多种选项名
-    //
-    // 各渲染器的帧率解锁效果：
-    // - zink（GL→Vulkan）：通过 eglSwapInterval(0) → IMMEDIATE present mode 完全解锁
-    // - Vulkan（LWJGL3）：无环境变量可用，依赖 MC 自身 enableVsync=false；
-    //                     若锁帧需配合渲染器切换到 zink 走 eglSwapInterval(0)
-    // - ANGLE Metal：eglSwapInterval(0) 让 ANGLE 不等 vsync，渲染线程不阻塞
-    // - ProMotion 设备：通过 CADisableMinimumFrameDurationOnPhone + preferredFrameRateRange 启用 120Hz
-    setenv("POJAV_DISABLE_VSYNC", getPrefBool(@"video.disable_game_vsync") ? "1" : "0", 1);
-
-    // 帧率解锁诊断日志：记录关键环境变量和偏好设置
-    // Task300-r2 勘误：maximumFramesPerSecond 在 iPhoneOS26.2 SDK 是只读属性
-    // （CI run 39225659390 "assignment to readonly property" 实锤）——它报告的是
-    // 面板能力上限（本机 60Hz，iPad Air M4 非 ProMotion），不可赋值也不可突破。
-    // 帧率解锁的完整能力面=渲染侧 presentMode=IMMEDIATE（ame298/300 双层钩子
-    // 已 Task309 整体回退退役，装机定性为 WINDOW_IN_USE 双崩元凶；zink 路径
-    // 不受影响），MC 侧 maxFps=260 与 EGL interval(0) 已在位；显示层无锁可解，
-    // 此处仅落诊断值供装机日志对单。
-    NSLog(@"[JavaLauncher] Framerate unlock configuration:");
-    NSLog(@"[JavaLauncher]   video.disable_game_vsync=%d", getPrefBool(@"video.disable_game_vsync"));
-    NSLog(@"[JavaLauncher]   POJAV_DISABLE_VSYNC=%s", getenv("POJAV_DISABLE_VSYNC"));
-    NSLog(@"[JavaLauncher]   UIScreen.maximumFramesPerSecond=%d (readonly panel capability)", (int)UIScreen.mainScreen.maximumFramesPerSecond);
+    // Magma may still have to present in FIFO mode. Its uncapped gameplay path
+    // handles that at the frame boundary. Other GL backends receive interval zero.
+    BOOL capped = getPrefBool(@"video.cap_at_120_fps");
+    BOOL disableVsync = !capped || getPrefBool(@"video.disable_game_vsync");
+    setenv("POJAV_DISABLE_VSYNC", disableVsync ? "1" : "0", 1);
 }
 
 void init_loadCustomEnv() {
@@ -3517,15 +3452,12 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     PUSH_MARGV_FORMAT(@"-Djna.boot.library.path=%@", frameworksPath);
 
     // ============================================================================
-    // 帧率解锁第四层：JVM 系统属性
-    // ============================================================================
-    // 某些 MC 版本/mod 可能通过 System.getProperty 读取帧率限制。
-    // 设置 -Dmax.fps=260 作为 options.txt 之外的额外兜底层。
-    // 不影响不读取此属性的版本。
-    if (getPrefBool(@"video.disable_game_vsync")) {
-        PUSH_MARGV_LITERAL("-Dmax.fps=260");
-        NSLog(@"[JavaLauncher] Added JVM property -Dmax.fps=260 (frame rate unlock layer 4)");
-    }
+    // Minecraft 1.20.1 uses 260 for Unlimited. Older clients keep their own
+    // maximum. The shared launcher writes the same value to the game options.
+    NSInteger screenHz = UIScreen.mainScreen.maximumFramesPerSecond;
+    NSInteger gameFpsLimit = getPrefBool(@"video.cap_at_120_fps") ? MIN(120, screenHz > 0 ? screenHz : 60) : 260;
+    PUSH_MARGV_FORMAT(@"-Dmax.fps=%ld", (long)gameFpsLimit);
+    NSLog(@"[JavaLauncher] Gameplay frame limit=%ld, panel maximum=%ld Hz", (long)gameFpsLimit, (long)screenHz);
 
     // ============================================================================
     // ZeroTier 联机 SOCKS5 代理注入 —— 暂时移除（排查启动崩溃）

@@ -1,6 +1,7 @@
 #import "CubicRuntimeInfo.h"
 #include "PerformanceFrames.h"
 #include "RenderBenchmark.h"
+#include "GameplayPresentation.h"
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import "SurfaceViewController.h"
@@ -257,6 +258,30 @@ static atomic_bool benchmarkSupported;
 static atomic_bool benchmarkProbePending;
 static RenderBenchmarkSync benchmarkSync;
 static _Thread_local RenderBenchmarkPreview benchmarkPreview;
+// Upper bits identify each lifecycle/configuration change. A late fence from
+// before backgrounding must never suppress the first frame after resuming.
+static _Atomic uint64_t gameplayPolicy, activeGameplayPolicy, failedGameplayPolicy;
+static atomic_uint extraGameplayFrames;
+static _Thread_local GameplayPresentation gameplayPresentation;
+
+void pojavConfigureGameplayFramerate(bool capEnabled, unsigned panelMaxHz, bool active) {
+    unsigned hz = active && !capEnabled && panelMaxHz <= 1000 ? panelMaxHz : 0;
+    uint64_t old = atomic_load(&gameplayPolicy);
+    while ((old & 0xffff) != hz) {
+        uint64_t next = ((old & ~UINT64_C(0xffff)) + 0x10000) | hz;
+        if (atomic_compare_exchange_weak(&gameplayPolicy, &old, next)) return;
+    }
+}
+
+bool pojavUncappedGameplayActive(void) {
+    uint64_t policy = atomic_load(&gameplayPolicy);
+    return (policy & 0xffff) && policy == atomic_load(&activeGameplayPolicy) &&
+        policy != atomic_load(&failedGameplayPolicy) && pojavSupportsRenderBenchmark();
+}
+
+unsigned int pojavGetAndResetMagmaExtraFrames(void) {
+    return atomic_exchange_explicit(&extraGameplayFrames, 0, memory_order_relaxed);
+}
 
 bool pojavSupportsRenderBenchmark(void) {
     return atomic_load_explicit(&benchmarkSupported, memory_order_acquire) && !pojavIsActualVulkanPath();
@@ -2256,7 +2281,6 @@ void gl_swap_buffers() {
     // （tick/事件泵/GL 编码）时长在此刻定格。先于卫兵/取证记录，卫兵与
     // 探针的耗时归入 neither（Task76 后探针帧极稀，可忽略）。
     uint64_t ame77_t_entry = ame77_now_us();
-    ame77_record_build(ame77_t_entry);
     // Task 119：MobileGL 预交换 FSR1 EASU——渲染器为 MobileGL 且 FSR 联动
     // 激活时，把 MC 的半分辨率帧升采样铺满默认帧缓冲（= MobileGL 内部
     // swapchain image），eglSwapBuffers 直呈。其余渲染器零开销返回。
@@ -2267,7 +2291,15 @@ void gl_swap_buffers() {
     // 失败：任意错误码都打（去掉旧版 EGL_BAD_SURFACE 过滤），前 10 次逐条打，
     // 之后每 100 次打一条，避免日志爆炸。
     uint64_t benchmarkWindow = PerformanceBenchmarkWindow();
+    uint64_t policy = atomic_load_explicit(&gameplayPolicy, memory_order_acquire);
+    unsigned targetHz = policy & 0xffff;
+    bool gameplay = !benchmarkWindow && targetHz && pojavSupportsRenderBenchmark() &&
+        policy != atomic_load_explicit(&failedGameplayPolicy, memory_order_relaxed);
     if (benchmarkWindow) {
+        if (gameplayPresentation.policy) {
+            gameplayPresentation = (GameplayPresentation){0};
+            atomic_store(&activeGameplayPolicy, 0);
+        }
         if (!pojavSupportsRenderBenchmark() || !RenderBenchmarkWaitForFrame(&benchmarkSync)) {
             // Resume regular visible presentation even if the driver timed out.
             PerformanceBenchmarkUnavailable(benchmarkWindow);
@@ -2281,6 +2313,27 @@ void gl_swap_buffers() {
             return;
         }
     }
+    if (gameplay && GameplayCanRenderAhead(&gameplayPresentation, policy, targetHz, ame77_t_entry)) {
+        uint64_t fenceStart = ame77_now_us();
+        uint64_t budgetNs = GameplayFenceBudgetNs(&gameplayPresentation, fenceStart);
+        if (budgetNs) {
+            RenderFenceResult result = RenderWaitForFrame(&benchmarkSync, budgetNs);
+            uint64_t fenceEnd = ame77_now_us();
+            if (result == RenderFencePending) {
+                gameplayPresentation.retryAfterUs = fenceEnd + 250000;
+            } else if (result == RenderFenceFailed) {
+                atomic_store(&failedGameplayPolicy, policy);
+                gameplay = false;
+                NSLog(@"[Magma] GPU fence unavailable. Returning to regular screen presentation.");
+            } else if (atomic_load(&gameplayPolicy) == policy && !PerformanceBenchmarkWindow() &&
+                       GameplayCanHoldCompletedFrame(&gameplayPresentation, fenceStart, fenceEnd)) {
+                atomic_fetch_add_explicit(&extraGameplayFrames, 1, memory_order_relaxed);
+                return;
+            }
+            ame223_bg_park_wait("after_gameplay_fence");
+        }
+    }
+    ame77_record_build(ame77_t_entry);
     ame_task41_swap_forensics(br_get_current()->gl.surface,
                               atomic_load(&g_eglSwapOK) + atomic_load(&g_eglSwapFail) + 1);
     // Task 77：present 相位计时——只包 eglSwapBuffers 本体。
@@ -2291,6 +2344,7 @@ void gl_swap_buffers() {
     PerformanceRecordEGLPhases(ame77_t_present0 - ame77_t_entry, ame77_t_present1 - ame77_t_present0);
     if (!swapResult) {
         if (benchmarkWindow) PerformanceBenchmarkUnavailable(benchmarkWindow);
+        if (gameplay) atomic_store(&failedGameplayPolicy, policy);
         unsigned long fails = atomic_fetch_add(&g_eglSwapFail, 1) + 1;
         unsigned int eglErr = (unsigned int)(uintptr_t)handle.eglGetError();
         if (fails <= 10 || fails % 100 == 0) {
@@ -2298,6 +2352,11 @@ void gl_swap_buffers() {
                   fails, eglErr, (void *)br_get_current()->gl.surface);
         }
         return;
+    }
+    if (gameplay) {
+        GameplayDidPresent(&gameplayPresentation, ame77_t_present0, ame77_t_present1);
+        if (atomic_load_explicit(&activeGameplayPolicy, memory_order_relaxed) != policy)
+            atomic_store(&activeGameplayPolicy, policy);
     }
     if (benchmarkWindow) {
         benchmarkPreview.lastPreviewUs = ame77_t_present1;

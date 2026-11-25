@@ -279,8 +279,8 @@
 "preference.title.resolution" = "解像度（%）";
 "preference.detail.resolution" = "允許你降低遊戲的解像度。";
 
-"preference.title.disable_game_vsync" = "解锁帧率（关闭垂直同步）";
-"preference.detail.disable_game_vsync" = "Minecraft 默认开启垂直同步，会把帧率锁在屏幕刷新率（60Hz 锁 60、120Hz 锁 120）。开启后启动器会强制关闭垂直同步，让游戏帧率可超过屏幕刷新率。如需省电降温或偏好垂直同步可关闭。";
+"preference.title.disable_game_vsync" = "關閉 Minecraft 垂直同步";
+"preference.detail.disable_game_vsync" = "啟用幀率限制時控制 Minecraft 的垂直同步。不限幀率模式會自動關閉垂直同步。";
 
 "preference.title.performance_hud" = "显示性能 HUD";
 "preference.detail.performance_hud" = "当可用时显示性能监控覆盖层。该功能仅支持 iOS 16 及以上系统和 Angle 渲染器。";
@@ -325,13 +325,14 @@
 "preference.title.mg_custom_gl_version-4.4" = "OpenGL 4.4";
 "preference.title.mg_custom_gl_version-4.5" = "OpenGL 4.5";
 "preference.title.mg_custom_gl_version-4.6" = "OpenGL 4.6";
-"preference.title.fsr1_setting" = "FSR 1.0 超分辨率";
-"preference.detail.fsr1_setting" = "AMD FidelityFX Super Resolution 1.0 超解析度。選擇檔位即自動降低渲染解析度（超高品質 77%／高品質 67%／均衡 59%／效能優先 50%），再由渲染器放大回全解析度表面。僅對 MobileGlues（內建 FSR1）與 Zink（EASU 昇採樣）渲染器生效；mg 系列（Vulkan／ES／OpenGL 4.0 後端）、MoltenVK、gl4es 均不支援啟動器側 FSR——這些渲染器需要畫質／幀率取捨時，請改用影片設定中的「解析度」縮放。";
-"preference.title.mg_fsr1_setting-0" = "关闭";
-"preference.title.mg_fsr1_setting-1" = "超高品质";
-"preference.title.mg_fsr1_setting-2" = "高品质";
-"preference.title.mg_fsr1_setting-3" = "平衡";
-"preference.title.mg_fsr1_setting-4" = "效能優先";
+"game.menu.resolution.dimensions" = "算繪 %d×%d → 輸出 %d×%d";
+"preference.title.fsr1_setting" = "超解析度";
+"preference.detail.fsr1_setting" = "Minecraft 依所選百分比繪製輸出畫面的寬和高，再將畫面放大。選擇「高品質」並重新啟動遊戲即可測試。";
+"preference.title.mg_fsr1_setting-0" = "关闭 (100%)";
+"preference.title.mg_fsr1_setting-1" = "超高品质 (77%)";
+"preference.title.mg_fsr1_setting-2" = "高品质 (67%)";
+"preference.title.mg_fsr1_setting-3" = "平衡 (59%)";
+"preference.title.mg_fsr1_setting-4" = "效能優先 (50%)";
 "preference.title.fsr_rcas_sharpness" = "FSR 銳化強度";
 "preference.detail.fsr_rcas_sharpness" = "FSR 放大後追加的 RCAS 銳化強度（mpv 口徑）。預設 0.2，越大越銳；關閉 = 僅放大不銳化。下次啟動遊戲時生效。";
 "preference.title.mg_fsr_rcas-0" = "關閉（僅放大）";
@@ -3767,7 +3768,8 @@
 "prisma.ui.rename.world" = "重命名存档";
 "prisma.ui.renderer.global.default" = "渲染器（全局默认）";
 "prisma.ui.renderer.override" = "渲染器覆写";
-"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance" = "渲染分辨率百分比（各实例可单独覆盖）";
+"prisma.upscaling.output_resolution" = "輸出解析度";
+"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance" = "100% 使用螢幕原生解析度。設定檔可個別覆寫此設定。";
 "prisma.ui.research.shows.players.love.making.choices.so.we.let.you.vote.on.eve" = "研究表明：玩家最喜欢作出选择，所以我们让你为一切投票！";
 "prisma.ui.reset.the.current.control.layout.to.the.factory.default.this.takes.e" = "将当前控制布局重置为出厂布局 custom.json，下次进入游戏生效。";
 "prisma.ui.restore.all.custom.preferences.to.their.defaults" = "所有自定义首选项恢复出厂";
@@ -3886,7 +3888,7 @@
 "Test Launch" = "測試啟動";
 "Share Latest Report" = "分享最新報告";
 "prisma.perf.record" = "記錄 60 秒";
-"prisma.perf.instructions" = "進入測試場景後打開遊戲內齒輪選單。選擇「記錄 60 秒」測試遊戲表現，或在 Magma 上選擇「測試算圖幀率」。返回此處即可分享報告。";
+"prisma.perf.instructions" = "進入測試場景後打開遊戲內齒輪選單。「記錄 60 秒」記錄遊戲表現。關閉幀率限制後，支援的 Magma 階段還可測試算圖幀率。返回此處即可分享報告。";
 "prisma.perf.benchmark" = "測試算圖幀率";
 "prisma.perf.stop_benchmark" = "停止算圖測試";
 "prisma.perf.benchmark_result" = "算圖測試結果";
@@ -3895,6 +3897,9 @@
 "prisma.perf.benchmark_rate" = "GPU 每秒完成 %.1f 幀 · 預覽每秒交換 %.1f 次 · 螢幕最高 %ld Hz";
 "prisma.perf.benchmark_unavailable" = "無法測量 GPU 完成的幀數。啟動器已恢復正常畫面輸出。";
 "prisma.perf.benchmark_interrupted" = "算圖測試已提前停止。報告中儲存了已記錄的幀數。";
+"preference.title.cap_at_120_fps" = "限制為 120 FPS";
+"preference.detail.cap_at_120_fps" = "將遊戲幀率限制為 120 FPS 和螢幕最高更新率中的較低值。關閉後，支援 Magma 的裝置可不限算圖幀率。下次啟動生效。";
+"game.stats.render_present" = "算圖 %ld FPS | 輸出 %ld/s | 記憶體 %.0fMB";
 "prisma.perf.share" = "分享測試報告";
 "Performance report saved" = "效能報告已儲存";
 "Recording starts in 3 seconds" = "3 秒後開始記錄";

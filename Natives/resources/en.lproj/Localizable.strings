@@ -279,8 +279,8 @@
 "preference.title.resolution" = "Resolution (%)";
 "preference.detail.resolution" = "Allows you to decrease the game resolution.";
 
-"preference.title.disable_game_vsync" = "Unlock framerate (disable VSync)";
-"preference.detail.disable_game_vsync" = "Minecraft enables VSync by default, which caps FPS at the screen refresh rate (60 or 120). When enabled, the launcher forces VSync off so the game can exceed the refresh rate. Turn off if you prefer VSync or want to reduce heat/battery drain.";
+"preference.title.disable_game_vsync" = "Disable Minecraft VSync";
+"preference.detail.disable_game_vsync" = "Controls Minecraft’s VSync setting while the FPS cap is enabled. Uncapped mode automatically disables VSync.";
 
 "preference.title.performance_hud" = "Show Performance HUD";
 "preference.detail.performance_hud" = "When available, show the performance monitoring overlay.";
@@ -327,13 +327,14 @@
 "preference.title.mg_custom_gl_version-4.4" = "OpenGL 4.4";
 "preference.title.mg_custom_gl_version-4.5" = "OpenGL 4.5";
 "preference.title.mg_custom_gl_version-4.6" = "OpenGL 4.6";
-"preference.title.fsr1_setting" = "FSR 1.0 Upscaling";
-"preference.detail.fsr1_setting" = "AMD FidelityFX Super Resolution 1.0 upscaling. Picking a preset lowers the render resolution (Ultra Quality 77% / Quality 67% / Balanced 59% / Performance 50%) and the renderer upscales it back to the full-resolution surface. Only works with the MobileGlues (built-in FSR1) and Zink (EASU) renderers. The mg family (Vulkan / ES / OpenGL 4.0 backends), MoltenVK and gl4es do not support launcher-side FSR -- for those renderers use the Resolution scaler in Video settings instead.";
-"preference.title.mg_fsr1_setting-0" = "Off";
-"preference.title.mg_fsr1_setting-1" = "Ultra Quality";
-"preference.title.mg_fsr1_setting-2" = "Quality";
-"preference.title.mg_fsr1_setting-3" = "Balanced";
-"preference.title.mg_fsr1_setting-4" = "Performance";
+"game.menu.resolution.dimensions" = "Render %d×%d → Output %d×%d";
+"preference.title.fsr1_setting" = "Upscaling";
+"preference.detail.fsr1_setting" = "Minecraft draws at this percentage of the output width and height, then scales up. Try Quality and relaunch the game.";
+"preference.title.mg_fsr1_setting-0" = "Off (100%)";
+"preference.title.mg_fsr1_setting-1" = "Ultra Quality (77%)";
+"preference.title.mg_fsr1_setting-2" = "Quality (67%)";
+"preference.title.mg_fsr1_setting-3" = "Balanced (59%)";
+"preference.title.mg_fsr1_setting-4" = "Performance (50%)";
 "preference.title.fsr_rcas_sharpness" = "FSR sharpening";
 "preference.detail.fsr_rcas_sharpness" = "RCAS sharpening strength applied after FSR upscaling (mpv scale). Default 0.2; higher = sharper; Off = upscale only. Takes effect on next launch.";
 "preference.title.mg_fsr_rcas-0" = "Off (upscale only)";
@@ -3771,7 +3772,8 @@
 "prisma.ui.rename.world" = "Rename World";
 "prisma.ui.renderer.global.default" = "Renderer (Global Default)";
 "prisma.ui.renderer.override" = "Renderer Override";
-"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance" = "Rendering resolution percentage (can be overridden per instance)";
+"prisma.upscaling.output_resolution" = "Output resolution";
+"prisma.ui.rendering.resolution.percentage.can.be.overridden.per.instance" = "Use 100% for the full display resolution. Profiles can override this setting.";
 "prisma.ui.research.shows.players.love.making.choices.so.we.let.you.vote.on.eve" = "Research shows players love making choices, so we let you vote on everything!";
 "prisma.ui.reset.the.current.control.layout.to.the.factory.default.this.takes.e" = "Reset the current control layout to the factory default. This takes effect the next time you launch the game.";
 "prisma.ui.restore.all.custom.preferences.to.their.defaults" = "Restore all custom preferences to their defaults";
@@ -3890,7 +3892,7 @@
 "Test Launch" = "Test Launch";
 "Share Latest Report" = "Share Latest Report";
 "prisma.perf.record" = "Record 60 Seconds";
-"prisma.perf.instructions" = "Enter your test scene and open the in-game gear. Choose Record 60 Seconds for gameplay or Benchmark Render FPS on Magma. Return here to share the report.";
+"prisma.perf.instructions" = "Enter your test scene and open the in-game gear. Record 60 Seconds captures gameplay. With the FPS cap off, supported Magma sessions also offer Benchmark Render FPS. Return here to share the report.";
 "prisma.perf.benchmark" = "Benchmark Render FPS";
 "prisma.perf.stop_benchmark" = "Stop Render Benchmark";
 "prisma.perf.benchmark_result" = "Render Benchmark Result";
@@ -3899,6 +3901,9 @@
 "prisma.perf.benchmark_rate" = "GPU %.1f frames/s · Preview %.1f swaps/s · Display up to %ld Hz";
 "prisma.perf.benchmark_unavailable" = "GPU completion could not be measured. The launcher resumed normal presentation.";
 "prisma.perf.benchmark_interrupted" = "Render benchmark stopped early. The partial frame counts are in the report.";
+"preference.title.cap_at_120_fps" = "Cap at 120 FPS";
+"preference.detail.cap_at_120_fps" = "Limits game rendering to 120 FPS or your screen’s maximum, whichever is lower. Turn off for uncapped rendering on supported Magma devices. Applies next launch.";
+"game.stats.render_present" = "Render %ld FPS | Present %ld/s | MEM %.0fMB";
 "prisma.perf.share" = "Share Test Report";
 "Performance report saved" = "Performance report saved";
 "Recording starts in 3 seconds" = "Recording starts in 3 seconds";
