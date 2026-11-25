@@ -21,6 +21,11 @@
 
 static EGLDisplay g_EglDisplay;
 static egl_library handle;
+static atomic_int magmaGLFWContextVersion;
+
+JNIEXPORT jint JNICALL Java_org_lwjgl_glfw_GLFW_nglfwGetCreatedContextVersion(JNIEnv *env, jclass cls) {
+    return pojavIsActualVulkanPath() ? 0 : atomic_load(&magmaGLFWContextVersion);
+}
 
 // ============================================================================
 // 黑屏取证（Task 32）：eglSwapBuffers 成功/失败原子计数器
@@ -1687,6 +1692,21 @@ static bool gl_init() {
         NSDebugLog(@"EGLBridge: Error eglInitialize() failed: 0x%x", handle.eglGetError());
         return false;
     }
+    // Magma exposes its desktop GL identity once its EGL display is initialized.
+    // Forge reads the new window's version before binding it on its render worker.
+    // Reading this driver-specific value here leaves the worker's context untouched.
+    int packedVersion = 0;
+    const char *renderer = getenv("AMETHYST_RENDERER");
+    if (renderer && !strcmp(renderer, RENDERER_NAME_MOBILEGL) && ame145_rendererHandle) {
+        const char *(*getString)(unsigned int) = dlsym(ame145_rendererHandle, "glGetString");
+        const char *version = getString ? getString(0x1F02 /* GL_VERSION */) : NULL;
+        unsigned major, minor;
+        if (version && strstr(version, "Direct (Vulkan) Backend") &&
+            sscanf(version, "%u.%u", &major, &minor) == 2 && major > 0 && major <= 0x7fff && minor <= 0xffff) {
+            packedVersion = (int)((major << 16) | minor);
+        }
+    }
+    atomic_store(&magmaGLFWContextVersion, packedVersion);
     return true;
 }
 

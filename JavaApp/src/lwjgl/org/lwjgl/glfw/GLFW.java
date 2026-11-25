@@ -586,6 +586,7 @@ public class GLFW
     private static native long nglfwSetWindowSizeCallback(long window, long ptr);
     // private static native void nglfwSetInputReady();
     private static native void nglfwSetShowingWindow(long window);
+    private static native int nglfwGetCreatedContextVersion();
 
     /*
      private static void priGlfwSetError(int error) {
@@ -1054,6 +1055,13 @@ public class GLFW
         win.height = mGLFWWindowHeight;
         win.title = title;
 
+        if (ptr != 0) {
+            int version = nglfwGetCreatedContextVersion();
+            if (version != 0) {
+                win.windowAttribs.put(GLFW_CONTEXT_VERSION_MAJOR, version >>> 16);
+                win.windowAttribs.put(GLFW_CONTEXT_VERSION_MINOR, version & 0xffff);
+            }
+        }
         win.windowAttribs.put(GLFW_HOVERED, 1);
         win.windowAttribs.put(GLFW_VISIBLE, 1);
 
