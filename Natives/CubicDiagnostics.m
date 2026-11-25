@@ -365,7 +365,10 @@ static dispatch_queue_t sessionWrites(void) {
             NSDictionary *updated = [PerformanceTest reportWithHitchEvidence:run atURL:performance];
             NSData *fresh = [NSJSONSerialization dataWithJSONObject:updated options:0 error:nil];
             if (fresh) measurements = fresh;
-            if ([updated[@"hitchAnalysis"] isKindOfClass:NSDictionary.class]) {
+            if ([updated[@"captureMode"] isEqual:@"magma-render-throughput"]) {
+                NSString *summary = CubicRenderBenchmarkSummary(updated[@"renderBenchmark"]);
+                add(@"render-throughput.txt", [summary dataUsingEncoding:NSUTF8StringEncoding]);
+            } else if ([updated[@"hitchAnalysis"] isKindOfClass:NSDictionary.class]) {
                 NSString *summary = CubicHitchSummary(updated[@"hitchAnalysis"]);
                 if (summary.length) add(@"hitch-summary.txt", [summary dataUsingEncoding:NSUTF8StringEncoding]);
             }

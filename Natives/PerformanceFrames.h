@@ -25,9 +25,16 @@ typedef struct {
     enum PerformanceFrameSource source;
     unsigned osmSamples, queueSamples;
     double finishMs, readbackMs, queueMs;
+    bool renderBenchmark, benchmarkUnavailable;
+    unsigned gpuCompletedFrames, previewSwaps;
 } PerformanceSummary;
 
 void PerformanceBegin(void);
+void PerformanceBeginRenderBenchmark(void);
+// A nonzero token permits benchmark work only for this run's measured window.
+uint64_t PerformanceBenchmarkWindow(void);
+void PerformanceBenchmarkCompleted(uint64_t window, bool previewSwapped);
+void PerformanceBenchmarkUnavailable(uint64_t window);
 // Returns a per-call token for an accepted GL swap entry, or zero otherwise.
 uint64_t PerformanceFrame(enum PerformanceFrameSource source);
 void PerformanceEndSwap(uint64_t token);

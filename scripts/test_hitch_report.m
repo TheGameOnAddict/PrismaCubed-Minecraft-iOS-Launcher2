@@ -67,6 +67,17 @@ int main(void) {
         assert([summary containsString:@"Java observations by number of rounds\n    render/graphics-draw (2)"]);
         assert(![summary containsString:@"private-canary"]);
 
+        NSDictionary *throughput = @{@"status":@"completed", @"gpuCompletedFrames":@9000,
+            @"previewSwaps":@1500, @"measuredSeconds":@60, @"panelMaxHz":@120};
+        NSString *benchmark = CubicRenderBenchmarkSummary(throughput);
+        assert([benchmark containsString:@"150.0 FPS"]);
+        assert([benchmark containsString:@"25.0 per second"]);
+        assert([benchmark containsString:@"120 Hz"]);
+        assert(![CubicRenderBenchmarkSummary(@{@"status":@"interrupted",@"gpuCompletedFPS":@999})
+            containsString:@"FPS"]);
+        assert(![CubicRenderBenchmarkSummary(@{@"status":@"private-canary"}) containsString:@"private-canary"]);
+        assert([CubicRenderBenchmarkSummary(@{@"status":@"completed"}) containsString:@"Incomplete"]);
+
         NSMutableDictionary *other = [java mutableCopy];
         other[@"captureStartEpochMs"] = @99999;
         a = CubicHitchAnalysis(report, other, nil);

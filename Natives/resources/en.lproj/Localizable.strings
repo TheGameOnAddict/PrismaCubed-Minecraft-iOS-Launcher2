@@ -3890,6 +3890,15 @@
 "Test Launch" = "Test Launch";
 "Share Latest Report" = "Share Latest Report";
 "prisma.perf.record" = "Record 60 Seconds";
+"prisma.perf.instructions" = "Enter your test scene and open the in-game gear. Choose Record 60 Seconds for gameplay or Benchmark Render FPS on Magma. Return here to share the report.";
+"prisma.perf.benchmark" = "Benchmark Render FPS";
+"prisma.perf.stop_benchmark" = "Stop Render Benchmark";
+"prisma.perf.benchmark_result" = "Render Benchmark Result";
+"prisma.perf.benchmark_start" = "Start Benchmark";
+"prisma.perf.benchmark_description" = "This experimental 60-second test counts frames completed by the GPU at your current resolution. The screen updates up to 30 times a second while it runs. Recording starts after 3 seconds. Open the gear to stop early.";
+"prisma.perf.benchmark_rate" = "GPU %.1f frames/s · Preview %.1f swaps/s · Display up to %ld Hz";
+"prisma.perf.benchmark_unavailable" = "GPU completion could not be measured. The launcher resumed normal presentation.";
+"prisma.perf.benchmark_interrupted" = "Render benchmark stopped early. The partial frame counts are in the report.";
 "prisma.perf.share" = "Share Test Report";
 "Performance report saved" = "Performance report saved";
 "Recording starts in 3 seconds" = "Recording starts in 3 seconds";

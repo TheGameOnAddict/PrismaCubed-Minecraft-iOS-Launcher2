@@ -15,6 +15,10 @@
 - (void)recordDisplayCadence:(NSDictionary *)sample forPhase:(NSString *)phase;
 - (void)firstFrameObserved;
 - (BOOL)beginCapture;
+@property(nonatomic, readonly) BOOL showsRenderBenchmark;
+@property(nonatomic, readonly) NSString *renderBenchmarkMenuTitle;
+@property(nonatomic, readonly, nullable) NSString *renderBenchmarkResult;
+- (void)showRenderBenchmarkFrom:(UIViewController *)controller;
 - (void)shareFrom:(UIViewController *)controller;
 - (BOOL)tickWidth:(int)width height:(int)height memoryMiB:(double)memory;
 - (void)interrupt;

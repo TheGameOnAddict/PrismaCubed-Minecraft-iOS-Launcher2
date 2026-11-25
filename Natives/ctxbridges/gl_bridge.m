@@ -1,5 +1,6 @@
 #import "CubicRuntimeInfo.h"
 #include "PerformanceFrames.h"
+#include "RenderBenchmark.h"
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import "SurfaceViewController.h"
@@ -252,6 +253,36 @@ static void *ame145_rendererHandle = NULL;
 // Set when the bridge is loaded or replaced. Read GL_RENDERER only with its
 // own context current; the host GLES renderer can differ from Minecraft's GL.
 static atomic_bool reportBoundRenderer;
+static atomic_bool benchmarkSupported;
+static atomic_bool benchmarkProbePending;
+static RenderBenchmarkSync benchmarkSync;
+static _Thread_local RenderBenchmarkPreview benchmarkPreview;
+
+bool pojavSupportsRenderBenchmark(void) {
+    return atomic_load_explicit(&benchmarkSupported, memory_order_acquire) && !pojavIsActualVulkanPath();
+}
+
+static void checkBenchmarkDriver(void) {
+    // Probe on the thread that actually swapped a window. A helper context can
+    // become current before Minecraft has selected and initialized its backend.
+    const char *(*getString)(unsigned int) = dlsym(ame145_rendererHandle, "glGetString");
+    if (!getString) return;
+    const char *renderer = getString(0x1F01 /* GL_RENDERER */);
+    if (!renderer || strncmp(renderer, "Magma (MobileGL Core)", sizeof("Magma (MobileGL Core)") - 1)) return;
+    const char *version = getString(0x1F02 /* GL_VERSION */);
+    if (!version || !strstr(version, "Direct (Vulkan) Backend") || !strstr(version, "GIT@874b9e8")) return;
+
+    // Magma remains loaded for the life of the process. Its own handle keeps
+    // similarly named ANGLE or system GL functions out of the measurement.
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        benchmarkSync.fence = dlsym(ame145_rendererHandle, "glFenceSync");
+        benchmarkSync.wait = dlsym(ame145_rendererHandle, "glClientWaitSync");
+        benchmarkSync.destroy = dlsym(ame145_rendererHandle, "glDeleteSync");
+    });
+    atomic_store_explicit(&benchmarkSupported, benchmarkSync.fence && benchmarkSync.wait && benchmarkSync.destroy,
+                          memory_order_release);
+}
 
 static ame_es_t ame_es(void) {
     static ame_es_t s_es;
@@ -1413,6 +1444,8 @@ static bool dlsym_EGL() {
     //     其余基础设施函数仍从 ANGLE 解析（前端本来就是透传，且必须在
     //     mg_init_gles 引导完成前避免触发前端内部的 LOAD_EGL 一次性初始化）。
     //   - 其余渲染器（gl4es / ANGLE / LTW）：全部从 ANGLE 解析。
+    atomic_store(&benchmarkSupported, false);
+    atomic_store(&benchmarkProbePending, false);
     const char *renderer = getenv("AMETHYST_RENDERER");
     // Task 138：-gles 逻辑键先映射回共享的 libMobileGL.dylib（utils.h 的
     // ame_physical_renderer_dylib，病历见其注释——此前此处按字面拼
@@ -1432,6 +1465,7 @@ static bool dlsym_EGL() {
     // 供 gl_make_current 的取证读回用同源 glGetString 探测（避免
     // RTLD_DEFAULT 撞上先加载的 ANGLE，见 Task 140 病历）。
     ame145_rendererHandle = dl_handle;
+    atomic_store(&benchmarkProbePending, renderer && !strcmp(renderer, RENDERER_NAME_MOBILEGL));
     atomic_store(&reportBoundRenderer, true);
 
     // ★ Task309：帧率解锁钩子（mg_vsync_hook.m，Task298 首安装点）按用户指令
@@ -2232,6 +2266,21 @@ void gl_swap_buffers() {
     // 由 SurfaceViewController 的 [RenderDiag] 5 秒心跳汇总上报。
     // 失败：任意错误码都打（去掉旧版 EGL_BAD_SURFACE 过滤），前 10 次逐条打，
     // 之后每 100 次打一条，避免日志爆炸。
+    uint64_t benchmarkWindow = PerformanceBenchmarkWindow();
+    if (benchmarkWindow) {
+        if (!pojavSupportsRenderBenchmark() || !RenderBenchmarkWaitForFrame(&benchmarkSync)) {
+            // Resume regular visible presentation even if the driver timed out.
+            PerformanceBenchmarkUnavailable(benchmarkWindow);
+            benchmarkWindow = 0;
+        } else if (PerformanceBenchmarkWindow() != benchmarkWindow) {
+            benchmarkWindow = 0; // The capture expired or was interrupted during the wait.
+        } else if (!RenderBenchmarkPreviewDue(&benchmarkPreview, benchmarkWindow, ame77_now_us())) {
+            // Keep the acquired backbuffer. All game draws have finished on the GPU.
+            // The next frame may overwrite it before the next visible preview.
+            PerformanceBenchmarkCompleted(benchmarkWindow, false);
+            return;
+        }
+    }
     ame_task41_swap_forensics(br_get_current()->gl.surface,
                               atomic_load(&g_eglSwapOK) + atomic_load(&g_eglSwapFail) + 1);
     // Task 77：present 相位计时——只包 eglSwapBuffers 本体。
@@ -2241,6 +2290,7 @@ void gl_swap_buffers() {
     ame77_record_present((uint32_t)(ame77_t_present1 - ame77_t_present0), ame77_t_present1);
     PerformanceRecordEGLPhases(ame77_t_present0 - ame77_t_entry, ame77_t_present1 - ame77_t_present0);
     if (!swapResult) {
+        if (benchmarkWindow) PerformanceBenchmarkUnavailable(benchmarkWindow);
         unsigned long fails = atomic_fetch_add(&g_eglSwapFail, 1) + 1;
         unsigned int eglErr = (unsigned int)(uintptr_t)handle.eglGetError();
         if (fails <= 10 || fails % 100 == 0) {
@@ -2249,6 +2299,12 @@ void gl_swap_buffers() {
         }
         return;
     }
+    if (benchmarkWindow) {
+        benchmarkPreview.lastPreviewUs = ame77_t_present1;
+        PerformanceBenchmarkCompleted(benchmarkWindow, true);
+    }
+    if (atomic_load_explicit(&benchmarkProbePending, memory_order_relaxed) &&
+        atomic_exchange(&benchmarkProbePending, false)) checkBenchmarkDriver();
     unsigned long oks = atomic_fetch_add(&g_eglSwapOK, 1) + 1;
     if (oks == 1) {
         NSLog(@"[RenderDiag] first eglSwapBuffers OK surface=%p (presentation path confirmed)",
@@ -2263,6 +2319,8 @@ void gl_swap_interval(int swapInterval) {
 }
 
 void gl_terminate() {
+    atomic_store(&benchmarkSupported, false);
+    atomic_store(&benchmarkProbePending, false);
     // ★ Task252（反馈 2 五修：26.3 退出游戏后闪退根修）——本函数在终结线
     //   程上被 glfwTerminate→pojavTerminate→br_terminate 调到，而：
     //   ① ame_brCurrent 是 __thread 的，只在渲染线程非空（bridge_tbl.h 头

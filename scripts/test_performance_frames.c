@@ -78,6 +78,51 @@ static void testPairedIntervals(void) {
     assert(s.intervals == 1 && s.phaseIntervalCount == 0 && !s.slowFrames[0].hasSwapPhases);
 }
 
+static void testRenderBenchmark(void) {
+    assert(!PerformanceBenchmarkWindow());
+    PerformanceBeginRenderBenchmark();
+    assert(!PerformanceBenchmarkWindow());
+    clockNs += PerformanceLeadInSeconds * second;
+    uint64_t first = PerformanceBenchmarkWindow();
+    assert(first);
+    PerformanceBenchmarkCompleted(first, false);
+    PerformanceBenchmarkCompleted(first, true);
+    PerformanceSummary s = PerformanceSnapshot(false);
+    assert(s.renderBenchmark && s.gpuCompletedFrames == 2 && s.previewSwaps == 1);
+    clockNs += PerformanceSeconds * second;
+    assert(!PerformanceBenchmarkWindow());
+    PerformanceBenchmarkCompleted(first, true);
+    assert(PerformanceSnapshot(true).gpuCompletedFrames == 2);
+
+    PerformanceBeginRenderBenchmark();
+    clockNs += PerformanceLeadInSeconds * second;
+    uint64_t next = PerformanceBenchmarkWindow();
+    assert(next && next != first);
+    PerformanceBenchmarkCompleted(first, true);
+    PerformanceBenchmarkUnavailable(first);
+    assert(PerformanceBenchmarkWindow() == next);
+    PerformanceBenchmarkUnavailable(next);
+    assert(!PerformanceBenchmarkWindow());
+    PerformanceBenchmarkCompleted(next, false);
+    s = PerformanceSnapshot(true);
+    assert(s.benchmarkUnavailable && !s.gpuCompletedFrames && !s.previewSwaps);
+
+    PerformanceBeginRenderBenchmark();
+    clockNs += PerformanceLeadInSeconds * second;
+    next = PerformanceBenchmarkWindow();
+    assert(next);
+    PerformanceSnapshot(true);
+    assert(!PerformanceBenchmarkWindow());
+    PerformanceBenchmarkCompleted(next, true);
+    assert(!PerformanceSnapshot(false).gpuCompletedFrames);
+
+    PerformanceBegin();
+    clockNs += PerformanceLeadInSeconds * second;
+    unsigned reads = clockReads;
+    assert(!PerformanceBenchmarkWindow() && clockReads == reads);
+    assert(!PerformanceSnapshot(true).renderBenchmark);
+}
+
 int main(void) {
     PerformanceBegin();
     PerformanceFrame(PerformanceSwap);
@@ -121,5 +166,6 @@ int main(void) {
     assert(!s.intervals && !s.queueSamples && s.source == PerformanceDrawable);
     assert(PerformanceQueueStamp() == 0);
     testPairedIntervals();
+    testRenderBenchmark();
     return 0;
 }
