@@ -461,6 +461,7 @@ static void ame273_writeCrashReport(int code) {
 
     static char buf[262145];   // 静态缓冲，防濒死堆分配
     long len = 0;
+    long startOffset = 0;
     char path[1024];
     snprintf(path, sizeof(path), "%s/latestlog.txt", home);
     FILE *f = fopen(path, "rb");
@@ -468,7 +469,8 @@ static void ame273_writeCrashReport(int code) {
         fseek(f, 0, SEEK_END);
         long total = ftell(f);
         long want = (total > 262144) ? 262144 : total;
-        fseek(f, total - want, SEEK_SET);
+        startOffset = total - want;
+        fseek(f, startOffset, SEEK_SET);
         len = (long)fread(buf, 1, (size_t)want, f);
         buf[len] = '\0';
         fclose(f);
@@ -481,8 +483,10 @@ static void ame273_writeCrashReport(int code) {
         const char *p = buf;
         const char *end = buf + len;
         // 首行可能是截断的半行：跳到第一个换行
-        while (p < end && *p != '\n') p++;
-        if (p < end) p++;
+        if (startOffset > 0) {
+            while (p < end && *p != '\n') p++;
+            if (p < end) p++;
+        }
         while (p < end && lineCount < 2048) {
             const char *nl = memchr(p, '\n', (size_t)(end - p));
             int ll = (int)((nl ? nl : end) - p);
@@ -512,11 +516,18 @@ static void ame273_writeCrashReport(int code) {
     int idxImmediateReason = -1, idxFix = -1, idxIncompatHead = -1;
     int idxLastCausedBy = -1, idxLastException = -1;
     int idxProblematicFrame = -1;  // Task305：JVM fatal 锚点（下一行 = 真实问题帧）
+    int idxForgeFeature = -1;
     int scanFrom = lineCount > 500 ? lineCount - 500 : 0;
-    for (int i = scanFrom; i < lineCount; i++) {
+    for (int i = 0; i < lineCount; i++) {
         const char *s = ame273_trim(lines[i].start);
         int ll = lines[i].len - (int)(s - lines[i].start);
         if (ll <= 0) continue;
+        // Forge can print hundreds of mod entries after this fatal line.
+        if (strstr(s, "/FATAL]") && strstr(s, "Failed to validate feature bounds for mods:"))
+            idxForgeFeature = i;
+        if (i < scanFrom) continue;
+        // A JVM arguments dump contains -XX:ErrorFile=.../hs_err_pid%p.log even on a Java exception.
+        if (strstr(s, "JVM Flags:") || strstr(s, "-XX:ErrorFile=")) continue;
         if (strstr(s, "Immediate reason: ")) idxImmediateReason = i;
         if (strstr(s, "Fix: ")) idxFix = i;
         if (strstr(s, "Incompatible mods found!")) idxIncompatHead = i;
@@ -549,7 +560,8 @@ static void ame273_writeCrashReport(int code) {
     const char *category = "unknown";
     const char *cat_cn = "未知错误";
     const char *cat_en = "Unknown error";
-    if (catModIncompat) {
+    int featureFailure = idxForgeFeature >= 0 && !catJvmFatal && !catOOM;
+    if (catModIncompat || featureFailure) {
         category = "mod_incompatible";
         cat_cn = "模组不兼容/冲突";
         cat_en = "Mod incompatibility";
@@ -574,7 +586,10 @@ static void ame273_writeCrashReport(int code) {
     // ---- headline / fix ----
     const char *headline = "no reason line captured";
     int headlineLen = (int)strlen(headline);
-    if (idxImmediateReason >= 0) {
+    if (featureFailure) {
+        headline = ame273_trim(lines[idxForgeFeature].start);
+        headlineLen = lines[idxForgeFeature].len - (int)(headline - lines[idxForgeFeature].start);
+    } else if (idxImmediateReason >= 0) {
         headline = ame273_trim(lines[idxImmediateReason].start);
         headlineLen = lines[idxImmediateReason].len - (int)(headline - lines[idxImmediateReason].start);
     } else if (idxProblematicFrame >= 0 && idxProblematicFrame + 1 < lineCount) {
@@ -653,7 +668,8 @@ static void ame273_writeCrashReport(int code) {
     ame273_line_t details[20];
     int detailCount = 0;
     int blockIdx = -1;
-    if (idxIncompatHead >= 0) blockIdx = idxIncompatHead;
+    if (featureFailure) blockIdx = idxForgeFeature;
+    else if (idxIncompatHead >= 0) blockIdx = idxIncompatHead;
     else if (idxImmediateReason >= 0 && idxImmediateReason > 0) blockIdx = idxImmediateReason - 1;
     else if (idxProblematicFrame >= 0) blockIdx = (idxProblematicFrame > 0) ? idxProblematicFrame - 1 : idxProblematicFrame;
     else if (idxLastCausedBy >= 0) blockIdx = idxLastCausedBy;
