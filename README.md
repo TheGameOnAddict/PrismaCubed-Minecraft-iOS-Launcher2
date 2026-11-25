@@ -5,7 +5,7 @@
 
 ## Try the new gameplay settings
 
-Open **Settings → Renderer** to change **Cap at 120 FPS** or **Upscaling**, then launch your profile with **Play**. The cap starts on. Turn it off to let the patched Magma renderer run ahead of the display when the scene is light enough. The first iPhone measurements for this build are pending. [Download the test IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-gameplay-settings-e5dd5d4/PrismaCubic-e5dd5d4.ipa) · [How to try upscaling](docs/performance-on-iphone.md#trying-upscaling)
+Open **Settings → Renderer** to change **Cap at 120 FPS** or **Upscaling**, then launch your profile with **Play**. The cap starts on. Turn it off to let the patched Magma renderer run ahead of the display when the scene is light enough. In a 60-second A19 Pro test at 1912 × 880, the pack averaged 107.7 FPS with the cap off. Rendering rarely ran ahead of presentation. [Download the test IPA](https://github.com/TheGameOnAddict/PrismaCubic-Minecraft-iOS-Launcher2/releases/download/test-gameplay-settings-e5dd5d4/PrismaCubic-e5dd5d4.ipa) · [How to try upscaling](docs/performance-on-iphone.md#trying-upscaling)
 
 ## Tested iPhone build
 

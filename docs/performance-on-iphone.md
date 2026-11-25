@@ -44,6 +44,19 @@ Leave **Output resolution** at **100%** and check that your profile uses that se
 
 Quality draws each frame at about two-thirds of the output width and height. For example, on a 2868 × 1320 output, Minecraft draws 1912 × 880 and the upscaler enlarges it to fill the screen. That is about 56% fewer pixels to draw. This can help when drawing pixels limits FPS. Look at distant grass or fine edges to judge the change in sharpness. To compare with full resolution, select **Off (100%)** and relaunch in the same spot.
 
+### First uncapped iPhone result
+
+The 60-second gameplay capture on build `e5dd5d4` confirmed Magma was active with the cap off. Minecraft rendered at 1912 × 880 throughout, which matches Quality at full output on this iPhone. The export records the game size. It does not record the selected preset or the output size.
+
+| THE GANG on A19 Pro | Average FPS | 99th-percentile frame interval (upper bound) | Intervals over 100 ms |
+| --- | ---: | ---: | ---: |
+| Earlier full-resolution run, 2868 × 1320 | 95.9 | 34 ms | 2 |
+| Uncapped run, 1912 × 880 | 107.7 | 28 ms | 7 |
+
+Both runs used eight chunks of render distance, six chunks of simulation distance and shaders off. The scenes were not controlled, so the difference cannot be attributed to upscaling alone. In the uncapped run, 60 of 61 HUD samples reported identical rendering and presentation rates. The other reported 116 FPS rendered and 111 frames submitted per second. The 122 FPS peak appeared in both counters.
+
+The longest interval lasted 283 ms. Only 1.5 ms was spent in the final swap call, and the sampler found render-thread graphics driver work in all six observations within that interval. A separate 217 ms interval included entity rendering. The diagnostic sampler itself overlapped one hitch by about 101 ms, so the measurements include some profiling overhead.
+
 ## Performance backlog
 
 - [ ] **Investigate optional frame generation at full resolution.** Start with MetalFX frame interpolation on an iPhone that reports support. It takes two rendered images plus depth and motion vectors. Check whether Magma can expose the needed textures through MoltenVK and whether Minecraft or a companion mod can supply accurate motion for independently moving mobs. Composite the HUD separately so text and the crosshair stay sharp. [Apple’s frame interpolation overview](https://developer.apple.com/videos/play/wwdc2025/211/?time=437) · [MetalFX device support query and texture inputs](https://developer.apple.com/documentation/metalfx/mtlfxframeinterpolatordescriptor)
