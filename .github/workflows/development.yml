@@ -15,30 +15,30 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: PrismaCubic-62a02c9-iPhone
-          run-id: 45674987685
+          name: PrismaCubic-ed583a1-iPhone
+          run-id: 45676977215
           github-token: ${{ github.token }}
           path: package
       - name: Verify the signed package, driver and release asset
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: test-hitch-diagnostics-62a02c9
-          PACKAGE_SOURCE: 62a02c9c1e198395aab578469b736ba05b9f0418
+          TAG: test-magma-throughput-ed583a1
+          PACKAGE_SOURCE: ed583a183b7e7cebe8d663e3a4cae1a27a104fcd
         run: |
           set -euo pipefail
-          mv package/PrismaCubic-62a02c9.ipa PrismaCubic-62a02c9.ipa
-          echo 'b9649720a21e58f9b962d593de645341b0a7fcf6ef382352644c792420570908  PrismaCubic-62a02c9.ipa' | sha256sum --check
-          unzip -tq "PrismaCubic-62a02c9.ipa"
-          unzip -p "PrismaCubic-62a02c9.ipa" 'Payload/AngelAuraAmethyst.app/Frameworks/libMobileGL.dylib' > "$RUNNER_TEMP/libMobileGL.dylib"
+          mv package/PrismaCubic-ed583a1.ipa PrismaCubic-ed583a1.ipa
+          echo '326809c2f2d662952a74bad6e21faf69052fe7d9b9f7d89caa8d6235767b64e7  PrismaCubic-ed583a1.ipa' | sha256sum --check
+          unzip -tq "PrismaCubic-ed583a1.ipa"
+          unzip -p "PrismaCubic-ed583a1.ipa" 'Payload/AngelAuraAmethyst.app/Frameworks/libMobileGL.dylib' > "$RUNNER_TEMP/libMobileGL.dylib"
           echo "0720bbaddfd6964ca895e2cbad3be9360c467832a8b6c04cf15384296a026b50  $RUNNER_TEMP/libMobileGL.dylib" | sha256sum --check
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --target "$PACKAGE_SOURCE" --title 'Hitch diagnostics and foreground rendering · iPhone test' --prerelease --latest=false --draft --notes-file .github/magma-release-notes.md
+            gh release create "$TAG" --target "$PACKAGE_SOURCE" --title 'Magma GPU-frame benchmark · iPhone test' --prerelease --latest=false --draft --notes-file .github/magma-release-notes.md
           fi
-          existing=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-62a02c9.ipa") | .digest')
+          existing=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-ed583a1.ipa") | .digest')
           if [ -z "$existing" ]; then
-            gh release upload "$TAG" PrismaCubic-62a02c9.ipa
+            gh release upload "$TAG" PrismaCubic-ed583a1.ipa
           fi
-          digest=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-62a02c9.ipa") | .digest')
-          test "$digest" = 'sha256:b9649720a21e58f9b962d593de645341b0a7fcf6ef382352644c792420570908'
+          digest=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="PrismaCubic-ed583a1.ipa") | .digest')
+          test "$digest" = 'sha256:326809c2f2d662952a74bad6e21faf69052fe7d9b9f7d89caa8d6235767b64e7'
           gh release edit "$TAG" --draft=false --prerelease --latest=false
